@@ -1,0 +1,13 @@
+role: worker
+listen: "0.0.0.0:9999"
+advertise: "localhost:9999"
+
+worker:
+  controller_addr: "localhost:8888"
+  name: "worker-stub-01"
+  vcpus: 8
+  ram_mb: 16384
+  disk_gb: 200
+
+compute:
+  driver: stub

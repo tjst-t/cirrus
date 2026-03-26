@@ -1,0 +1,5 @@
+role: controller
+listen: "0.0.0.0:8888"
+
+controller:
+  db: "postgres://cirrus:cirrus@localhost:5432/cirrus?sslmode=disable"

@@ -1,0 +1,125 @@
+syntax = "proto3";
+
+package agent;
+
+option go_package = "github.com/tjst-t/cirrus/proto/agentpb";
+
+service WorkerAgent {
+  // Compute
+  rpc CreateVM(CreateVMRequest) returns (CreateVMResponse);
+  rpc DeleteVM(DeleteVMRequest) returns (DeleteVMResponse);
+  rpc StopVM(StopVMRequest) returns (StopVMResponse);
+  rpc StartVM(StartVMRequest) returns (StartVMResponse);
+  rpc GetVMStatus(GetVMStatusRequest) returns (VMStatusResponse);
+
+  // Network
+  rpc ConfigurePort(ConfigurePortRequest) returns (ConfigurePortResponse);
+  rpc RemovePort(RemovePortRequest) returns (RemovePortResponse);
+  rpc ConfigureTunnel(ConfigureTunnelRequest) returns (ConfigureTunnelResponse);
+  rpc RemoveTunnel(RemoveTunnelRequest) returns (RemoveTunnelResponse);
+}
+
+message PortSpec {
+  string id = 1;
+  string mac_address = 2;
+  string ip_address = 3;
+  string cidr = 4;
+  string gateway = 5;
+  int32 vni = 6;
+}
+
+message DiskSpec {
+  string base_image_path = 1;
+  int32 size_gb = 2;
+}
+
+message CreateVMRequest {
+  string vm_id = 1;
+  string name = 2;
+  int32 vcpus = 3;
+  int32 ram_mb = 4;
+  DiskSpec disk = 5;
+  repeated PortSpec ports = 6;
+  string ssh_public_key = 7;
+}
+
+message CreateVMResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message DeleteVMRequest {
+  string vm_id = 1;
+}
+
+message DeleteVMResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message StopVMRequest {
+  string vm_id = 1;
+}
+
+message StopVMResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message StartVMRequest {
+  string vm_id = 1;
+}
+
+message StartVMResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message GetVMStatusRequest {
+  string vm_id = 1;
+}
+
+message VMStatusResponse {
+  string vm_id = 1;
+  string status = 2;
+}
+
+message ConfigurePortRequest {
+  string port_id = 1;
+  string mac_address = 2;
+  int32 vni = 3;
+}
+
+message ConfigurePortResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message RemovePortRequest {
+  string port_id = 1;
+}
+
+message RemovePortResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message ConfigureTunnelRequest {
+  string peer_address = 1;
+  string peer_name = 2;
+}
+
+message ConfigureTunnelResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message RemoveTunnelRequest {
+  string peer_address = 1;
+  string peer_name = 2;
+}
+
+message RemoveTunnelResponse {
+  bool success = 1;
+  string error = 2;
+}

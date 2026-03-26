@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cirrus — IaaS Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;600&family=Geist+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --color-bg: #ffffff;
+  --color-bg-subtle: #f5f6f7;
+  --color-bg-muted: #ebedf0;
+  --color-border: #dddfe2;
+  --color-border-strong: #bec3c9;
+  --color-text: #1c1e21;
+  --color-text-secondary: #606770;
+  --color-text-tertiary: #8a8d91;
+  --color-accent: #1877f2;
+  --color-accent-hover: #1466d4;
+  --color-accent-subtle: #e7f3ff;
+  --color-accent-border: #a3d0fb;
+  --color-success: #31a24c;
+  --color-success-subtle: #e9f7ed;
+  --color-success-border: #a8dbb5;
+  --color-warning: #f0960a;
+  --color-warning-subtle: #fef4dc;
+  --color-warning-border: #fad980;
+  --color-danger: #e4363a;
+  --color-danger-subtle: #fdebeb;
+  --color-danger-border: #f5aaac;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md: 0 1px 4px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-lg: 0 4px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.05);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Geist', 'Noto Sans JP', system-ui, sans-serif;
+  background: var(--color-bg-muted);
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+/* Layout */
+.app { display: flex; height: 100vh; }
+nav {
+  width: 220px;
+  background: var(--color-bg-subtle);
+  border-right: 1px solid var(--color-border);
+  padding: var(--space-5) 0;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+nav .logo {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  padding: 0 var(--space-4) var(--space-5);
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+nav .logo svg { color: var(--color-accent); }
+nav .logo span {
+  color: var(--color-text-tertiary);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+nav a {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 7px var(--space-4);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: background 0.1s, color 0.1s;
+}
+nav a:hover { background: var(--color-bg-muted); color: var(--color-text); }
+nav a.active {
+  color: var(--color-accent);
+  font-weight: 500;
+  border-left-color: var(--color-accent);
+  background: var(--color-accent-subtle);
+}
+main {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-5) var(--space-6);
+}
+
+/* Typography */
+h1 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  margin-bottom: var(--space-5);
+  color: var(--color-text);
+}
+h2 {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+strong { font-weight: 500; }
+
+/* Cards */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+.card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-md);
+}
+.card .label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+  margin-bottom: var(--space-1);
+}
+.card .value {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--color-text);
+}
+
+/* Table */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+thead { background: var(--color-bg-subtle); }
+th {
+  text-align: left;
+  padding: 9px var(--space-4);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+td {
+  padding: 9px var(--space-4);
+  border-top: 1px solid var(--color-border);
+  font-size: 13px;
+  color: var(--color-text);
+}
+tr:hover td { background: var(--color-bg-subtle); }
+
+/* Badge */
+.badge {
+  display: inline-block;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-md);
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid;
+}
+.badge-active, .badge-running, .badge-online {
+  background: var(--color-success-subtle);
+  color: var(--color-success);
+  border-color: var(--color-success-border);
+}
+.badge-scheduling, .badge-building, .badge-creating {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+  border-color: var(--color-accent-border);
+}
+.badge-error {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+  border-color: var(--color-danger-border);
+}
+.badge-shutoff, .badge-down, .badge-offline, .badge-unknown {
+  background: var(--color-bg-muted);
+  color: var(--color-text-secondary);
+  border-color: var(--color-border);
+}
+.badge-deleting, .badge-deleted {
+  background: var(--color-warning-subtle);
+  color: var(--color-warning);
+  border-color: var(--color-warning-border);
+}
+
+/* Toolbar */
+.toolbar {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+/* Button */
+button, .btn {
+  padding: 7px 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-subtle);
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.1s, border-color 0.1s, box-shadow 0.1s;
+}
+button:hover, .btn:hover {
+  background: var(--color-bg-muted);
+  box-shadow: var(--shadow-sm);
+}
+button.primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #ffffff;
+}
+button.primary:hover {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+button.danger {
+  background: var(--color-bg);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger);
+}
+button.danger:hover {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: #ffffff;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  width: 420px;
+  max-width: 90vw;
+  box-shadow: var(--shadow-lg);
+}
+.modal h2 { margin-bottom: var(--space-4); }
+
+/* Form */
+.form-group { margin-bottom: var(--space-3); }
+.form-group label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+  margin-bottom: var(--space-1);
+}
+.form-group input, .form-group select {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 13px;
+  font-family: inherit;
+}
+.form-group input:focus, .form-group select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-subtle);
+}
+.form-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  margin-top: var(--space-4);
+}
+
+/* Mono */
+.mono {
+  font-family: 'Geist Mono', monospace;
+  font-size: 12px;
+}
+
+/* Key display */
+.key-display {
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  font-family: 'Geist Mono', monospace;
+  font-size: 12px;
+  word-break: break-all;
+  margin: var(--space-3) 0;
+}
+
+/* Empty state */
+.empty {
+  color: var(--color-text-tertiary);
+  text-align: center;
+  padding: var(--space-6);
+  font-size: 13px;
+}
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: var(--space-5);
+  right: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-success-subtle);
+  color: var(--color-success);
+  border: 1px solid var(--color-success-border);
+  border-radius: var(--radius-lg);
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 200;
+  box-shadow: var(--shadow-lg);
+  animation: toastIn 0.2s ease-out;
+}
+.toast.error {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+  border-color: var(--color-danger-border);
+}
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* IP tag */
+.ip-tag {
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-sm);
+  font-family: 'Geist Mono', monospace;
+  font-size: 12px;
+}
+
+/* Warning card */
+.warning-card {
+  background: var(--color-warning-subtle);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  font-size: 13px;
+  color: var(--color-text);
+}
+.warning-card strong { color: var(--color-warning); }
+
+/* Active key info */
+.key-info {
+  margin-top: var(--space-4);
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Error detail */
+.error-detail {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--color-danger);
+  margin-top: var(--space-1);
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <nav>
+    <div class="logo">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+      Cirrus <span>IaaS</span>
+    </div>
+    <a onclick="go('dashboard')" id="nav-dashboard">Dashboard</a>
+    <a onclick="go('projects')" id="nav-projects">Projects</a>
+    <a onclick="go('networks')" id="nav-networks">Networks</a>
+    <a onclick="go('images')" id="nav-images">Images</a>
+    <a onclick="go('vms')" id="nav-vms">Virtual Machines</a>
+    <a onclick="go('ports')" id="nav-ports">Ports</a>
+    <a onclick="go('workers')" id="nav-workers">Workers</a>
+  </nav>
+  <main id="content"></main>
+</div>
+
+<script>
+const API = '/api/v1';
+let state = { page: 'dashboard', apiKey: localStorage.getItem('cirrus_api_key') || '', projectId: '' };
+
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (state.apiKey) opts.headers['X-API-Key'] = state.apiKey;
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(API + path, opts);
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+  return data;
+}
+
+function toast(msg, err) {
+  const el = document.createElement('div');
+  el.className = 'toast' + (err ? ' error' : '');
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+function badge(status) {
+  return `<span class="badge badge-${status || 'unknown'}">${status || 'unknown'}</span>`;
+}
+
+function shortId(id) { return id ? id.substring(0, 8) : '-'; }
+
+function go(page) {
+  state.page = page;
+  document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
+  const nav = document.getElementById('nav-' + page);
+  if (nav) nav.classList.add('active');
+  render();
+}
+
+function setKey(key) {
+  state.apiKey = key;
+  localStorage.setItem('cirrus_api_key', key);
+}
+
+function showModal(html) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `<div class="modal">${html}</div>`;
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+function closeModal() {
+  document.querySelector('.modal-overlay')?.remove();
+}
+
+// Pages
+async function render() {
+  const el = document.getElementById('content');
+  try {
+    switch (state.page) {
+      case 'dashboard': await renderDashboard(el); break;
+      case 'projects': await renderProjects(el); break;
+      case 'networks': await renderNetworks(el); break;
+      case 'images': await renderImages(el); break;
+      case 'vms': await renderVMs(el); break;
+      case 'ports': await renderPorts(el); break;
+      case 'workers': await renderWorkers(el); break;
+    }
+  } catch(e) { el.innerHTML = `<div class="empty">Error: ${e.message}</div>`; }
+}
+
+async function renderDashboard(el) {
+  const workers = await api('GET', '/workers').catch(() => []) || [];
+  const projects = await api('GET', '/projects').catch(() => []) || [];
+  let vms = [], ports = [];
+  if (state.apiKey) {
+    vms = await api('GET', '/vms').catch(() => []) || [];
+    ports = await api('GET', '/ports').catch(() => []) || [];
+  }
+  const online = workers.filter(w => w.status === 'online').length;
+  const active = vms.filter(v => v.status === 'active').length;
+
+  el.innerHTML = `
+    <h1>Dashboard</h1>
+    ${!state.apiKey ? '<div class="warning-card"><strong>API Key not set.</strong> Reload the page to auto-configure, or go to Projects → API Key.</div>' : ''}
+    <div class="cards">
+      <div class="card"><div class="label">Projects</div><div class="value">${projects.length}</div></div>
+      <div class="card"><div class="label">Workers</div><div class="value">${online} / ${workers.length}</div></div>
+      <div class="card"><div class="label">VMs</div><div class="value">${active} / ${vms.length}</div></div>
+      <div class="card"><div class="label">Ports</div><div class="value">${ports.length}</div></div>
+    </div>
+    <h1>Workers</h1>
+    <table><thead><tr><th>Name</th><th>Status</th><th>vCPUs</th><th>RAM</th><th>Disk</th><th>Last Heartbeat</th></tr></thead>
+    <tbody>${workers.map(w => `<tr>
+      <td class="mono">${w.name}</td>
+      <td>${badge(w.status)}</td>
+      <td>${w.total_vcpus}</td>
+      <td>${(w.total_ram_mb/1024).toFixed(1)} GB</td>
+      <td>${w.total_disk_gb} GB</td>
+      <td class="mono">${w.last_heartbeat ? new Date(w.last_heartbeat).toLocaleTimeString() : '-'}</td>
+    </tr>`).join('')}</tbody></table>
+  `;
+}
+
+async function renderProjects(el) {
+  const projects = await api('GET', '/projects').catch(() => []) || [];
+  el.innerHTML = `
+    <h1>Projects</h1>
+    <div class="toolbar">
+      <button class="primary" onclick="showCreateProject()">+ New Project</button>
+    </div>
+    <table><thead><tr><th>Name</th><th>ID</th><th>Quota vCPUs</th><th>Quota RAM</th><th>Quota VMs</th><th>Actions</th></tr></thead>
+    <tbody>${projects.map(p => `<tr>
+      <td><strong>${p.name}</strong></td>
+      <td class="mono">${shortId(p.id)}</td>
+      <td>${p.quota_vcpus}</td>
+      <td>${(p.quota_ram_mb/1024).toFixed(0)} GB</td>
+      <td>${p.quota_vms}</td>
+      <td><button onclick="showCreateAPIKey('${p.id}')">API Key</button></td>
+    </tr>`).join('')}</tbody></table>
+    ${state.apiKey ? `<div class="key-info">Active API Key: <span class="mono">${state.apiKey.substring(0,20)}...</span> <button onclick="setKey('');render();">Clear</button></div>` : ''}
+  `;
+}
+
+window.showCreateProject = () => {
+  showModal(`
+    <h2>Create Project</h2>
+    <div class="form-group"><label>Name</label><input id="f-name" placeholder="team-alpha"></div>
+    <div class="form-group"><label>Quota vCPUs</label><input id="f-vcpus" type="number" value="20"></div>
+    <div class="form-group"><label>Quota RAM (MB)</label><input id="f-ram" type="number" value="51200"></div>
+    <div class="form-group"><label>Quota VMs</label><input id="f-vms" type="number" value="10"></div>
+    <div class="form-actions">
+      <button onclick="closeModal()">Cancel</button>
+      <button class="primary" onclick="createProject()">Create</button>
+    </div>
+  `);
+};
+
+window.createProject = async () => {
+  try {
+    const p = await api('POST', '/projects', {
+      name: document.getElementById('f-name').value,
+      quota_vcpus: +document.getElementById('f-vcpus').value,
+      quota_ram_mb: +document.getElementById('f-ram').value,
+      quota_vms: +document.getElementById('f-vms').value,
+    });
+    closeModal();
+    toast('Project created: ' + p.name);
+    render();
+  } catch(e) { toast(e.message, true); }
+};
+
+window.showCreateAPIKey = (projectId) => {
+  showModal(`
+    <h2>Generate API Key</h2>
+    <div class="form-group"><label>Key Name</label><input id="f-keyname" value="default"></div>
+    <div class="form-actions">
+      <button onclick="closeModal()">Cancel</button>
+      <button class="primary" onclick="createAPIKey('${projectId}')">Generate</button>
+    </div>
+  `);
+};
+
+window.createAPIKey = async (projectId) => {
+  try {
+    const ak = await api('POST', `/projects/${projectId}/api-keys`, {
+      name: document.getElementById('f-keyname').value
+    });
+    closeModal();
+    showModal(`
+      <h2>API Key Generated</h2>
+      <p style="color:var(--color-warning);font-size:12px">Copy this key now. It won't be shown again.</p>
+      <div class="key-display">${ak.key}</div>
+      <div class="form-actions">
+        <button onclick="navigator.clipboard.writeText('${ak.key}');toast('Copied!')">Copy</button>
+        <button class="primary" onclick="setKey('${ak.key}');closeModal();toast('API Key set!');render()">Use this key</button>
+      </div>
+    `);
+  } catch(e) { toast(e.message, true); }
+};
+
+async function renderNetworks(el) {
+  if (!state.apiKey) { el.innerHTML = '<div class="empty">Set an API Key first (Projects → API Key)</div>'; return; }
+  const nets = await api('GET', '/networks') || [];
+  el.innerHTML = `
+    <h1>Networks</h1>
+    <div class="toolbar"><button class="primary" onclick="showCreateNetwork()">+ New Network</button></div>
+    <table><thead><tr><th>Name</th><th>ID</th><th>CIDR</th><th>Gateway</th><th>VNI</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>${nets.map(n => `<tr>
+      <td><strong>${n.name}</strong></td>
+      <td class="mono">${shortId(n.id)}</td>
+      <td class="mono">${n.cidr}</td>
+      <td class="mono">${n.gateway}</td>
+      <td>${n.vni}</td>
+      <td>${badge(n.status)}</td>
+      <td><button class="danger" onclick="deleteNetwork('${n.id}')">Delete</button></td>
+    </tr>`).join('')}
+    ${nets.length === 0 ? '<tr><td colspan="7" class="empty">No networks</td></tr>' : ''}
+    </tbody></table>
+  `;
+}
+
+window.showCreateNetwork = () => {
+  showModal(`
+    <h2>Create Network</h2>
+    <div class="form-group"><label>Name</label><input id="f-netname" placeholder="app-net"></div>
+    <div class="form-group"><label>CIDR</label><input id="f-cidr" placeholder="10.100.0.0/24"></div>
+    <div class="form-actions">
+      <button onclick="closeModal()">Cancel</button>
+      <button class="primary" onclick="createNetwork()">Create</button>
+    </div>
+  `);
+};
+
+window.createNetwork = async () => {
+  try {
+    await api('POST', '/networks', {
+      name: document.getElementById('f-netname').value,
+      cidr: document.getElementById('f-cidr').value,
+    });
+    closeModal(); toast('Network created'); render();
+  } catch(e) { toast(e.message, true); }
+};
+
+window.deleteNetwork = async (id) => {
+  if (!confirm('Delete this network?')) return;
+  try {
+    await fetch(API + '/networks/' + id, { method: 'DELETE', headers: { 'X-API-Key': state.apiKey } });
+    toast('Network deleted'); render();
+  } catch(e) { toast(e.message, true); }
+};
+
+async function renderImages(el) {
+  if (!state.apiKey) { el.innerHTML = '<div class="empty">Set an API Key first</div>'; return; }
+  const imgs = await api('GET', '/images') || [];
+  el.innerHTML = `
+    <h1>Images</h1>
+    <div class="toolbar"><button class="primary" onclick="showCreateImage()">+ Register Image</button></div>
+    <table><thead><tr><th>Name</th><th>ID</th><th>Format</th><th>Size</th><th>Status</th></tr></thead>
+    <tbody>${imgs.map(i => `<tr>
+      <td><strong>${i.name}</strong></td>
+      <td class="mono">${shortId(i.id)}</td>
+      <td>${i.format}</td>
+      <td>${i.size_bytes > 0 ? (i.size_bytes / 1048576).toFixed(0) + ' MB' : '-'}</td>
+      <td>${badge(i.status)}</td>
+    </tr>`).join('')}
+    ${imgs.length === 0 ? '<tr><td colspan="5" class="empty">No images</td></tr>' : ''}
+    </tbody></table>
+  `;
+}
+
+window.showCreateImage = () => {
+  showModal(`
+    <h2>Register Image</h2>
+    <div class="form-group"><label>Name</label><input id="f-imgname" placeholder="ubuntu-24.04"></div>
+    <div class="form-group"><label>Format</label>
+      <select id="f-imgfmt"><option value="qcow2">qcow2</option><option value="raw">raw</option></select>
+    </div>
+    <div class="form-actions">
+      <button onclick="closeModal()">Cancel</button>
+      <button class="primary" onclick="createImage()">Register</button>
+    </div>
+  `);
+};
+
+window.createImage = async () => {
+  try {
+    await api('POST', '/images', {
+      name: document.getElementById('f-imgname').value,
+      format: document.getElementById('f-imgfmt').value,
+    });
+    closeModal(); toast('Image registered'); render();
+  } catch(e) { toast(e.message, true); }
+};
+
+async function renderVMs(el) {
+  if (!state.apiKey) { el.innerHTML = '<div class="empty">Set an API Key first</div>'; return; }
+  const vms = await api('GET', '/vms') || [];
+  el.innerHTML = `
+    <h1>Virtual Machines</h1>
+    <div class="toolbar">
+      <button class="primary" onclick="showCreateVM()">+ New VM</button>
+      <button onclick="render()">Refresh</button>
+    </div>
+    <table><thead><tr><th>Name</th><th>ID</th><th>vCPUs</th><th>RAM</th><th>Disk</th><th>IP</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>${vms.map(v => {
+      const ips = (v.ports||[]).map(p => `<span class="ip-tag">${p.ip_address}</span>`).join(' ');
+      const actions = [];
+      if (v.status === 'active') actions.push(`<button onclick="vmAction('${v.id}','stop')">Stop</button>`);
+      if (v.status === 'shutoff') actions.push(`<button onclick="vmAction('${v.id}','start')">Start</button>`);
+      if (!['deleted','deleting'].includes(v.status)) actions.push(`<button class="danger" onclick="deleteVM('${v.id}')">Delete</button>`);
+      return `<tr>
+        <td><strong>${v.name}</strong></td>
+        <td class="mono">${shortId(v.id)}</td>
+        <td>${v.vcpus}</td>
+        <td>${(v.ram_mb/1024).toFixed(1)} GB</td>
+        <td>${v.disk_gb} GB</td>
+        <td>${ips || '-'}</td>
+        <td>${badge(v.status)}${v.error_msg ? `<div class="error-detail">${v.error_msg.substring(0,60)}...</div>` : ''}</td>
+        <td>${actions.join(' ')}</td>
+      </tr>`;
+    }).join('')}
+    ${vms.length === 0 ? '<tr><td colspan="8" class="empty">No VMs</td></tr>' : ''}
+    </tbody></table>
+  `;
+}
+
+window.showCreateVM = async () => {
+  let nets = [], imgs = [];
+  try { nets = await api('GET', '/networks') || []; } catch(e) {}
+  try { imgs = await api('GET', '/images') || []; } catch(e) {}
+  showModal(`
+    <h2>Create VM</h2>
+    <div class="form-group"><label>Name</label><input id="f-vmname" placeholder="web-01"></div>
+    <div class="form-group"><label>Image</label>
+      <select id="f-vmimg">${imgs.map(i => `<option value="${i.id}">${i.name}</option>`).join('')}</select>
+    </div>
+    <div class="form-group"><label>vCPUs</label><input id="f-vmcpu" type="number" value="2"></div>
+    <div class="form-group"><label>RAM (MB)</label><input id="f-vmram" type="number" value="4096"></div>
+    <div class="form-group"><label>Disk (GB)</label><input id="f-vmdisk" type="number" value="20"></div>
+    <div class="form-group"><label>Network</label>
+      <select id="f-vmnet">${nets.map(n => `<option value="${n.id}">${n.name} (${n.cidr})</option>`).join('')}</select>
+    </div>
+    <div class="form-actions">
+      <button onclick="closeModal()">Cancel</button>
+      <button class="primary" onclick="createVM()">Create</button>
+    </div>
+  `);
+};
+
+window.createVM = async () => {
+  try {
+    const vm = await api('POST', '/vms', {
+      name: document.getElementById('f-vmname').value,
+      image_id: document.getElementById('f-vmimg').value,
+      vcpus: +document.getElementById('f-vmcpu').value,
+      ram_mb: +document.getElementById('f-vmram').value,
+      disk_gb: +document.getElementById('f-vmdisk').value,
+      networks: [{ network_id: document.getElementById('f-vmnet').value }],
+    });
+    closeModal();
+    toast(`VM "${vm.name}" created (${vm.status})`);
+    setTimeout(render, 3000);
+    render();
+  } catch(e) { toast(e.message, true); }
+};
+
+window.vmAction = async (id, action) => {
+  try {
+    await api('POST', `/vms/${id}/actions`, { action });
+    toast(`VM ${action} sent`);
+    render();
+  } catch(e) { toast(e.message, true); }
+};
+
+window.deleteVM = async (id) => {
+  if (!confirm('Delete this VM?')) return;
+  try {
+    await fetch(API + '/vms/' + id, { method: 'DELETE', headers: { 'X-API-Key': state.apiKey } });
+    toast('VM deleted'); render();
+  } catch(e) { toast(e.message, true); }
+};
+
+async function renderPorts(el) {
+  if (!state.apiKey) { el.innerHTML = '<div class="empty">Set an API Key first</div>'; return; }
+  const ports = await api('GET', '/ports') || [];
+  el.innerHTML = `
+    <h1>Ports</h1>
+    <table><thead><tr><th>ID</th><th>VM</th><th>Network</th><th>MAC</th><th>IP</th><th>Status</th></tr></thead>
+    <tbody>${ports.map(p => `<tr>
+      <td class="mono">${shortId(p.id)}</td>
+      <td class="mono">${shortId(p.vm_id)}</td>
+      <td class="mono">${shortId(p.network_id)}</td>
+      <td class="mono">${p.mac_address}</td>
+      <td class="mono">${p.ip_address}</td>
+      <td>${badge(p.status)}</td>
+    </tr>`).join('')}
+    ${ports.length === 0 ? '<tr><td colspan="6" class="empty">No ports</td></tr>' : ''}
+    </tbody></table>
+  `;
+}
+
+async function renderWorkers(el) {
+  const workers = await api('GET', '/workers') || [];
+  el.innerHTML = `
+    <h1>Workers</h1>
+    <table><thead><tr><th>Name</th><th>ID</th><th>Address</th><th>vCPUs</th><th>RAM</th><th>Disk</th><th>Status</th><th>Heartbeat</th></tr></thead>
+    <tbody>${workers.map(w => `<tr>
+      <td><strong>${w.name}</strong></td>
+      <td class="mono">${shortId(w.id)}</td>
+      <td class="mono">${w.address}</td>
+      <td>${w.total_vcpus}</td>
+      <td>${(w.total_ram_mb/1024).toFixed(1)} GB</td>
+      <td>${w.total_disk_gb} GB</td>
+      <td>${badge(w.status)}</td>
+      <td class="mono">${w.last_heartbeat ? new Date(w.last_heartbeat).toLocaleString() : '-'}</td>
+    </tr>`).join('')}
+    ${workers.length === 0 ? '<tr><td colspan="8" class="empty">No workers registered</td></tr>' : ''}
+    </tbody></table>
+  `;
+}
+
+// Auto-setup: create a default project + API key if none exists
+async function autoSetup() {
+  if (state.apiKey) {
+    try { await api('GET', '/images'); return; } catch(e) { /* key invalid, re-setup */ }
+  }
+
+  try {
+    let projects = await fetch(API + '/projects').then(r => r.json()) || [];
+    let projectId;
+
+    if (!projects || projects.length === 0) {
+      const p = await fetch(API + '/projects', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'default', quota_vcpus: 20, quota_ram_mb: 51200, quota_vms: 10 })
+      }).then(r => r.json());
+      projectId = p.id;
+    } else {
+      projectId = projects[0].id;
+    }
+
+    const ak = await fetch(API + `/projects/${projectId}/api-keys`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'auto-' + Date.now() })
+    }).then(r => r.json());
+
+    setKey(ak.key);
+    toast('Auto-configured API key');
+  } catch(e) {
+    console.warn('Auto-setup failed:', e);
+  }
+}
+
+// Init
+autoSetup().then(() => go('dashboard'));
+</script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+# Controller configuration example
+# Usage: cirrus controller --config=cirrus.yaml
+role: controller
+listen: "0.0.0.0:8080"
+
+controller:
+  db: "postgres://cirrus:cirrus@localhost:5432/cirrus?sslmode=disable"
+  grpc_listen: "0.0.0.0:9090"
+
+---
+# Worker configuration example
+# Usage: cirrus worker --config=cirrus-worker.yaml
+role: worker
+listen: "0.0.0.0:9090"
+
+worker:
+  controller_addr: "192.168.1.10:8080"
+  name: "worker-01"
+  vcpus: 8
+  ram_mb: 16384
+  disk_gb: 200
+
+compute:
+  driver: libvirt
+  uri: "qemu:///system"
+
+network:
+  driver: ovs
+  bridge: br-int
+  local_ip: "192.168.1.11"
+
+storage:
+  driver: local
+  disk_dir: /var/lib/cirrus/disks
+  image_dir: /var/lib/cirrus/images
+
+image:
+  driver: local
+  dir: /var/lib/cirrus/images
