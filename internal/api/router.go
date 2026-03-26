@@ -6,11 +6,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tjst-t/cirrus/internal/host"
 	"github.com/tjst-t/cirrus/internal/identity"
 )
 
 // NewRouter creates the HTTP router with all middleware and routes.
-func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authenticator, authz identity.Authorizer, identitySvc identity.Service) http.Handler {
+func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authenticator, authz identity.Authorizer, identitySvc identity.Service, hostSvc host.Service) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(RequestID)
@@ -22,6 +23,7 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 
 	// Identity routes (authenticated)
 	ih := &identityHandlers{svc: identitySvc, authz: authz}
+	hh := &hostHandlers{svc: hostSvc, authz: authz}
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(Auth(authn))
 
@@ -36,6 +38,12 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		r.Post("/tenants/{tenant_id}/role-assignments", ih.createRoleAssignment)
 		r.Get("/tenants/{tenant_id}/role-assignments", ih.listRoleAssignments)
 		r.Delete("/tenants/{tenant_id}/role-assignments/{assignment_id}", ih.deleteRoleAssignment)
+
+		// Host routes (infra_admin)
+		r.Post("/hosts", hh.createHost)
+		r.Get("/hosts", hh.listHosts)
+		r.Get("/hosts/{host_id}", hh.getHost)
+		r.Post("/hosts/{host_id}/actions", hh.hostAction)
 	})
 
 	return r

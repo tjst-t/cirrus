@@ -121,6 +121,7 @@ type ResourceReport struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	UsedVcpus     int32                  `protobuf:"varint,1,opt,name=used_vcpus,json=usedVcpus,proto3" json:"used_vcpus,omitempty"`
 	UsedRamMb     int64                  `protobuf:"varint,2,opt,name=used_ram_mb,json=usedRamMb,proto3" json:"used_ram_mb,omitempty"`
+	RunningVms    []*VMInfo              `protobuf:"bytes,3,rep,name=running_vms,json=runningVms,proto3" json:"running_vms,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -169,6 +170,81 @@ func (x *ResourceReport) GetUsedRamMb() int64 {
 	return 0
 }
 
+func (x *ResourceReport) GetRunningVms() []*VMInfo {
+	if x != nil {
+		return x.RunningVms
+	}
+	return nil
+}
+
+type VMInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	VmId          string                 `protobuf:"bytes,1,opt,name=vm_id,json=vmId,proto3" json:"vm_id,omitempty"`
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	Vcpus         int32                  `protobuf:"varint,3,opt,name=vcpus,proto3" json:"vcpus,omitempty"`
+	RamMb         int64                  `protobuf:"varint,4,opt,name=ram_mb,json=ramMb,proto3" json:"ram_mb,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VMInfo) Reset() {
+	*x = VMInfo{}
+	mi := &file_agent_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VMInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VMInfo) ProtoMessage() {}
+
+func (x *VMInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VMInfo.ProtoReflect.Descriptor instead.
+func (*VMInfo) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *VMInfo) GetVmId() string {
+	if x != nil {
+		return x.VmId
+	}
+	return ""
+}
+
+func (x *VMInfo) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *VMInfo) GetVcpus() int32 {
+	if x != nil {
+		return x.Vcpus
+	}
+	return 0
+}
+
+func (x *VMInfo) GetRamMb() int64 {
+	if x != nil {
+		return x.RamMb
+	}
+	return 0
+}
+
 var File_agent_proto protoreflect.FileDescriptor
 
 const file_agent_proto_rawDesc = "" +
@@ -178,11 +254,18 @@ const file_agent_proto_rawDesc = "" +
 	"\ahost_id\x18\x01 \x01(\tR\x06hostId\x12=\n" +
 	"\tresources\x18\x02 \x01(\v2\x1f.cirrus.agent.v1.ResourceReportR\tresources\"/\n" +
 	"\x11HeartbeatResponse\x12\x1a\n" +
-	"\baccepted\x18\x01 \x01(\bR\baccepted\"O\n" +
+	"\baccepted\x18\x01 \x01(\bR\baccepted\"\x89\x01\n" +
 	"\x0eResourceReport\x12\x1d\n" +
 	"\n" +
 	"used_vcpus\x18\x01 \x01(\x05R\tusedVcpus\x12\x1e\n" +
-	"\vused_ram_mb\x18\x02 \x01(\x03R\tusedRamMb2g\n" +
+	"\vused_ram_mb\x18\x02 \x01(\x03R\tusedRamMb\x128\n" +
+	"\vrunning_vms\x18\x03 \x03(\v2\x17.cirrus.agent.v1.VMInfoR\n" +
+	"runningVms\"b\n" +
+	"\x06VMInfo\x12\x13\n" +
+	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12\x14\n" +
+	"\x05vcpus\x18\x03 \x01(\x05R\x05vcpus\x12\x15\n" +
+	"\x06ram_mb\x18\x04 \x01(\x03R\x05ramMb2g\n" +
 	"\x11ControllerService\x12R\n" +
 	"\tHeartbeat\x12!.cirrus.agent.v1.HeartbeatRequest\x1a\".cirrus.agent.v1.HeartbeatResponseB(Z&github.com/tjst-t/cirrus/proto/agentpbb\x06proto3"
 
@@ -198,21 +281,23 @@ func file_agent_proto_rawDescGZIP() []byte {
 	return file_agent_proto_rawDescData
 }
 
-var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_agent_proto_goTypes = []any{
 	(*HeartbeatRequest)(nil),  // 0: cirrus.agent.v1.HeartbeatRequest
 	(*HeartbeatResponse)(nil), // 1: cirrus.agent.v1.HeartbeatResponse
 	(*ResourceReport)(nil),    // 2: cirrus.agent.v1.ResourceReport
+	(*VMInfo)(nil),            // 3: cirrus.agent.v1.VMInfo
 }
 var file_agent_proto_depIdxs = []int32{
 	2, // 0: cirrus.agent.v1.HeartbeatRequest.resources:type_name -> cirrus.agent.v1.ResourceReport
-	0, // 1: cirrus.agent.v1.ControllerService.Heartbeat:input_type -> cirrus.agent.v1.HeartbeatRequest
-	1, // 2: cirrus.agent.v1.ControllerService.Heartbeat:output_type -> cirrus.agent.v1.HeartbeatResponse
-	2, // [2:3] is the sub-list for method output_type
-	1, // [1:2] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	3, // 1: cirrus.agent.v1.ResourceReport.running_vms:type_name -> cirrus.agent.v1.VMInfo
+	0, // 2: cirrus.agent.v1.ControllerService.Heartbeat:input_type -> cirrus.agent.v1.HeartbeatRequest
+	1, // 3: cirrus.agent.v1.ControllerService.Heartbeat:output_type -> cirrus.agent.v1.HeartbeatResponse
+	3, // [3:4] is the sub-list for method output_type
+	2, // [2:3] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_agent_proto_init() }
@@ -226,7 +311,7 @@ func file_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_proto_rawDesc), len(file_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -21,6 +21,12 @@ const (
 	ActionAssignRole      Action = "assign_role"
 	ActionListRoles       Action = "list_roles"
 	ActionDeleteRole      Action = "delete_role"
+
+	ActionCreateHost      Action = "create_host"
+	ActionListHosts       Action = "list_hosts"
+	ActionGetHost         Action = "get_host"
+	ActionUpdateHost      Action = "update_host"
+	ActionHostAction      Action = "host_action"
 )
 
 // Resource represents the target resource of an authorization check.

@@ -24,4 +24,12 @@ message HeartbeatResponse {
 message ResourceReport {
   int32 used_vcpus = 1;
   int64 used_ram_mb = 2;
+  repeated VMInfo running_vms = 3;
+}
+
+message VMInfo {
+  string vm_id = 1;
+  string status = 2;
+  int32 vcpus = 3;
+  int64 ram_mb = 4;
 }

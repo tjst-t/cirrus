@@ -31,6 +31,7 @@ docs/配下に設計ドキュメントがある。実装前に必ず該当ドキ
 ドメイン別: [host.md](docs/host.md) | [storage.md](docs/storage.md) | [network.md](docs/network.md) | [multitenancy.md](docs/multitenancy.md)
 実装詳細: [database.md](docs/database.md) | [api.md](docs/api.md) | [sequences.md](docs/sequences.md)
 テスト: [testing.md](docs/testing.md) — cirrus-simによるシミュレーションテスト
+改善項目: [todo.md](docs/todo.md) — 実装済みSprintの残タスク
 
 ## アーキテクチャ要点
 
@@ -42,6 +43,15 @@ docs/配下に設計ドキュメントがある。実装前に必ず該当ドキ
 ## テスト
 
 [cirrus-sim](https://github.com/tjst-t/cirrus-sim) で本番同一プロトコルのシミュレータに接続してテスト。モック不要。詳細は docs/testing.md
+
+## CLIクライアント（cirrusctl）
+
+- コマンド実装は `cmd/cirrusctl/`、APIクライアントは `internal/client/`
+- **リソース指定はIDと名前の両方を受け付ける**: UUIDパースを試み、失敗したら名前としてリスト取得→名前フィルタで解決する
+  - 名前が複数マッチした場合はエラーにしてUUID指定を促す
+  - 名前解決に親リソースが必要な場合（例: tenant名にはorgが必要）は `--org` フラグで補完する
+  - `internal/client` パッケージに `Resolve*` メソッドを置く
+- 新規リソースのCLIコマンド追加時もこのパターンを踏襲すること
 
 ## UI
 

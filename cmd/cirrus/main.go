@@ -19,6 +19,7 @@ import (
 	"github.com/tjst-t/cirrus/internal/api"
 	"github.com/tjst-t/cirrus/internal/config"
 	"github.com/tjst-t/cirrus/internal/controller"
+	"github.com/tjst-t/cirrus/internal/host"
 	"github.com/tjst-t/cirrus/internal/hypervisor"
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/network/ovn"
@@ -122,15 +123,18 @@ func runController(cfg *config.ControllerConfig) error {
 	// Authorization
 	authz := identity.NewRBACAuthorizer(identitySvc)
 
+	// Host service
+	hostSvc := host.NewStore(pool)
+
 	// HTTP API
-	router := api.NewRouter(pool, logger, authn, authz, identitySvc)
+	router := api.NewRouter(pool, logger, authn, authz, identitySvc, hostSvc)
 	httpSrv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.APIPort),
 		Handler: router,
 	}
 
 	// gRPC
-	grpcSrv := controller.NewGRPCServer(logger)
+	grpcSrv := controller.NewGRPCServer(logger, hostSvc)
 	grpcLis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
 	if err != nil {
 		return fmt.Errorf("controller: grpc listen: %w", err)
@@ -177,9 +181,11 @@ func runWorker(cfg *config.WorkerConfig) error {
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	// Libvirt connection check (non-blocking)
+	// Hypervisor driver
+	var driver hypervisor.Driver
 	if cfg.LibvirtURI != "" {
-		if err := hypervisor.CheckLibvirtConnection(ctx, cfg.LibvirtURI); err != nil {
+		driver = hypervisor.NewLibvirtDriver(cfg.LibvirtURI)
+		if err := driver.Connect(ctx); err != nil {
 			logger.Warn("libvirt connection check failed", "uri", cfg.LibvirtURI, "error", err)
 		} else {
 			logger.Info("libvirt connection OK", "uri", cfg.LibvirtURI)
@@ -187,7 +193,7 @@ func runWorker(cfg *config.WorkerConfig) error {
 	}
 
 	// Connect to controller
-	ag, err := agent.New(cfg.Controller, cfg.HostID, logger)
+	ag, err := agent.New(cfg.Controller, cfg.HostID, logger, driver)
 	if err != nil {
 		return fmt.Errorf("worker: agent init: %w", err)
 	}

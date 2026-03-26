@@ -23,6 +23,7 @@ all: lint test build
 
 build:
 	go build -o bin/cirrus ./cmd/cirrus/
+	go build -o bin/cirrusctl ./cmd/cirrusctl/
 
 # ── Proto ──
 
