@@ -1,113 +1,88 @@
 # ネットワーク設計
 
-## 全体像
+## 基本方針
 
-テナントごとにVXLAN VNIで分離されたL2ネットワークを提供する。
+OVN一本。OVNは論理スイッチ、論理ルータ、ACL、DHCP、DNS、NATを内包。CirrusはOVN Northbound DBへの書き込みを通じてネットワークを制御し、データプレーンの複雑さはOVNに任せる。
 
-```
-Worker-01                          Worker-02
-┌──────────────────────┐          ┌──────────────────────┐
-│  VM-A (tenant-1)     │          │  VM-C (tenant-1)     │
-│  10.100.0.5          │          │  10.100.0.7          │
-│    │ tap-{vm-a}      │          │    │ tap-{vm-c}      │
-│    │                 │          │    │                 │
-│  ┌─▼───────────────┐ │          │  ┌─▼───────────────┐ │
-│  │   br-int (OVS)  │ │          │  │   br-int (OVS)  │ │
-│  │                  │ │          │  │                  │ │
-│  │ tag VNI=100     │ │          │  │ tag VNI=100     │ │
-│  │ tag VNI=200     │ │          │  │ tag VNI=200     │ │
-│  └──────┬──────────┘ │          │  └──────┬──────────┘ │
-│         │ vxlan-w02   │          │         │ vxlan-w01   │
-└─────────┼────────────┘          └─────────┼────────────┘
-          │       VXLAN tunnel              │
-          └─────────────────────────────────┘
-          (physical network: 192.168.1.0/24)
-```
+## ユーザ向けリソース
 
-## interface
+### ネットワーク
+
+テナントに所属するL2ブロードキャストドメイン。OVN論理スイッチに対応。
+
+### サブネット
+
+ネットワーク内のIPアドレス範囲。CIDR、ゲートウェイ、DHCPレンジ、DNSサーバ。OVN DHCP Optionsに変換。
+
+### ポート
+
+VMの仮想NIC。IPアドレス、MACアドレス、セキュリティグループの参照。OVN論理スイッチポートに対応。
+
+### ルータ
+
+テナント内のL3ルーティングおよび外部接続。OVN論理ルータに対応。
+
+### セキュリティグループ
+
+ポート単位のステートフルファイアウォール。デフォルト全拒否のホワイトリスト方式。OVN ACL+conntrackで実装。
+
+- セキュリティグループ間の参照をサポート
+- テナント作成時にデフォルトセキュリティグループが自動作成される
+- 同一グループ内のVM間通信は許可、それ以外は全拒否
+
+### フローティングIP
+
+外部IPとVMポートの1:1マッピング。OVN論理ルータ上のDNATルールに変換。
+
+## インフラ向けリソース
+
+**外部ネットワーク** — 管理者が定義する物理ネットワークとの接続点。gateway chassisとの紐付け。
+
+**プロバイダネットワーク** — 物理VLAN/EVPNファブリックとの直接マッピング。OVNのlocalnetポートで実装。
+
+## OVNリソースへのマッピング
+
+| Cirrusリソース | OVNリソース |
+|----------------|-------------|
+| ネットワーク | Logical Switch |
+| サブネット | DHCP Options |
+| ポート | Logical Switch Port |
+| ルータ | Logical Router |
+| セキュリティグループ | ACL + conntrack |
+| フローティングIP | Logical Router DNAT Rule |
+| 外部ネットワーク | Logical Switch + localnet port |
+| プロバイダネットワーク | Logical Switch + localnet port |
+
+## IPアドレス管理
+
+初期はCirrus内蔵のIPAM。外部IPAM（NetBox、Infoblox等）連携はインターフェースだけ定義しておく。
 
 ```go
-// internal/network/provider.go
-package network
+// internal/network/ipam/ipam.go
+package ipam
 
-type Provider interface {
-    // ブリッジ初期化（worker起動時）
-    InitBridge(ctx context.Context) error
-
-    // トンネル管理
-    AddTunnel(ctx context.Context, peerAddr string) error
-    RemoveTunnel(ctx context.Context, peerAddr string) error
-
-    // ポート操作（VM作成/削除時）
-    AttachPort(ctx context.Context, port PortConfig) error
-    DetachPort(ctx context.Context, portID string) error
-
-    // フロー管理
-    EnsureFlows(ctx context.Context, vni int, localTag int) error
-    RemoveFlows(ctx context.Context, vni int) error
-
-    // 状態取得（reconcile用）
-    ListPorts(ctx context.Context) ([]PortConfig, error)
-}
-
-type PortConfig struct {
-    ID        string
-    TapDevice string
-    MAC       string
-    VNI       int
-    LocalTag  int
+type IPAM interface {
+    AllocateIP(ctx context.Context, subnetID string) (net.IP, error)
+    ReleaseIP(ctx context.Context, subnetID string, ip net.IP) error
+    AllocateSubnet(ctx context.Context, pool string, prefixLen int) (*net.IPNet, error)
+    ReleaseSubnet(ctx context.Context, subnet *net.IPNet) error
 }
 ```
 
-## OVS構成
+## 外部ネットワーク連携
 
-### ブリッジ作成（初回のみ）
+**OVN内で完結** — テナント間ルーティング、NAT、フローティングIP。
 
-```bash
-ovs-vsctl add-br br-int
-```
+**L3連携** — ovn-bgp-agentでOVNプレフィックスをBGPでEVPNファブリックにアドバタイズ。
 
-### VXLANトンネル（worker追加時にcontrollerが指示）
+**L2ブリッジング** — gateway chassisのlocalnetポートで物理VLAN/EVPNと直接接続。
 
-```bash
-ovs-vsctl add-port br-int vxlan-w02 \
-  -- set interface vxlan-w02 type=vxlan \
-     options:remote_ip=192.168.1.12 \
-     options:key=flow  # key=flow → フローでVNIを動的指定
-```
+**拠点間L2延伸** — OVN Interconnect (OVN-IC)で独立したOVNクラスタ間を接続。各クラスタの独立性を維持。
 
-### VMポート接続時
+## OVNクラスタの運用
 
-```bash
-# tapデバイスはlibvirtが自動作成、OVS側でタグ設定
-ovs-vsctl set port tap-{vm-id} tag=100  # ← ローカルVLANタグ
-```
+OVNクラスタ自体の管理はAWX経由のhook。CirrusはOVNのAPIクライアントであり、OVNクラスタの管理者ではない。各ホストのovn-controllerはホストプロファイルの一部として管理。
 
-## VNI ↔ ローカルVLANタグのマッピング
+## スケジューラとの連携
 
-OVSのVXLANで `key=flow` を使う場合、OpenFlowルールでローカルVLANタグ ↔ VNIの変換をする（Neutron OVS agentと同じ方式）。
-
-```bash
-# Ingress: VXLANから来たパケット → ローカルVLANタグ付与
-ovs-ofctl add-flow br-int \
-  "table=0,in_port=vxlan-w02,tun_id=100,actions=mod_vlan_vid:1,resubmit(,1)"
-
-# Egress: ローカルVLANタグ → VXLANで送出
-ovs-ofctl add-flow br-int \
-  "table=2,dl_vlan=1,actions=strip_vlan,set_tunnel:100,output:vxlan-w02"
-```
-
-## ワーカーローカル状態
-
-local_vlan_tagの割り当てはOVS自体から逆引き可能。バックエンド個別のDBは持たない。worker起動時にcontrollerからstate同期してreconcileする。
-
-## Phase 1の制限
-
-- テナントネットワーク内のVM間通信のみ
-- 外部接続（Floating IP、NAT）はPhase 2
-- DHCPはなし（cloud-initでstatic IP設定）
-- VXLANフルメッシュ（数十台まではこれで十分）
-
-## ゲートウェイ（Phase 2）
-
-VMがインターネットに出る場合、controller上にnetwork namespace + iptables NATを置く方式が最もシンプル。
+ネットワークはオーバーレイのため、ストレージほど強い配置制約にはならない。ただしgateway chassisの配置（HA対応）とSR-IOV対応NICの有無はプレースメントに影響。帯域管理は初期では不要。

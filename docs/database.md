@@ -6,199 +6,334 @@
 - IDはUUID v7（時系列ソート可能）
 - 全テーブルに `created_at`, `updated_at`
 - バックエンド固有データは `*_data JSONB` カラム（nullable）で保持
-  - localやOVSなど規約から導出できるバックエンドではNULLのまま
-  - iSCSIや外部SDNなど、外部システムが識別子を割り当てるバックエンドのみ使用
 
 ## ER図
 
 ```mermaid
 erDiagram
-    projects {
+    organizations {
         UUID id PK
         VARCHAR name UK
         INT quota_vcpus
         INT quota_ram_mb
-        INT quota_vms
+        INT quota_volume_gb
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
     }
 
-    api_keys {
+    tenants {
         UUID id PK
-        UUID project_id FK
+        UUID organization_id FK
         VARCHAR name
-        VARCHAR key_hash
+        INT quota_vcpus
+        INT quota_ram_mb
+        INT quota_volume_gb
+        INT quota_vms
+        INT quota_volumes
+        INT quota_snapshots
+        INT quota_networks
+        INT quota_floating_ips
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    users {
+        UUID id PK
+        VARCHAR external_id UK "OIDC subject"
+        VARCHAR name
+        VARCHAR email
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    role_assignments {
+        UUID id PK
+        UUID user_id FK
+        VARCHAR scope_type "organization or tenant"
+        UUID scope_id
+        VARCHAR role "infra_admin, org_admin, tenant_admin, tenant_member"
         TIMESTAMPTZ created_at
     }
 
-    workers {
+    hosts {
         UUID id PK
         VARCHAR name UK
         VARCHAR address
-        INT total_vcpus
-        INT total_ram_mb
-        INT total_disk_gb
-        VARCHAR status
+        UUID network_domain_id FK
+        UUID location_id FK
+        JSONB capability
+        VARCHAR profile_id FK
+        VARCHAR profile_status "in_sync, drifted, applying"
+        VARCHAR operational_state "active, maintenance, draining, faulty, retiring"
+        JSONB resource_physical "物理リソース量"
+        JSONB overcommit_ratios
         TIMESTAMPTZ last_heartbeat
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
     }
 
-    images {
+    host_storage_domains {
+        UUID host_id FK
+        UUID storage_domain_id FK
+    }
+
+    storage_domains {
         UUID id PK
-        VARCHAR name
-        UUID project_id FK "nullable - NULL means global"
-        VARCHAR format
-        BIGINT size_bytes
-        VARCHAR path
-        VARCHAR status
+        VARCHAR name UK
         TIMESTAMPTZ created_at
     }
 
-    networks {
+    network_domains {
         UUID id PK
-        UUID project_id FK
+        VARCHAR name UK
+        VARCHAR ovn_nb_connection "OVN Northbound DB接続先"
+        TIMESTAMPTZ created_at
+    }
+
+    locations {
+        UUID id PK
+        UUID parent_id FK "nullable"
         VARCHAR name
-        CIDR cidr
-        INET gateway
-        INT vni UK
+        VARCHAR type "site, floor, row, rack, unit"
+        JSONB fault_attributes "電源系統ID, 上位スイッチID等"
+        TIMESTAMPTZ created_at
+    }
+
+    host_profiles {
+        UUID id PK
+        VARCHAR name UK
+        JSONB software "カーネル, HV, エージェント, ドライバ"
+        JSONB firmware "BIOS, BMC, NIC, GPU"
+        JSONB kernel_params
+        VARCHAR capability_match "対象capability条件"
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    storage_backends {
+        UUID id PK
+        UUID storage_domain_id FK
+        VARCHAR name UK
+        VARCHAR driver "ceph, iscsi, nfs, local"
+        VARCHAR status "registered, verifying, active, degraded, draining, readonly, retired"
+        BIGINT capacity_bytes
+        INT iops_limit
+        INT bandwidth_mbps
+        JSONB capabilities "SSD, encryption, replication, etc."
+        JSONB driver_config
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    volume_types {
+        UUID id PK
+        VARCHAR name UK
+        JSONB required_capabilities
+        JSONB qos_policy "IOPS/帯域の上限"
+        TIMESTAMPTZ created_at
+    }
+
+    volumes {
+        UUID id PK
+        UUID tenant_id FK
+        UUID backend_id FK
+        UUID volume_type_id FK
+        VARCHAR name
+        INT size_gb
+        VARCHAR status "creating, available, in_use, deleting, error"
+        UUID parent_snapshot_id FK "nullable, クローン元"
+        JSONB driver_data "nullable"
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    snapshots {
+        UUID id PK
+        UUID volume_id FK
+        UUID tenant_id FK
+        VARCHAR name
+        VARCHAR status "creating, available, deleting, error"
+        TIMESTAMPTZ created_at
+    }
+
+    templates {
+        UUID id PK
+        VARCHAR name
+        UUID owner_tenant_id FK "nullable"
+        VARCHAR visibility "public, organization, tenant"
+        UUID source_volume_id FK "nullable"
+        VARCHAR format
+        BIGINT size_bytes
         VARCHAR status
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    template_caches {
+        UUID id PK
+        UUID template_id FK
+        UUID backend_id FK
+        VARCHAR status "copying, available, deleting"
+        TIMESTAMPTZ last_used_at
         TIMESTAMPTZ created_at
     }
 
     vms {
         UUID id PK
-        UUID project_id FK
+        UUID tenant_id FK
         VARCHAR name
-        UUID worker_id FK "nullable"
-        UUID image_id FK
+        UUID host_id FK "nullable"
         INT vcpus
         INT ram_mb
-        INT disk_gb
+        JSONB numa_request "nullable, NUMA配置要件"
         VARCHAR status
         TEXT error_msg
-        JSONB storage_data "nullable"
-        JSONB compute_data "nullable"
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
     }
 
+    vm_volumes {
+        UUID vm_id FK
+        UUID volume_id FK
+        VARCHAR device "vda, vdb, etc."
+        BOOLEAN boot
+    }
+
+    networks {
+        UUID id PK
+        UUID tenant_id FK
+        UUID network_domain_id FK
+        VARCHAR name
+        VARCHAR status
+        TIMESTAMPTZ created_at
+    }
+
+    subnets {
+        UUID id PK
+        UUID network_id FK
+        CIDR cidr
+        INET gateway
+        INET dhcp_range_start
+        INET dhcp_range_end
+        INET dns_servers "配列"
+        TIMESTAMPTZ created_at
+    }
+
     ports {
         UUID id PK
-        UUID project_id FK
+        UUID tenant_id FK
         UUID network_id FK
+        UUID subnet_id FK
         UUID vm_id FK "nullable"
         MACADDR mac_address UK
         INET ip_address
         VARCHAR status
-        JSONB network_data "nullable"
+        JSONB driver_data "nullable"
         TIMESTAMPTZ created_at
     }
 
-    projects ||--o{ api_keys : "has"
-    projects ||--o{ images : "owns (optional)"
-    projects ||--o{ networks : "owns"
-    projects ||--o{ vms : "owns"
-    projects ||--o{ ports : "owns"
-    workers ||--o{ vms : "runs"
-    images ||--o{ vms : "base for"
+    port_security_groups {
+        UUID port_id FK
+        UUID security_group_id FK
+    }
+
+    routers {
+        UUID id PK
+        UUID tenant_id FK
+        VARCHAR name
+        UUID external_network_id FK "nullable"
+        VARCHAR status
+        TIMESTAMPTZ created_at
+    }
+
+    router_interfaces {
+        UUID id PK
+        UUID router_id FK
+        UUID subnet_id FK
+        INET ip_address
+        TIMESTAMPTZ created_at
+    }
+
+    security_groups {
+        UUID id PK
+        UUID tenant_id FK
+        VARCHAR name
+        VARCHAR description
+        TIMESTAMPTZ created_at
+    }
+
+    security_group_rules {
+        UUID id PK
+        UUID security_group_id FK
+        VARCHAR direction "ingress, egress"
+        VARCHAR ethertype "IPv4, IPv6"
+        VARCHAR protocol "tcp, udp, icmp, null=any"
+        INT port_range_min "nullable"
+        INT port_range_max "nullable"
+        CIDR remote_ip_prefix "nullable"
+        UUID remote_group_id FK "nullable, SGの相互参照"
+        TIMESTAMPTZ created_at
+    }
+
+    floating_ips {
+        UUID id PK
+        UUID tenant_id FK
+        UUID external_network_id FK
+        INET floating_ip
+        UUID port_id FK "nullable"
+        VARCHAR status
+        TIMESTAMPTZ created_at
+    }
+
+    replication_policies {
+        UUID id PK
+        UUID source_backend_id FK
+        UUID destination_backend_id FK
+        VARCHAR schedule "cron式"
+        INT retention_count
+        VARCHAR status
+        TIMESTAMPTZ created_at
+    }
+
+    organizations ||--o{ tenants : "has"
+    tenants ||--o{ vms : "owns"
+    tenants ||--o{ volumes : "owns"
+    tenants ||--o{ snapshots : "owns"
+    tenants ||--o{ networks : "owns"
+    tenants ||--o{ ports : "owns"
+    tenants ||--o{ routers : "owns"
+    tenants ||--o{ security_groups : "owns"
+    tenants ||--o{ floating_ips : "owns"
+    users ||--o{ role_assignments : "has"
+
+    hosts ||--o{ vms : "runs"
+    hosts ||--o{ host_storage_domains : "belongs to"
+    storage_domains ||--o{ host_storage_domains : "contains"
+    storage_domains ||--o{ storage_backends : "contains"
+    network_domains ||--o{ hosts : "contains"
+    network_domains ||--o{ networks : "scoped to"
+    locations ||--o{ hosts : "positions"
+    locations ||--o{ locations : "parent"
+    host_profiles ||--o{ hosts : "applied to"
+
+    storage_backends ||--o{ volumes : "stores"
+    storage_backends ||--o{ template_caches : "caches"
+    volume_types ||--o{ volumes : "typed by"
+    volumes ||--o{ vm_volumes : "attached"
+    volumes ||--o{ snapshots : "has"
+    snapshots ||--o{ volumes : "cloned from"
+    vms ||--o{ vm_volumes : "uses"
+    templates ||--o{ template_caches : "cached on"
+
+    networks ||--o{ subnets : "contains"
     networks ||--o{ ports : "contains"
-    vms ||--o{ ports : "attached to"
-```
-
-## DDL
-
-```sql
-CREATE TABLE projects (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name        VARCHAR(63) NOT NULL UNIQUE,
-    quota_vcpus INTEGER NOT NULL DEFAULT 20,
-    quota_ram_mb INTEGER NOT NULL DEFAULT 51200,
-    quota_vms   INTEGER NOT NULL DEFAULT 10,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE api_keys (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id  UUID NOT NULL REFERENCES projects(id),
-    name        VARCHAR(63) NOT NULL,
-    key_hash    VARCHAR(128) NOT NULL,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE workers (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name        VARCHAR(63) NOT NULL UNIQUE,
-    address     VARCHAR(255) NOT NULL,
-    total_vcpus INTEGER NOT NULL,
-    total_ram_mb INTEGER NOT NULL,
-    total_disk_gb INTEGER NOT NULL,
-    status      VARCHAR(20) NOT NULL DEFAULT 'unknown',
-    last_heartbeat TIMESTAMPTZ,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE images (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name        VARCHAR(127) NOT NULL,
-    project_id  UUID REFERENCES projects(id),
-    format      VARCHAR(10) NOT NULL,
-    size_bytes  BIGINT NOT NULL,
-    path        VARCHAR(512) NOT NULL,
-    status      VARCHAR(20) NOT NULL DEFAULT 'creating',
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE networks (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id  UUID NOT NULL REFERENCES projects(id),
-    name        VARCHAR(63) NOT NULL,
-    cidr        CIDR NOT NULL,
-    gateway     INET NOT NULL,
-    vni         INTEGER NOT NULL UNIQUE,
-    status      VARCHAR(20) NOT NULL DEFAULT 'active',
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE vms (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id  UUID NOT NULL REFERENCES projects(id),
-    name        VARCHAR(63) NOT NULL,
-    worker_id   UUID REFERENCES workers(id),
-    image_id    UUID NOT NULL REFERENCES images(id),
-    vcpus       INTEGER NOT NULL,
-    ram_mb      INTEGER NOT NULL,
-    disk_gb     INTEGER NOT NULL,
-    status      VARCHAR(20) NOT NULL DEFAULT 'scheduling',
-    error_msg   TEXT,
-    storage_data JSONB,
-    compute_data JSONB,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE ports (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id  UUID NOT NULL REFERENCES projects(id),
-    network_id  UUID NOT NULL REFERENCES networks(id),
-    vm_id       UUID REFERENCES vms(id),
-    mac_address MACADDR NOT NULL UNIQUE,
-    ip_address  INET NOT NULL,
-    status      VARCHAR(20) NOT NULL DEFAULT 'down',
-    network_data JSONB,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX idx_vms_project ON vms(project_id);
-CREATE INDEX idx_vms_worker ON vms(worker_id);
-CREATE INDEX idx_vms_status ON vms(status);
-CREATE INDEX idx_ports_vm ON ports(vm_id);
-CREATE INDEX idx_ports_network ON ports(network_id);
-CREATE INDEX idx_networks_project ON networks(project_id);
-CREATE UNIQUE INDEX idx_vms_project_name ON vms(project_id, name);
-CREATE UNIQUE INDEX idx_networks_project_name ON networks(project_id, name);
+    subnets ||--o{ ports : "assigns IP"
+    vms ||--o{ ports : "attached"
+    ports ||--o{ port_security_groups : "has"
+    security_groups ||--o{ port_security_groups : "applied to"
+    security_groups ||--o{ security_group_rules : "has"
+    routers ||--o{ router_interfaces : "has"
+    subnets ||--o{ router_interfaces : "connected"
 ```
 
 ## ステータス遷移
@@ -207,55 +342,69 @@ CREATE UNIQUE INDEX idx_networks_project_name ON networks(project_id, name);
 
 ```
 scheduling → building → active → shutoff → active (restart)
-                ↓          ↓        ↓
-              error      deleting  deleting → deleted
+    |           |          |        |
+    v           v          v        v
+  error       error     deleting  deleting → deleted
 ```
 
-### Image
+### ボリューム
 
 ```
-creating → active → deleting
-    ↓
+creating → available → in_use → available (detach)
+    |          |          |
+    v          v          v
+  error     deleting   deleting → deleted
+               |
+               v
+           migrating → available
+```
+
+### ストレージバックエンド
+
+```
+registered → verifying → active → degraded → draining → readonly → retired
+                |                     |
+                v                     v
+              error                 active (回復)
+```
+
+### ホスト
+
+```
+registering → active → maintenance → active
+                 |          |
+                 v          v
+              draining → faulty
+                 |
+                 v
+              retiring → retired
+```
+
+### スナップショット
+
+```
+creating → available → deleting → deleted
+    |
+    v
   error
-```
-
-### Worker
-
-```
-unknown → online → offline (heartbeat timeout)
-            ↓
-        maintenance
-```
-
-### Port
-
-```
-down → active → error
-         ↓
-       down (VM削除時)
 ```
 
 ## 設計判断
 
 ### driver_data JSONBカラムについて
 
-- nullable。localストレージやOVSなど規約ベースのバックエンドではNULLのまま
-- iSCSI等、外部システムが識別子を割り当てるバックエンドのみ使用
+- nullable。規約ベースのバックエンドではNULLのまま
+- 外部システムが識別子を割り当てるバックエンドのみ使用
 - バックエンド実装がJSONBの読み書きに責任を持つ（`json.RawMessage`で透過的に扱う）
 
-### ワーカーローカルstateについて
+### Capabilityの構造化データ
 
-- バックエンド個別のDBは持たない（Phase 1）
-- OVSのlocal_vlan_tagなどはOVS自体から取得可能
-- worker起動時にcontrollerからstate同期してreconcile（再構築）する設計
-- ワーカーローカルstateはあくまでキャッシュ的位置づけ
+ホストのcapabilityとストレージバックエンドのcapabilitiesはJSONBで保持。構造化データとして格納し、JSONBのパス演算でクエリ可能。
 
-### worker容量計算
+### ロケーションの再帰構造
 
-- vmsテーブルからworker_id別にSUM(vcpus), SUM(ram_mb)を集計
-- workersテーブルのtotalと比較してスケジューリング
+locationsテーブルはparent_idによる自己参照で任意深さのツリーを表現。WITH RECURSIVEでパス取得やサブツリー検索が可能。
 
-### IP/MAC割り当て
+### リソース量の管理
 
-- IP: networkのCIDRから割り当て済みを除外して空きを検索（PostgreSQLのCIDR/INET型演算）
-- MAC: `02:xx:xx:xx:xx:xx`（locally administered bit）でランダム生成、UNIQUE制約で衝突防止
+ホストの物理リソース量とオーバーコミット率はJSONBで保持。リソース種別の追加にスキーマ変更が不要。割当済み量はvmsテーブルからの集計で算出。

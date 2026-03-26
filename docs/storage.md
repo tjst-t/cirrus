@@ -1,135 +1,136 @@
 # ストレージ設計
 
-## interface
+## ストレージの種類と優先度
+
+**ブロックストレージ（最優先）** — VMにディスクとして見える。VMのブートディスクに必須。Cirrusの中核。
+
+**ファイルストレージ（後回し）** — NFS/CIFSの共有ボリューム。ブロックストレージと同じ抽象化＋ACL。需要が出てから対応。
+
+**オブジェクトストレージ（後回し）** — S3互換API。MinIO等の外部サービスをCirrusの認証基盤と統合。テンプレートのバックストアとしても有用。
+
+## ブロックストレージの抽象化
+
+### ストレージバックエンド
+
+容量とIOPSを提供するリソースの単位。物理装置の中の論理分割はCirrusのスコープ外で、分割された結果をバックエンドとして宣言的に登録する。
+
+バックエンドのメタデータ:
+
+- 容量、IOPS、帯域幅
+- 到達可能ホスト群
+- Capability（SSD/HDD、暗号化、レプリケーション、差分転送、QoS対応、ストレージライブマイグレーション対応等）
+
+### ボリュームタイプ
+
+バックエンドの特性をユーザ向けに抽象化。Flavorのストレージ版。QoSポリシーを紐づけてnoisy neighborを制御。
+
+### ボリューム
+
+ユーザ向けの論理ディスク。1ボリューム＝1VMのディスクが基本単位。バックエンドの種類（NFS、Ceph、iSCSI等）によらず、バックエンドドライバインターフェース（作成、削除、アタッチ、デタッチ、リサイズ、スナップショット、クローン）で統一。
+
+### バックエンドドライバインターフェース
 
 ```go
-// internal/storage/backend.go
+// internal/storage/driver.go
 package storage
 
-type Backend interface {
-    CreateDisk(ctx context.Context, vmID string, baseImage string, sizeGB int) (*DiskResult, error)
-    DeleteDisk(ctx context.Context, vmID string, stored json.RawMessage) error
-    DiskSpec(stored json.RawMessage) LibvirtDiskSpec
+type Driver interface {
+    // ボリュームライフサイクル
+    CreateVolume(ctx context.Context, spec VolumeSpec) (*Volume, error)
+    DeleteVolume(ctx context.Context, volumeID string) error
+    ResizeVolume(ctx context.Context, volumeID string, newSizeGB int) error
+
+    // アタッチ/デタッチ
+    AttachVolume(ctx context.Context, volumeID string, hostID string) (*AttachInfo, error)
+    DetachVolume(ctx context.Context, volumeID string, hostID string) error
+
+    // スナップショット
+    CreateSnapshot(ctx context.Context, volumeID string, name string) (*Snapshot, error)
+    DeleteSnapshot(ctx context.Context, snapshotID string) error
+
+    // クローン
+    CloneVolume(ctx context.Context, snapshotID string, spec VolumeSpec) (*Volume, error)
+
+    // Capability照会
+    Capabilities() DriverCapabilities
 }
 
-type DiskResult struct {
-    DriverData json.RawMessage  // controller DBに保存される（nilも可）
-}
-
-type LibvirtDiskSpec struct {
-    Type   string // "file", "network"
-    Source string // path or rbd/iscsi uri
-    Format string // qcow2, raw
-}
-```
-
-## バックエンド実装
-
-### local（Phase 1）
-
-qcow2のCoW cloneでベースイメージからVMディスクを作成。
-
-```go
-func (l *Local) CreateDisk(ctx context.Context, vmID, base string, size int) (*storage.DiskResult, error) {
-    path := filepath.Join(l.diskDir, vmID+".qcow2")
-    // qemu-img create -b base -F qcow2 -f qcow2 path sizeG
-    return &storage.DiskResult{DriverData: nil}, nil  // 規約から導出可能
-}
-
-func (l *Local) DiskSpec(stored json.RawMessage) storage.LibvirtDiskSpec {
-    // storedは無視（常にnil）
-    return storage.LibvirtDiskSpec{
-        Type:   "file",
-        Source: filepath.Join(l.diskDir, vmID+".qcow2"),
-        Format: "qcow2",
-    }
+type DriverCapabilities struct {
+    QoS                    bool
+    Encryption             bool
+    Replication            bool
+    DifferentialTransfer   bool
+    StorageLiveMigration   bool
+    Snapshot               bool
+    Clone                  bool
 }
 ```
 
-### iSCSI（将来）
+## スナップショット・クローンの依存関係管理
 
-SAN APIでボリューム作成後、SANが割り当てたIQN/LUN番号を `DriverData` に保存。
+**スナップショット** — 親ボリュームに依存する差分データ。読み取り専用。
 
-```go
-type ISCSIMeta struct {
-    IQN string `json:"iqn"`
-    LUN int    `json:"lun"`
-}
+**クローン** — スナップショットから作られた読み書き可能なボリューム。バックエンド内部ではcopy-on-writeで親に依存しているが、Cirrusの抽象化レベルでは論理的な依存関係として管理。
 
-func (i *ISCSI) CreateDisk(ctx context.Context, vmID, base string, size int) (*storage.DiskResult, error) {
-    vol, _ := i.sanClient.CreateVolume(size)
-    meta := ISCSIMeta{IQN: vol.IQN, LUN: vol.LUN}
-    return &storage.DiskResult{DriverData: mustMarshal(meta)}, nil
-}
+**依存関係グラフ** — ボリューム→スナップショット→クローンの親子関係をCirrusのメタデータとして保持。バックエンド内部のcopy-on-write実装は隠蔽。
 
-func (i *ISCSI) DiskSpec(stored json.RawMessage) storage.LibvirtDiskSpec {
-    var meta ISCSIMeta
-    json.Unmarshal(stored, &meta)
-    return storage.LibvirtDiskSpec{
-        Type:   "network",
-        Source: fmt.Sprintf("iscsi://%s/%s/%d", i.portal, meta.IQN, meta.LUN),
-        Format: "raw",
-    }
-}
+```
+Volume-A
+├── Snapshot-1 (read-only)
+│   ├── Clone-X (read-write, independent volume)
+│   └── Clone-Y (read-write, independent volume)
+└── Snapshot-2 (read-only)
+    └── Clone-Z (read-write, independent volume)
 ```
 
-### Ceph RBD（将来）
+**削除の制約** — 子が存在するスナップショットは削除不可。削除拒否するか、子をフラット化（フルコピーに変換して依存を切る）してから削除。フラット化は非同期操作。
 
-規約ベースで導出可能なため `DriverData` は不要（nilのまま）。
+**移行時の扱い** — バックエンド間ではcopy-on-write関係を維持できないため、フラット化して独立ボリュームとして移行。
 
-```go
-func (c *Ceph) DiskSpec(stored json.RawMessage) storage.LibvirtDiskSpec {
-    return storage.LibvirtDiskSpec{
-        Type:   "network",
-        Source: fmt.Sprintf("rbd:%s/vm-%s", c.pool, vmID),
-        Format: "raw",
-    }
-}
+## リージョン間レプリケーション
+
+リージョン跨ぎではスナップショットの依存関係を維持しない（障害ドメイン分離の原則）。
+
+**ローカルスナップショット** — 同一バックエンド内のcopy-on-write。高速・容量効率良い。依存関係あり。
+
+**レプリカ** — スナップショットのデータを別バックエンド（別リージョン含む）にフルコピーしたもの。完全に独立。
+
+**レプリケーションポリシー** — DR用の定期レプリケーション。対象、宛先、頻度、保持世代数を定義。バックエンドが差分転送対応ならcapabilityとして宣言し、Cirrusが差分転送を選択。非対応なら毎回フルコピー。
+
+## テンプレート管理
+
+**テンプレートサービス** — ボリュームとは別のサービス。メタデータとアクセス制御を担い、実データはストレージバックエンド上に保持。
+
+**キャッシュコピー** — テンプレートの実データがないバックエンドでVM作成時、バックグラウンドで透過的にコピー。LRUで自動管理し、使われないキャッシュは自動削除。
+
+**公開範囲** — public（Cirrus全体）、organization（組織内全テナント）、tenant（テナント内のみ）、shared（指定先に共有、将来）。
+
+**レプリカとの共通基盤** — テンプレートキャッシュとレプリカは同じデータ転送の仕組みを共有。管理ポリシーの違い（自律的管理 vs ユーザ管理）をメタデータで区別。
+
+## ストレージバックエンドのライフサイクル
+
+```
+登録 → 検証 → 稼働中 → 縮退 → ドレイン → 読み取り専用 → 退役
 ```
 
-## イメージ管理
+**縮退フェーズ** — 新規ボリューム配置の優先度を下げる。EOLの2年前から開始し、ドレイン期間を短縮。容量閾値による自動トリガーも設ける。
 
-```go
-// internal/image/store.go
-package image
+**ドレインフェーズ** — 新規ボリューム作成を完全停止。既存ボリュームを他バックエンドに順次移行。依存関係を考慮した移行順序、帯域制限、進捗可視化（残りボリューム数、データ量、推定完了時間）。
 
-type Store interface {
-    Upload(ctx context.Context, id string, reader io.Reader) error
-    GetPath(ctx context.Context, id string) (string, error)
-    Delete(ctx context.Context, id string) error
-    EnsureLocal(ctx context.Context, id string) (string, error)  // workerにイメージを配布
-}
-```
+## ストレージライブマイグレーション
 
-## 設計判断
+VMが稼働中のまま、ボリュームを別バックエンドに移動。バックエンドドライバのcapabilityとして扱う。
 
-### DriverData (JSONB) の使い分け
+- **同種バックエンド間** — ネイティブ機能で効率的に実行
+- **異種バックエンド間** — ホスト経由のブロックコピーで汎用的に実行。遅いが常に動作
+- **移行非対応** — VMごとコンピュートライブマイグレーション（ブロックマイグレーション付き）で対応
 
-| バックエンド | DriverData | 理由 |
-|---|---|---|
-| local | NULL | パスはVM IDから導出可能 |
-| Ceph RBD | NULL | pool名 + VM IDから導出可能 |
-| iSCSI | 使用 | SANが割り当てるIQN/LUNが予測不能 |
-| FC | 使用 | SANが割り当てるWWN/LUNが予測不能 |
+## VMプレースメントとボリュームプレースメントの連動
 
-### バックエンド個別のDBについて
+統一トポロジモデルにより、ホストとバックエンドのペアを同時に評価できる。
 
-Phase 1では持たない。外部システム（libvirt、OVS、Ceph）自体が状態を保持しており、二重管理は不要。本当に必要になった場合、バックエンド実装内にbbolt等を足す。
+**新規VM:** ボリュームタイプ要件を満たすバックエンド列挙 → 各バックエンドに到達可能なホスト列挙 → ホスト側（capability、空きリソース）とバックエンド側（空き容量、IOPS余裕）を同時評価 → （ホスト, バックエンド）ペアのスコアリング。
 
-### 設定ファイルでのバックエンド選択
+**既存ボリューム:** ボリュームのバックエンドに到達可能なホストに絞ってスケジューリング。
 
-```yaml
-storage:
-  driver: local
-  local:
-    disk_dir: /var/lib/cirrus/disks
-    image_dir: /var/lib/cirrus/images
-  # iscsi:
-  #   portal: 192.168.100.10:3260
-  #   auth:
-  #     username: cirrus
-  #     password_env: CIRRUS_ISCSI_PASSWORD
-  # ceph:
-  #   pool: cirrus-vms
-  #   monitors: [192.168.100.20:6789]
-```
+**複数ボリューム:** 全ボリュームのバックエンドに到達可能なホストに絞り込み。既存ボリュームが制約として先に効く。

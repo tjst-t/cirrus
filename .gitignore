@@ -1,0 +1,5 @@
+/cirrus
+/bin/
+.env
+*.log
+/tmp/
