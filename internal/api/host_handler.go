@@ -25,8 +25,9 @@ func (h *hostHandlers) createHost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name    string `json:"name"`
-		Address string `json:"address"`
+		ID      *uuid.UUID `json:"id,omitempty"`
+		Name    string     `json:"name"`
+		Address string     `json:"address"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -37,7 +38,7 @@ func (h *hostHandlers) createHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created, err := h.svc.Register(r.Context(), req.Name, req.Address)
+	created, err := h.svc.Register(r.Context(), req.ID, req.Name, req.Address)
 	if err != nil {
 		if errors.Is(err, host.ErrConflict) {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "host with this name already exists"})

@@ -33,12 +33,13 @@ func (c *Client) ResolveHost(ctx context.Context, idOrName string) (uuid.UUID, e
 	}
 }
 
-// CreateHost registers a new host.
-func (c *Client) CreateHost(ctx context.Context, name, address string) (*host.Host, error) {
+// CreateHost registers a new host. id is optional.
+func (c *Client) CreateHost(ctx context.Context, id *uuid.UUID, name, address string) (*host.Host, error) {
 	body := struct {
-		Name    string `json:"name"`
-		Address string `json:"address"`
-	}{Name: name, Address: address}
+		ID      *uuid.UUID `json:"id,omitempty"`
+		Name    string     `json:"name"`
+		Address string     `json:"address"`
+	}{ID: id, Name: name, Address: address}
 	resp, err := c.do(ctx, "POST", "/api/v1/hosts", body)
 	if err != nil {
 		return nil, err

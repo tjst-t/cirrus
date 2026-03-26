@@ -34,17 +34,30 @@ func wrapErr(msg string, err error) error {
 	return fmt.Errorf("%s: %w", msg, err)
 }
 
-func (s *Store) Register(ctx context.Context, name, address string) (*Host, error) {
+func (s *Store) Register(ctx context.Context, id *uuid.UUID, name, address string) (*Host, error) {
 	var h Host
-	err := s.pool.QueryRow(ctx,
-		`INSERT INTO hosts (name, address, operational_state)
-		 VALUES ($1, $2, 'registering')
-		 RETURNING id, name, address, operational_state, capability, resource_physical,
-		           overcommit_ratios, resource_used, last_heartbeat, created_at, updated_at`,
-		name, address,
-	).Scan(&h.ID, &h.Name, &h.Address, &h.OperationalState, &h.Capability,
-		&h.ResourcePhysical, &h.OvercommitRatios, &h.ResourceUsed,
-		&h.LastHeartbeat, &h.CreatedAt, &h.UpdatedAt)
+	var err error
+	if id != nil {
+		err = s.pool.QueryRow(ctx,
+			`INSERT INTO hosts (id, name, address, operational_state)
+			 VALUES ($1, $2, $3, 'registering')
+			 RETURNING id, name, address, operational_state, capability, resource_physical,
+			           overcommit_ratios, resource_used, last_heartbeat, created_at, updated_at`,
+			*id, name, address,
+		).Scan(&h.ID, &h.Name, &h.Address, &h.OperationalState, &h.Capability,
+			&h.ResourcePhysical, &h.OvercommitRatios, &h.ResourceUsed,
+			&h.LastHeartbeat, &h.CreatedAt, &h.UpdatedAt)
+	} else {
+		err = s.pool.QueryRow(ctx,
+			`INSERT INTO hosts (name, address, operational_state)
+			 VALUES ($1, $2, 'registering')
+			 RETURNING id, name, address, operational_state, capability, resource_physical,
+			           overcommit_ratios, resource_used, last_heartbeat, created_at, updated_at`,
+			name, address,
+		).Scan(&h.ID, &h.Name, &h.Address, &h.OperationalState, &h.Capability,
+			&h.ResourcePhysical, &h.OvercommitRatios, &h.ResourceUsed,
+			&h.LastHeartbeat, &h.CreatedAt, &h.UpdatedAt)
+	}
 	if err != nil {
 		return nil, wrapErr("host: register", err)
 	}

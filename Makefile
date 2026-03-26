@@ -55,7 +55,9 @@ serve: build
 	@$(MAKE) --no-print-directory _start-db
 	@# ── 5. Start controller ──
 	@$(MAKE) --no-print-directory _start-controller
-	@# ── 6. Start workers ──
+	@# ── 6. Register hosts ──
+	@$(MAKE) --no-print-directory _register-hosts
+	@# ── 7. Start workers ──
 	@$(MAKE) --no-print-directory _start-workers
 	@echo ""
 	@echo "  All services running. Use 'make logs' to view controller logs."
@@ -179,6 +181,32 @@ _start-controller:
 	    > $(LOG_CONTROLLER) 2>&1 & \
 	  echo $$! > $(PID_CONTROLLER); \
 	  echo "    PID: $$(cat $(PID_CONTROLLER))"'
+
+# ── Internal: register hosts from cirrus-sim into controller ──
+
+_register-hosts:
+	@bash -c '\
+	  set -a; source $(PORTMAN_ENV); set +a; \
+	  echo "==> Waiting for controller API..."; \
+	  for i in $$(seq 1 30); do \
+	    curl -sf http://localhost:$$API_PORT/healthz >/dev/null 2>&1 && break; \
+	    sleep 0.5; \
+	  done; \
+	  curl -sf http://localhost:$$API_PORT/healthz >/dev/null 2>&1 \
+	    || { echo "ERROR: Controller API not ready"; exit 1; }; \
+	  echo "==> Registering hosts from cirrus-sim..."; \
+	  HOSTS=$$(curl -sf http://localhost:$$SIM_LIBVIRT_PORT/sim/hosts); \
+	  HOST_COUNT=$$(echo "$$HOSTS" | jq length); \
+	  TOKEN="$(firstword $(subst =, ,$(AUTH_TOKENS)))"; \
+	  for i in $$(seq 0 $$((HOST_COUNT - 1))); do \
+	    HOST_ID=$$(echo "$$HOSTS" | jq -r ".[$${i}].host_id"); \
+	    curl -sf -X POST \
+	      -H "Authorization: Bearer $$TOKEN" \
+	      -H "Content-Type: application/json" \
+	      -d "{\"name\":\"$$HOST_ID\",\"address\":\"localhost\"}" \
+	      http://localhost:$$API_PORT/api/v1/hosts >/dev/null 2>&1 || true; \
+	  done; \
+	  echo "    Registered $$HOST_COUNT hosts"'
 
 # ── Internal: start workers (one per simulated host) ──
 

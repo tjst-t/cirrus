@@ -9,7 +9,8 @@ import (
 // Service defines host management operations.
 type Service interface {
 	// Registration
-	Register(ctx context.Context, name, address string) (*Host, error)
+	// id is optional — if nil, a new UUID is generated.
+	Register(ctx context.Context, id *uuid.UUID, name, address string) (*Host, error)
 	GetHost(ctx context.Context, id uuid.UUID) (*Host, error)
 	ListHosts(ctx context.Context) ([]Host, error)
 
