@@ -1,0 +1,4 @@
+DROP TABLE IF EXISTS role_assignments;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS tenants;
+DROP TABLE IF EXISTS organizations;

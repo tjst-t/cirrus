@@ -20,6 +20,7 @@ import (
 	"github.com/tjst-t/cirrus/internal/config"
 	"github.com/tjst-t/cirrus/internal/controller"
 	"github.com/tjst-t/cirrus/internal/hypervisor"
+	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/network/ovn"
 	"github.com/tjst-t/cirrus/internal/state"
 )
@@ -54,6 +55,7 @@ func newControllerCmd() *cobra.Command {
 	f.StringVar(&cfg.StorageEndpoint, "storage-endpoint", "", "Storage sim/backend endpoint")
 	f.StringVar(&cfg.AWXEndpoint, "awx-endpoint", "", "AWX endpoint")
 	f.StringVar(&cfg.NetBoxEndpoint, "netbox-endpoint", "", "NetBox endpoint")
+	f.StringVar(&cfg.AuthTokens, "auth-tokens", "", "Static auth tokens (token1=externalid1,token2=externalid2)")
 	return cmd
 }
 
@@ -101,8 +103,27 @@ func runController(cfg *config.ControllerConfig) error {
 		}
 	}
 
+	// Identity service
+	identitySvc := identity.NewStore(pool)
+
+	// Authentication
+	tokenMap := config.ParseAuthTokens(cfg.AuthTokens)
+	authn := identity.NewStaticTokenAuth(tokenMap, identitySvc)
+
+	// Bootstrap users from static tokens (dev convenience)
+	if tokenMap != nil {
+		var externalIDs []string
+		for _, eid := range tokenMap {
+			externalIDs = append(externalIDs, eid)
+		}
+		identity.BootstrapUsers(ctx, identitySvc, externalIDs, logger)
+	}
+
+	// Authorization
+	authz := identity.NewRBACAuthorizer(identitySvc)
+
 	// HTTP API
-	router := api.NewRouter(pool, logger)
+	router := api.NewRouter(pool, logger, authn, authz, identitySvc)
 	httpSrv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.APIPort),
 		Handler: router,

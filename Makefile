@@ -5,6 +5,7 @@
 CIRRUS_SIM_DIR   ?= $(shell cd .. && pwd)/cirrus-sim
 CIRRUS_SIM_ENV   ?= small
 DB_DSN           ?= postgres://cirrus:cirrus@localhost:5432/cirrus?sslmode=disable
+AUTH_TOKENS      ?= dev-token=dev-admin
 
 # Temp files
 TMP_DIR          := /tmp/cirrus-dev
@@ -173,6 +174,7 @@ _start-controller:
 	    --storage-endpoint="http://localhost:$$SIM_STORAGE_PORT" \
 	    --awx-endpoint="http://localhost:$$SIM_AWX_PORT" \
 	    --netbox-endpoint="http://localhost:$$SIM_NETBOX_PORT" \
+	    --auth-tokens="$(AUTH_TOKENS)" \
 	    > $(LOG_CONTROLLER) 2>&1 & \
 	  echo $$! > $(PID_CONTROLLER); \
 	  echo "    PID: $$(cat $(PID_CONTROLLER))"'
