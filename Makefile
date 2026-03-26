@@ -1,9 +1,10 @@
-.PHONY: all build test lint serve stop logs logs-worker logs-sim clean-dev
+.PHONY: all build test lint serve stop logs logs-worker logs-sim clean-dev proto
 
 # ── Configuration ──
 
 CIRRUS_SIM_DIR   ?= $(shell cd .. && pwd)/cirrus-sim
 CIRRUS_SIM_ENV   ?= small
+DB_DSN           ?= postgres://cirrus:cirrus@localhost:5432/cirrus?sslmode=disable
 
 # Temp files
 TMP_DIR          := /tmp/cirrus-dev
@@ -14,7 +15,6 @@ LOG_CONTROLLER   := $(TMP_DIR)/controller.log
 LOG_SIM          := $(TMP_DIR)/sim.log
 LOG_WORKER_DIR   := $(TMP_DIR)/worker-logs
 PORTMAN_ENV      := $(TMP_DIR)/portman.env
-SIM_PORTMAN_ENV  := $(TMP_DIR)/sim-portman.env
 
 # ── Build ──
 
@@ -22,6 +22,14 @@ all: lint test build
 
 build:
 	go build -o bin/cirrus ./cmd/cirrus/
+
+# ── Proto ──
+
+proto:
+	protoc -I proto \
+	  --go_out=proto/agentpb --go_opt=module=github.com/tjst-t/cirrus/proto/agentpb \
+	  --go-grpc_out=proto/agentpb --go-grpc_opt=module=github.com/tjst-t/cirrus/proto/agentpb \
+	  proto/agent.proto
 
 # ── Test / Lint ──
 
@@ -37,11 +45,15 @@ serve: build
 	@mkdir -p $(TMP_DIR) $(PID_WORKER_DIR) $(LOG_WORKER_DIR)
 	@# ── 1. Stop existing processes ──
 	@$(MAKE) --no-print-directory _stop-all
-	@# ── 2. Start cirrus-sim ──
+	@# ── 2. Allocate all ports ──
+	@$(MAKE) --no-print-directory _alloc-ports
+	@# ── 3. Start cirrus-sim ──
 	@$(MAKE) --no-print-directory _start-sim
-	@# ── 3. Start controller ──
+	@# ── 4. Start PostgreSQL ──
+	@$(MAKE) --no-print-directory _start-db
+	@# ── 5. Start controller ──
 	@$(MAKE) --no-print-directory _start-controller
-	@# ── 4. Start workers ──
+	@# ── 6. Start workers ──
 	@$(MAKE) --no-print-directory _start-workers
 	@echo ""
 	@echo "  All services running. Use 'make logs' to view controller logs."
@@ -90,15 +102,10 @@ _stop-all:
 	  rm -f $(PID_SIM); \
 	fi
 
-# ── Internal: start cirrus-sim ──
+# ── Internal: allocate all ports ──
 
-_start-sim:
-	@if [ ! -x $(CIRRUS_SIM_DIR)/bin/cirrus-sim ]; then \
-	  echo "ERROR: cirrus-sim binary not found at $(CIRRUS_SIM_DIR)/bin/cirrus-sim"; \
-	  echo "       Run 'make build-unified' in $(CIRRUS_SIM_DIR) first."; \
-	  exit 1; \
-	fi
-	@echo "==> Allocating sim ports..."
+_alloc-ports:
+	@echo "==> Allocating ports..."
 	@portman env \
 	  --name sim-common \
 	  --name sim-dashboard:expose \
@@ -109,9 +116,20 @@ _start-sim:
 	  --name sim-storage \
 	  --range sim-libvirt-hosts=20 \
 	  --range sim-ovn-clusters=5 \
-	  --output $(SIM_PORTMAN_ENV)
+	  --name api:expose \
+	  --name grpc \
+	  --output $(PORTMAN_ENV)
+
+# ── Internal: start cirrus-sim ──
+
+_start-sim:
+	@if [ ! -x $(CIRRUS_SIM_DIR)/bin/cirrus-sim ]; then \
+	  echo "ERROR: cirrus-sim binary not found at $(CIRRUS_SIM_DIR)/bin/cirrus-sim"; \
+	  echo "       Run 'make build-unified' in $(CIRRUS_SIM_DIR) first."; \
+	  exit 1; \
+	fi
 	@bash -c '\
-	  set -a; source $(SIM_PORTMAN_ENV); set +a; \
+	  set -a; source $(PORTMAN_ENV); set +a; \
 	  echo "==> Starting cirrus-sim (env: $(CIRRUS_SIM_ENV), log: $(LOG_SIM))"; \
 	  nohup $(CIRRUS_SIM_DIR)/bin/cirrus-sim \
 	    -common=$$SIM_COMMON_PORT \
@@ -127,31 +145,30 @@ _start-sim:
 	  echo "    PID: $$(cat $(PID_SIM))"'
 	@echo "==> Waiting for cirrus-sim to be ready..."
 	@bash -c '\
-	  set -a; source $(SIM_PORTMAN_ENV); set +a; \
+	  set -a; source $(PORTMAN_ENV); set +a; \
 	  for i in $$(seq 1 30); do \
-	    curl -sf http://localhost:$$SIM_COMMON_PORT/healthz >/dev/null 2>&1 && break; \
+	    curl -sf http://localhost:$$SIM_COMMON_PORT/api/v1/events >/dev/null 2>&1 && break; \
 	    sleep 0.5; \
 	  done; \
-	  curl -sf http://localhost:$$SIM_COMMON_PORT/healthz >/dev/null 2>&1 \
+	  curl -sf http://localhost:$$SIM_COMMON_PORT/api/v1/events >/dev/null 2>&1 \
 	    && echo "    cirrus-sim is ready." \
 	    || { echo "ERROR: cirrus-sim failed to start. Check $(LOG_SIM)"; exit 1; }'
+
+# ── Internal: check PostgreSQL ──
+
+_start-db:
+	@echo "==> PostgreSQL: $(DB_DSN)"
 
 # ── Internal: start controller ──
 
 _start-controller:
-	@echo "==> Allocating controller ports..."
-	@portman env \
-	  --name api:expose \
-	  --name grpc \
-	  --name db \
-	  --output $(PORTMAN_ENV)
 	@bash -c '\
-	  set -a; source $(PORTMAN_ENV); source $(SIM_PORTMAN_ENV); set +a; \
+	  set -a; source $(PORTMAN_ENV); set +a; \
 	  echo "==> Starting controller (API: $$API_PORT, gRPC: $$GRPC_PORT, log: $(LOG_CONTROLLER))"; \
 	  nohup ./bin/cirrus controller \
 	    --api-port=$$API_PORT \
 	    --grpc-port=$$GRPC_PORT \
-	    --db-dsn="postgres://cirrus:cirrus@localhost:$$DB_PORT/cirrus?sslmode=disable" \
+	    --db-dsn="$(DB_DSN)" \
 	    --ovn-nb="tcp:localhost:$$SIM_OVN_PORT" \
 	    --storage-endpoint="http://localhost:$$SIM_STORAGE_PORT" \
 	    --awx-endpoint="http://localhost:$$SIM_AWX_PORT" \
@@ -164,7 +181,7 @@ _start-controller:
 
 _start-workers:
 	@bash -c '\
-	  set -a; source $(PORTMAN_ENV); source $(SIM_PORTMAN_ENV); set +a; \
+	  set -a; source $(PORTMAN_ENV); set +a; \
 	  echo "==> Fetching host list from cirrus-sim..."; \
 	  HOSTS=$$(curl -sf http://localhost:$$SIM_LIBVIRT_PORT/sim/hosts); \
 	  if [ -z "$$HOSTS" ] || [ "$$HOSTS" = "null" ]; then \

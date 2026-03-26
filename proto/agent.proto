@@ -1,0 +1,27 @@
+syntax = "proto3";
+package cirrus.agent.v1;
+option go_package = "github.com/tjst-t/cirrus/proto/agentpb";
+
+// Note: generate with:
+//   protoc -I proto --go_out=proto/agentpb --go_opt=module=github.com/tjst-t/cirrus/proto/agentpb \
+//     --go-grpc_out=proto/agentpb --go-grpc_opt=module=github.com/tjst-t/cirrus/proto/agentpb \
+//     proto/agent.proto
+
+// ControllerService is called BY workers to register and send heartbeats.
+service ControllerService {
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+}
+
+message HeartbeatRequest {
+  string host_id = 1;
+  ResourceReport resources = 2;
+}
+
+message HeartbeatResponse {
+  bool accepted = 1;
+}
+
+message ResourceReport {
+  int32 used_vcpus = 1;
+  int64 used_ram_mb = 2;
+}

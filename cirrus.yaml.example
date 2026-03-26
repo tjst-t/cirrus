@@ -1,0 +1,15 @@
+# Controller configuration example
+# controller:
+#   api_port: 8080
+#   grpc_port: 9090
+#   db_dsn: "postgres://cirrus:cirrus@localhost:5432/cirrus?sslmode=disable"
+#   ovn_nb: "tcp:localhost:6641"
+#   storage_endpoint: "http://localhost:8500"
+#   awx_endpoint: "http://localhost:8300"
+#   netbox_endpoint: "http://localhost:8400"
+
+# Worker configuration example
+# worker:
+#   controller: "localhost:9090"
+#   host_id: "host-001"
+#   libvirt_uri: "tcp://localhost:17000"
