@@ -406,15 +406,29 @@ type AttachInfo struct {
 }
 ```
 
-## gRPCインターフェース（Controller → Worker）
+## gRPCインターフェース
 
-controllerからworkerへの指示はgRPCで行う。workerがgRPCサーバ。
+gRPCは2つのサービスで構成される:
+
+- **ControllerService** — controller側がgRPCサーバ。workerが接続してheartbeatを送信する
+- **WorkerAgent** — worker側がgRPCサーバ。controllerがVM操作等の指示を送る（Sprint 7以降で実装）
+
+### ControllerService（Worker → Controller）
+
+workerがcontrollerに接続し、登録・heartbeatを行う。
+
+```protobuf
+service ControllerService {
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+}
+```
+
+### WorkerAgent（Controller → Worker）
+
+controllerからworkerへVM操作等の指示を行う。
 
 ```protobuf
 service WorkerAgent {
-  // ライフサイクル
-  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
-
   // VM操作
   rpc CreateVM(CreateVMRequest) returns (CreateVMResponse);
   rpc DeleteVM(DeleteVMRequest) returns (DeleteVMResponse);
