@@ -47,6 +47,9 @@ docs/配下に設計ドキュメントがある。実装前に必ず該当ドキ
 ## CLIクライアント（cirrusctl）
 
 - コマンド実装は `cmd/cirrusctl/`、APIクライアントは `internal/client/`
+- **コマンド構造は利用者/管理者で分離**:
+  - トップレベル: テナント利用者向け（`org`, `tenant`, `role`, 将来の `vm`, `network`, `volume` 等）
+  - `admin` サブコマンド配下: インフラ管理者向け（`admin host`, 将来の `admin storage-domain`, `admin host-profile` 等）
 - **リソース指定はIDと名前の両方を受け付ける**: UUIDパースを試み、失敗したら名前としてリスト取得→名前フィルタで解決する
   - 名前が複数マッチした場合はエラーにしてUUID指定を促す
   - 名前解決に親リソースが必要な場合（例: tenant名にはorgが必要）は `--org` フラグで補完する

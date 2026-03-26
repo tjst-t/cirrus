@@ -45,7 +45,7 @@ func main() {
 	rootCmd.AddCommand(app.newOrgCmd())
 	rootCmd.AddCommand(app.newTenantCmd())
 	rootCmd.AddCommand(app.newRoleCmd())
-	rootCmd.AddCommand(app.newHostCmd())
+	rootCmd.AddCommand(app.newAdminCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -362,9 +362,20 @@ func (app *cli) newRoleDeleteCmd() *cobra.Command {
 	return cmd
 }
 
-// --- Host commands ---
+// --- Admin commands ---
 
-func (app *cli) newHostCmd() *cobra.Command {
+func (app *cli) newAdminCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "admin",
+		Short: "Infrastructure administration commands",
+	}
+	cmd.AddCommand(app.newAdminHostCmd())
+	return cmd
+}
+
+// --- Admin: Host commands ---
+
+func (app *cli) newAdminHostCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "host",
 		Short: "Manage hosts",
