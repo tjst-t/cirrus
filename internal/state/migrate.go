@@ -23,6 +23,11 @@ func RunMigrations(dsn string) error {
 	if err != nil {
 		return fmt.Errorf("state: migrations init: %w", err)
 	}
+	defer func() {
+		srcErr, dbErr := m.Close()
+		_ = srcErr
+		_ = dbErr
+	}()
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("state: migrations up: %w", err)
 	}

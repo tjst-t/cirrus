@@ -25,7 +25,7 @@ func NewGRPCServer(logger *slog.Logger) *grpc.Server {
 
 // Heartbeat receives heartbeat from a worker.
 func (s *GRPCServer) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {
-	s.logger.Info("heartbeat received",
+	s.logger.Debug("heartbeat received",
 		"host_id", req.HostId,
 		"time", time.Now().Format(time.RFC3339),
 	)

@@ -9,10 +9,10 @@ import (
 )
 
 // CheckConnection verifies TCP connectivity to an OVN Northbound DB endpoint.
-// addr format: "tcp:host:port"
+// addr format: "tcp:host:port" or "tcp://host:port"
 func CheckConnection(ctx context.Context, addr string) error {
-	// OVN uses "tcp:host:port" format
-	tcpAddr := strings.TrimPrefix(addr, "tcp:")
+	tcpAddr := strings.TrimPrefix(addr, "tcp://")
+	tcpAddr = strings.TrimPrefix(tcpAddr, "tcp:")
 
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
