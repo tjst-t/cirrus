@@ -54,6 +54,8 @@ hookの定義には以下を含む:
 | [sequences.md](./sequences.md) | VM作成までの全体フロー（シーケンス図） |
 | [serve.md](./serve.md) | サーバー起動ガイド、portmanによるポート管理、起動順序 |
 | [testing.md](./testing.md) | 開発・テスト方針、cirrus-simによるシミュレーションテスト |
+| [reconciliation.md](./reconciliation.md) | 状態整合性: desired state vs actual stateの乖離検出・対応 |
+| [controller-ha.md](./controller-ha.md) | Controller HA: Active/Active構成、リーダー選出、PostgreSQL HA |
 | [roadmap.md](./roadmap.md) | 実装ロードマップ（全29スプリント、Phase 1〜4） |
 
 ## 概念間の関係

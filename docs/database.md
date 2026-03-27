@@ -64,7 +64,7 @@ erDiagram
         JSONB capability
         VARCHAR profile_id FK
         VARCHAR profile_status "in_sync, drifted, applying"
-        VARCHAR operational_state "active, maintenance, draining, faulty, retiring"
+        VARCHAR operational_state "registering, active, maintenance, draining, faulty, retiring"
         JSONB resource_physical "物理リソース量"
         JSONB overcommit_ratios
         TIMESTAMPTZ last_heartbeat
@@ -371,13 +371,18 @@ registered → verifying → active → degraded → draining → readonly → r
 ### ホスト
 
 ```
-registering → active → maintenance → active
-                 |          |
-                 v          v
-              draining → faulty
+registering → active ←→ maintenance
+                 |   ↗        |
+                 v  /          v
+              draining      retiring（終端）
                  |
                  v
-              retiring → retired
+              faulty → active（復旧）
+                   → maintenance（手動修理）
+
+※ active, draining → faulty はheartbeat途絶で自動遷移
+※ draining → maintenance はVM数0で自動遷移
+※ retiring は終端状態（復帰不可、DB削除のみ）
 ```
 
 ### スナップショット

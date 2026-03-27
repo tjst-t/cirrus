@@ -9,3 +9,17 @@
 
 - [ ] **名前解決のサーバーサイドフィルタ対応**: 現在 `Resolve*` は全件取得してクライアント側で名前フィルタしている。サーバー側に `?name=` クエリパラメータが入ったら切り替える（Sprint 12 API仕上げで対応予定）
   - 該当箇所: `internal/client/identity.go` の `ResolveOrganization`, `ResolveTenant`
+
+## データベース
+
+- [ ] **UUID v7移行**: 設計（database.md）は「UUID v7（時系列ソート可能）」だが実装は `gen_random_uuid()`（v4）。新規マイグレーションで `gen_random_uuid()` のデフォルトをUUID v7生成関数に差し替える
+- [ ] **resource_used JSONB列の設計整合**: database.mdでは「vmsテーブルから集計」と記載しているが、実装はheartbeatで直接上書き。heartbeatによるリアルタイム更新が正しい方式なので、database.mdの記載を修正する
+
+## ホスト管理
+
+- [ ] **Service/Store分離**: 現在 `host.Service` インターフェースを `host.Store` が直接実装している。ビジネスロジック層（状態遷移ルール、active→maintenance時のVM数チェック等）を `host.Manager` に分離し、Store はデータアクセスのみに限定する
+- [ ] **Heartbeat Serviceインターフェースの型統一**: `Heartbeat(ctx, hostID string, ...)` の `hostID` が `string` で、他メソッドの `uuid.UUID` と不整合。gRPC境界でUUID変換し、Service層は `uuid.UUID` を受け取るように統一する
+
+## API
+
+- [ ] **PUT /api/v1/hosts/{id} 未実装**: api.mdに定義があるがエンドポイント未実装。ホスト属性（address等）の更新用
