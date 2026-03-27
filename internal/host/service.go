@@ -12,8 +12,9 @@ type Service interface {
 	// id is optional — if nil, a new UUID is generated.
 	Register(ctx context.Context, id *uuid.UUID, name, address string) (*Host, error)
 	// RegisterOrGet performs idempotent registration: if a host with the same name
-	// already exists, returns the existing host; otherwise creates a new one.
-	RegisterOrGet(ctx context.Context, name, address, capability string) (*Host, error)
+	// already exists, returns the existing host (created=false); otherwise creates
+	// a new one (created=true).
+	RegisterOrGet(ctx context.Context, name, address, capability string) (h *Host, created bool, err error)
 	GetHost(ctx context.Context, id uuid.UUID) (*Host, error)
 	ListHosts(ctx context.Context) ([]Host, error)
 	ListHostsByState(ctx context.Context, state OperationalState) ([]Host, error)

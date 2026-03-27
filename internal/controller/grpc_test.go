@@ -30,9 +30,9 @@ func newMockHostSvc() *mockHostSvc {
 	}
 }
 
-func (m *mockHostSvc) RegisterOrGet(_ context.Context, name, address, capability string) (*host.Host, error) {
+func (m *mockHostSvc) RegisterOrGet(_ context.Context, name, address, capability string) (*host.Host, bool, error) {
 	if h, ok := m.hosts[name]; ok {
-		return h, nil
+		return h, false, nil
 	}
 	h := &host.Host{
 		ID:               uuid.New(),
@@ -47,7 +47,7 @@ func (m *mockHostSvc) RegisterOrGet(_ context.Context, name, address, capability
 		UpdatedAt:        time.Now(),
 	}
 	m.hosts[name] = h
-	return h, nil
+	return h, true, nil
 }
 
 func (m *mockHostSvc) Heartbeat(_ context.Context, hostID string, _ host.ResourceReport) error {

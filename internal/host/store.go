@@ -64,7 +64,7 @@ func (s *Store) Register(ctx context.Context, id *uuid.UUID, name, address strin
 	return &h, nil
 }
 
-func (s *Store) RegisterOrGet(ctx context.Context, name, address, capability string) (*Host, error) {
+func (s *Store) RegisterOrGet(ctx context.Context, name, address, capability string) (*Host, bool, error) {
 	var h Host
 	cap := []byte(capability)
 	if capability == "" {
@@ -83,7 +83,7 @@ func (s *Store) RegisterOrGet(ctx context.Context, name, address, capability str
 	if err == nil {
 		// Host exists. If already activated and address differs, reject (different machine).
 		if h.OperationalState != StateRegistering && h.Address != address {
-			return nil, fmt.Errorf("host: register_or_get: hostname %q already registered from different address (%s): %w",
+			return nil, false, fmt.Errorf("host: register_or_get: hostname %q already registered from different address (%s): %w",
 				name, h.Address, ErrConflict)
 		}
 		// Same host re-registering: update address/capability if still registering.
@@ -94,7 +94,7 @@ func (s *Store) RegisterOrGet(ctx context.Context, name, address, capability str
 			h.Address = address
 			h.Capability = cap
 		}
-		return &h, nil
+		return &h, false, nil
 	}
 
 	// Host does not exist: create new.
@@ -109,9 +109,9 @@ func (s *Store) RegisterOrGet(ctx context.Context, name, address, capability str
 		&h.ResourcePhysical, &h.OvercommitRatios, &h.ResourceUsed,
 		&h.LastHeartbeat, &h.CreatedAt, &h.UpdatedAt)
 	if err != nil {
-		return nil, wrapErr("host: register_or_get", err)
+		return nil, false, wrapErr("host: register_or_get", err)
 	}
-	return &h, nil
+	return &h, true, nil
 }
 
 func (s *Store) ListHostsByState(ctx context.Context, state OperationalState) ([]Host, error) {

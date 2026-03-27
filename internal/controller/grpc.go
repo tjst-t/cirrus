@@ -51,7 +51,7 @@ func (s *GRPCServer) RegisterHost(ctx context.Context, req *pb.RegisterHostReque
 		return &pb.RegisterHostResponse{Accepted: false, Message: "hostname is required"}, nil
 	}
 
-	h, err := s.hostSvc.RegisterOrGet(ctx, req.Hostname, req.Address, req.Capability)
+	h, created, err := s.hostSvc.RegisterOrGet(ctx, req.Hostname, req.Address, req.Capability)
 	if err != nil {
 		s.logger.Error("registration failed", "hostname", req.Hostname, "error", err)
 		return &pb.RegisterHostResponse{Accepted: false, Message: "registration failed"}, nil
@@ -62,10 +62,12 @@ func (s *GRPCServer) RegisterHost(ctx context.Context, req *pb.RegisterHostReque
 		"hostname", h.Name,
 		"address", h.Address,
 		"state", h.OperationalState,
+		"created", created,
 	)
 
-	// Apply topology declarations (best-effort: log warnings for invalid references)
-	if s.topologySvc != nil {
+	// Apply topology declarations only on initial registration to avoid
+	// overwriting admin corrections when a worker re-registers.
+	if created && s.topologySvc != nil {
 		s.applyTopology(ctx, h.ID, req)
 	}
 
