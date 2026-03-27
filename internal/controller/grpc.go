@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"crypto/subtle"
 	"log/slog"
 	"time"
 
@@ -14,22 +15,68 @@ import (
 // GRPCServer implements the ControllerService that workers connect to.
 type GRPCServer struct {
 	pb.UnimplementedControllerServiceServer
-	hostSvc host.Service
-	logger  *slog.Logger
+	hostSvc           host.Service
+	logger            *slog.Logger
+	registrationToken string
 }
 
 // NewGRPCServer creates a new gRPC server with the ControllerService registered.
-func NewGRPCServer(logger *slog.Logger, hostSvc host.Service) *grpc.Server {
+func NewGRPCServer(logger *slog.Logger, hostSvc host.Service, registrationToken string) *grpc.Server {
 	srv := grpc.NewServer()
 	pb.RegisterControllerServiceServer(srv, &GRPCServer{
-		hostSvc: hostSvc,
-		logger:  logger,
+		hostSvc:           hostSvc,
+		logger:            logger,
+		registrationToken: registrationToken,
 	})
 	return srv
 }
 
+// RegisterHost handles worker self-registration.
+func (s *GRPCServer) RegisterHost(ctx context.Context, req *pb.RegisterHostRequest) (*pb.RegisterHostResponse, error) {
+	// Validate registration token
+	if s.registrationToken == "" {
+		s.logger.Warn("registration rejected: no registration token configured on controller")
+		return &pb.RegisterHostResponse{Accepted: false, Message: "registration not enabled"}, nil
+	}
+	if subtle.ConstantTimeCompare([]byte(req.RegistrationToken), []byte(s.registrationToken)) != 1 {
+		s.logger.Warn("registration rejected: invalid token", "hostname", req.Hostname)
+		return &pb.RegisterHostResponse{Accepted: false, Message: "invalid registration token"}, nil
+	}
+
+	if req.Hostname == "" {
+		return &pb.RegisterHostResponse{Accepted: false, Message: "hostname is required"}, nil
+	}
+
+	h, err := s.hostSvc.RegisterOrGet(ctx, req.Hostname, req.Address, req.Capability)
+	if err != nil {
+		s.logger.Error("registration failed", "hostname", req.Hostname, "error", err)
+		return &pb.RegisterHostResponse{Accepted: false, Message: "registration failed"}, nil
+	}
+
+	s.logger.Info("host registered",
+		"host_id", h.ID.String(),
+		"hostname", h.Name,
+		"address", h.Address,
+		"state", h.OperationalState,
+	)
+
+	return &pb.RegisterHostResponse{
+		HostId:   h.ID.String(),
+		Accepted: true,
+		Message:  "registered",
+	}, nil
+}
+
 // Heartbeat receives heartbeat from a worker.
 func (s *GRPCServer) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {
+	// Authenticate heartbeat with registration token
+	if s.registrationToken != "" {
+		if subtle.ConstantTimeCompare([]byte(req.RegistrationToken), []byte(s.registrationToken)) != 1 {
+			s.logger.Warn("heartbeat rejected: invalid token", "host_id", req.HostId)
+			return &pb.HeartbeatResponse{Accepted: false}, nil
+		}
+	}
+
 	s.logger.Debug("heartbeat received",
 		"host_id", req.HostId,
 		"time", time.Now().Format(time.RFC3339),
@@ -45,7 +92,8 @@ func (s *GRPCServer) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*
 			report.UsedRAMMB = req.Resources.UsedRamMb
 		}
 		if err := s.hostSvc.Heartbeat(ctx, req.HostId, report); err != nil {
-			s.logger.Warn("heartbeat db update failed", "host_id", req.HostId, "error", err)
+			s.logger.Warn("heartbeat rejected", "host_id", req.HostId, "error", err)
+			return &pb.HeartbeatResponse{Accepted: false}, nil
 		}
 	}
 

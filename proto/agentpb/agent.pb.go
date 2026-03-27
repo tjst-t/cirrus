@@ -21,17 +21,146 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type HeartbeatRequest struct {
+type RegisterHostRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	RegistrationToken string                 `protobuf:"bytes,1,opt,name=registration_token,json=registrationToken,proto3" json:"registration_token,omitempty"`
+	Hostname          string                 `protobuf:"bytes,2,opt,name=hostname,proto3" json:"hostname,omitempty"`
+	Address           string                 `protobuf:"bytes,3,opt,name=address,proto3" json:"address,omitempty"`
+	Capability        string                 `protobuf:"bytes,4,opt,name=capability,proto3" json:"capability,omitempty"` // JSON-encoded capability
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *RegisterHostRequest) Reset() {
+	*x = RegisterHostRequest{}
+	mi := &file_agent_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterHostRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterHostRequest) ProtoMessage() {}
+
+func (x *RegisterHostRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterHostRequest.ProtoReflect.Descriptor instead.
+func (*RegisterHostRequest) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *RegisterHostRequest) GetRegistrationToken() string {
+	if x != nil {
+		return x.RegistrationToken
+	}
+	return ""
+}
+
+func (x *RegisterHostRequest) GetHostname() string {
+	if x != nil {
+		return x.Hostname
+	}
+	return ""
+}
+
+func (x *RegisterHostRequest) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
+func (x *RegisterHostRequest) GetCapability() string {
+	if x != nil {
+		return x.Capability
+	}
+	return ""
+}
+
+type RegisterHostResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	HostId        string                 `protobuf:"bytes,1,opt,name=host_id,json=hostId,proto3" json:"host_id,omitempty"`
-	Resources     *ResourceReport        `protobuf:"bytes,2,opt,name=resources,proto3" json:"resources,omitempty"`
+	HostId        string                 `protobuf:"bytes,1,opt,name=host_id,json=hostId,proto3" json:"host_id,omitempty"` // assigned UUID
+	Accepted      bool                   `protobuf:"varint,2,opt,name=accepted,proto3" json:"accepted,omitempty"`
+	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
+func (x *RegisterHostResponse) Reset() {
+	*x = RegisterHostResponse{}
+	mi := &file_agent_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterHostResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterHostResponse) ProtoMessage() {}
+
+func (x *RegisterHostResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterHostResponse.ProtoReflect.Descriptor instead.
+func (*RegisterHostResponse) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *RegisterHostResponse) GetHostId() string {
+	if x != nil {
+		return x.HostId
+	}
+	return ""
+}
+
+func (x *RegisterHostResponse) GetAccepted() bool {
+	if x != nil {
+		return x.Accepted
+	}
+	return false
+}
+
+func (x *RegisterHostResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+type HeartbeatRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	HostId            string                 `protobuf:"bytes,1,opt,name=host_id,json=hostId,proto3" json:"host_id,omitempty"`
+	Resources         *ResourceReport        `protobuf:"bytes,2,opt,name=resources,proto3" json:"resources,omitempty"`
+	RegistrationToken string                 `protobuf:"bytes,3,opt,name=registration_token,json=registrationToken,proto3" json:"registration_token,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
 func (x *HeartbeatRequest) Reset() {
 	*x = HeartbeatRequest{}
-	mi := &file_agent_proto_msgTypes[0]
+	mi := &file_agent_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -43,7 +172,7 @@ func (x *HeartbeatRequest) String() string {
 func (*HeartbeatRequest) ProtoMessage() {}
 
 func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[0]
+	mi := &file_agent_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -56,7 +185,7 @@ func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatRequest.ProtoReflect.Descriptor instead.
 func (*HeartbeatRequest) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{0}
+	return file_agent_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *HeartbeatRequest) GetHostId() string {
@@ -73,6 +202,13 @@ func (x *HeartbeatRequest) GetResources() *ResourceReport {
 	return nil
 }
 
+func (x *HeartbeatRequest) GetRegistrationToken() string {
+	if x != nil {
+		return x.RegistrationToken
+	}
+	return ""
+}
+
 type HeartbeatResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Accepted      bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
@@ -82,7 +218,7 @@ type HeartbeatResponse struct {
 
 func (x *HeartbeatResponse) Reset() {
 	*x = HeartbeatResponse{}
-	mi := &file_agent_proto_msgTypes[1]
+	mi := &file_agent_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -94,7 +230,7 @@ func (x *HeartbeatResponse) String() string {
 func (*HeartbeatResponse) ProtoMessage() {}
 
 func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[1]
+	mi := &file_agent_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -107,7 +243,7 @@ func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatResponse.ProtoReflect.Descriptor instead.
 func (*HeartbeatResponse) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{1}
+	return file_agent_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *HeartbeatResponse) GetAccepted() bool {
@@ -128,7 +264,7 @@ type ResourceReport struct {
 
 func (x *ResourceReport) Reset() {
 	*x = ResourceReport{}
-	mi := &file_agent_proto_msgTypes[2]
+	mi := &file_agent_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -140,7 +276,7 @@ func (x *ResourceReport) String() string {
 func (*ResourceReport) ProtoMessage() {}
 
 func (x *ResourceReport) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[2]
+	mi := &file_agent_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -153,7 +289,7 @@ func (x *ResourceReport) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceReport.ProtoReflect.Descriptor instead.
 func (*ResourceReport) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{2}
+	return file_agent_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ResourceReport) GetUsedVcpus() int32 {
@@ -189,7 +325,7 @@ type VMInfo struct {
 
 func (x *VMInfo) Reset() {
 	*x = VMInfo{}
-	mi := &file_agent_proto_msgTypes[3]
+	mi := &file_agent_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -201,7 +337,7 @@ func (x *VMInfo) String() string {
 func (*VMInfo) ProtoMessage() {}
 
 func (x *VMInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[3]
+	mi := &file_agent_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -214,7 +350,7 @@ func (x *VMInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VMInfo.ProtoReflect.Descriptor instead.
 func (*VMInfo) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{3}
+	return file_agent_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *VMInfo) GetVmId() string {
@@ -249,10 +385,22 @@ var File_agent_proto protoreflect.FileDescriptor
 
 const file_agent_proto_rawDesc = "" +
 	"\n" +
-	"\vagent.proto\x12\x0fcirrus.agent.v1\"j\n" +
+	"\vagent.proto\x12\x0fcirrus.agent.v1\"\x9a\x01\n" +
+	"\x13RegisterHostRequest\x12-\n" +
+	"\x12registration_token\x18\x01 \x01(\tR\x11registrationToken\x12\x1a\n" +
+	"\bhostname\x18\x02 \x01(\tR\bhostname\x12\x18\n" +
+	"\aaddress\x18\x03 \x01(\tR\aaddress\x12\x1e\n" +
+	"\n" +
+	"capability\x18\x04 \x01(\tR\n" +
+	"capability\"e\n" +
+	"\x14RegisterHostResponse\x12\x17\n" +
+	"\ahost_id\x18\x01 \x01(\tR\x06hostId\x12\x1a\n" +
+	"\baccepted\x18\x02 \x01(\bR\baccepted\x12\x18\n" +
+	"\amessage\x18\x03 \x01(\tR\amessage\"\x99\x01\n" +
 	"\x10HeartbeatRequest\x12\x17\n" +
 	"\ahost_id\x18\x01 \x01(\tR\x06hostId\x12=\n" +
-	"\tresources\x18\x02 \x01(\v2\x1f.cirrus.agent.v1.ResourceReportR\tresources\"/\n" +
+	"\tresources\x18\x02 \x01(\v2\x1f.cirrus.agent.v1.ResourceReportR\tresources\x12-\n" +
+	"\x12registration_token\x18\x03 \x01(\tR\x11registrationToken\"/\n" +
 	"\x11HeartbeatResponse\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\"\x89\x01\n" +
 	"\x0eResourceReport\x12\x1d\n" +
@@ -265,8 +413,9 @@ const file_agent_proto_rawDesc = "" +
 	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x14\n" +
 	"\x05vcpus\x18\x03 \x01(\x05R\x05vcpus\x12\x15\n" +
-	"\x06ram_mb\x18\x04 \x01(\x03R\x05ramMb2g\n" +
-	"\x11ControllerService\x12R\n" +
+	"\x06ram_mb\x18\x04 \x01(\x03R\x05ramMb2\xc4\x01\n" +
+	"\x11ControllerService\x12[\n" +
+	"\fRegisterHost\x12$.cirrus.agent.v1.RegisterHostRequest\x1a%.cirrus.agent.v1.RegisterHostResponse\x12R\n" +
 	"\tHeartbeat\x12!.cirrus.agent.v1.HeartbeatRequest\x1a\".cirrus.agent.v1.HeartbeatResponseB(Z&github.com/tjst-t/cirrus/proto/agentpbb\x06proto3"
 
 var (
@@ -281,20 +430,24 @@ func file_agent_proto_rawDescGZIP() []byte {
 	return file_agent_proto_rawDescData
 }
 
-var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_agent_proto_goTypes = []any{
-	(*HeartbeatRequest)(nil),  // 0: cirrus.agent.v1.HeartbeatRequest
-	(*HeartbeatResponse)(nil), // 1: cirrus.agent.v1.HeartbeatResponse
-	(*ResourceReport)(nil),    // 2: cirrus.agent.v1.ResourceReport
-	(*VMInfo)(nil),            // 3: cirrus.agent.v1.VMInfo
+	(*RegisterHostRequest)(nil),  // 0: cirrus.agent.v1.RegisterHostRequest
+	(*RegisterHostResponse)(nil), // 1: cirrus.agent.v1.RegisterHostResponse
+	(*HeartbeatRequest)(nil),     // 2: cirrus.agent.v1.HeartbeatRequest
+	(*HeartbeatResponse)(nil),    // 3: cirrus.agent.v1.HeartbeatResponse
+	(*ResourceReport)(nil),       // 4: cirrus.agent.v1.ResourceReport
+	(*VMInfo)(nil),               // 5: cirrus.agent.v1.VMInfo
 }
 var file_agent_proto_depIdxs = []int32{
-	2, // 0: cirrus.agent.v1.HeartbeatRequest.resources:type_name -> cirrus.agent.v1.ResourceReport
-	3, // 1: cirrus.agent.v1.ResourceReport.running_vms:type_name -> cirrus.agent.v1.VMInfo
-	0, // 2: cirrus.agent.v1.ControllerService.Heartbeat:input_type -> cirrus.agent.v1.HeartbeatRequest
-	1, // 3: cirrus.agent.v1.ControllerService.Heartbeat:output_type -> cirrus.agent.v1.HeartbeatResponse
-	3, // [3:4] is the sub-list for method output_type
-	2, // [2:3] is the sub-list for method input_type
+	4, // 0: cirrus.agent.v1.HeartbeatRequest.resources:type_name -> cirrus.agent.v1.ResourceReport
+	5, // 1: cirrus.agent.v1.ResourceReport.running_vms:type_name -> cirrus.agent.v1.VMInfo
+	0, // 2: cirrus.agent.v1.ControllerService.RegisterHost:input_type -> cirrus.agent.v1.RegisterHostRequest
+	2, // 3: cirrus.agent.v1.ControllerService.Heartbeat:input_type -> cirrus.agent.v1.HeartbeatRequest
+	1, // 4: cirrus.agent.v1.ControllerService.RegisterHost:output_type -> cirrus.agent.v1.RegisterHostResponse
+	3, // 5: cirrus.agent.v1.ControllerService.Heartbeat:output_type -> cirrus.agent.v1.HeartbeatResponse
+	4, // [4:6] is the sub-list for method output_type
+	2, // [2:4] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
 	2, // [2:2] is the sub-list for extension extendee
 	0, // [0:2] is the sub-list for field type_name
@@ -311,7 +464,7 @@ func file_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_proto_rawDesc), len(file_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

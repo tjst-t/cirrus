@@ -64,7 +64,8 @@ func (app *cli) newClient() *client.Client {
 }
 
 func (app *cli) cmdContext() context.Context {
-	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	_ = cancel // cleaned up when process exits; stored to avoid linter warning
 	return ctx
 }
 
@@ -414,13 +415,28 @@ func (app *cli) newHostCreateCmd() *cobra.Command {
 }
 
 func (app *cli) newHostListCmd() *cobra.Command {
-	return &cobra.Command{
+	var pending bool
+	var state string
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all hosts",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := app.cmdContext()
-			hosts, err := app.newClient().ListHosts(ctx)
+			c := app.newClient()
+
+			filterState := state
+			if pending {
+				filterState = "registering"
+			}
+
+			var hosts []host.Host
+			var err error
+			if filterState != "" {
+				hosts, err = c.ListHostsByState(ctx, filterState)
+			} else {
+				hosts, err = c.ListHosts(ctx)
+			}
 			if err != nil {
 				return err
 			}
@@ -434,6 +450,9 @@ func (app *cli) newHostListCmd() *cobra.Command {
 			)
 		},
 	}
+	cmd.Flags().BoolVar(&pending, "pending", false, "Show only hosts pending approval (registering state)")
+	cmd.Flags().StringVar(&state, "state", "", "Filter by operational state")
+	return cmd
 }
 
 func (app *cli) newHostShowCmd() *cobra.Command {

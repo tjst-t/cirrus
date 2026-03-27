@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	"google.golang.org/grpc"
@@ -15,11 +16,12 @@ import (
 
 // Agent is the worker-side process that connects to the controller.
 type Agent struct {
-	hostID string
-	conn   *grpc.ClientConn
-	client pb.ControllerServiceClient
-	driver hypervisor.Driver
-	logger *slog.Logger
+	hostID            string
+	registrationToken string
+	conn              *grpc.ClientConn
+	client            pb.ControllerServiceClient
+	driver            hypervisor.Driver
+	logger            *slog.Logger
 }
 
 // New creates an Agent that connects to the controller's gRPC endpoint.
@@ -35,6 +37,42 @@ func New(controllerAddr, hostID string, logger *slog.Logger, driver hypervisor.D
 		driver: driver,
 		logger: logger,
 	}, nil
+}
+
+// Register performs self-registration with the controller using the given token.
+// On success, it stores the assigned host UUID for use in subsequent heartbeats.
+func (a *Agent) Register(ctx context.Context, token, libvirtURI string) error {
+	// HOSTNAME_OVERRIDE allows multiple workers on the same machine (dev/sim)
+	hostname := os.Getenv("HOSTNAME_OVERRIDE")
+	if hostname == "" {
+		var err error
+		hostname, err = os.Hostname()
+		if err != nil {
+			return fmt.Errorf("agent: get hostname: %w", err)
+		}
+	}
+
+	// Use libvirt URI as address for the host
+	address := libvirtURI
+
+	a.logger.Info("registering with controller", "hostname", hostname, "address", address)
+
+	resp, err := a.client.RegisterHost(ctx, &pb.RegisterHostRequest{
+		RegistrationToken: token,
+		Hostname:          hostname,
+		Address:           address,
+	})
+	if err != nil {
+		return fmt.Errorf("agent: register: %w", err)
+	}
+	if !resp.Accepted {
+		return fmt.Errorf("agent: registration rejected: %s", resp.Message)
+	}
+
+	a.hostID = resp.HostId
+	a.registrationToken = token
+	a.logger.Info("registered with controller", "host_id", a.hostID, "hostname", hostname)
+	return nil
 }
 
 // RunHeartbeat sends periodic heartbeats to the controller.
@@ -54,8 +92,9 @@ func (a *Agent) RunHeartbeat(ctx context.Context, interval time.Duration) {
 			report := a.collectResources(ctx)
 
 			resp, err := a.client.Heartbeat(ctx, &pb.HeartbeatRequest{
-				HostId:    a.hostID,
-				Resources: report,
+				HostId:            a.hostID,
+				Resources:         report,
+				RegistrationToken: a.registrationToken,
 			})
 			if err != nil {
 				a.logger.Warn("heartbeat failed", "host_id", a.hostID, "error", err)
@@ -98,6 +137,11 @@ func (a *Agent) collectResources(ctx context.Context) *pb.ResourceReport {
 	}
 
 	return report
+}
+
+// HostID returns the agent's host ID (assigned after registration).
+func (a *Agent) HostID() string {
+	return a.hostID
 }
 
 // Close shuts down the agent's gRPC connection.

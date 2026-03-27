@@ -9,12 +9,27 @@ option go_package = "github.com/tjst-t/cirrus/proto/agentpb";
 
 // ControllerService is called BY workers to register and send heartbeats.
 service ControllerService {
+  rpc RegisterHost(RegisterHostRequest) returns (RegisterHostResponse);
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+}
+
+message RegisterHostRequest {
+  string registration_token = 1;
+  string hostname = 2;
+  string address = 3;
+  string capability = 4; // JSON-encoded capability
+}
+
+message RegisterHostResponse {
+  string host_id = 1; // assigned UUID
+  bool accepted = 2;
+  string message = 3;
 }
 
 message HeartbeatRequest {
   string host_id = 1;
   ResourceReport resources = 2;
+  string registration_token = 3;
 }
 
 message HeartbeatResponse {

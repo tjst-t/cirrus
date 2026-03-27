@@ -30,6 +30,7 @@ docs/配下に設計ドキュメントがある。実装前に必ず該当ドキ
 
 ドメイン別: [host.md](docs/host.md) | [storage.md](docs/storage.md) | [network.md](docs/network.md) | [multitenancy.md](docs/multitenancy.md)
 実装詳細: [database.md](docs/database.md) | [api.md](docs/api.md) | [sequences.md](docs/sequences.md)
+状態整合性: [reconciliation.md](docs/reconciliation.md) — desired vs actual stateの乖離検出・対応
 テスト: [testing.md](docs/testing.md) — cirrus-simによるシミュレーションテスト
 改善項目: [todo.md](docs/todo.md) — 実装済みSprintの残タスク
 

@@ -56,6 +56,15 @@ func (c *Client) ListHosts(ctx context.Context) ([]host.Host, error) {
 	return decodeResponse[[]host.Host](resp)
 }
 
+// ListHostsByState returns hosts filtered by operational state.
+func (c *Client) ListHostsByState(ctx context.Context, state string) ([]host.Host, error) {
+	resp, err := c.do(ctx, "GET", fmt.Sprintf("/api/v1/hosts?state=%s", state), nil)
+	if err != nil {
+		return nil, err
+	}
+	return decodeResponse[[]host.Host](resp)
+}
+
 // GetHost returns a host by ID.
 func (c *Client) GetHost(ctx context.Context, id uuid.UUID) (*host.Host, error) {
 	resp, err := c.do(ctx, "GET", fmt.Sprintf("/api/v1/hosts/%s", id), nil)

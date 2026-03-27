@@ -60,7 +60,17 @@ func (h *hostHandlers) listHosts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hosts, err := h.svc.ListHosts(r.Context())
+	var hosts []host.Host
+	if stateParam := r.URL.Query().Get("state"); stateParam != "" {
+		state := host.OperationalState(stateParam)
+		if !host.IsValidOperationalState(state) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid state: must be one of registering, active, maintenance, draining, faulty, retiring"})
+			return
+		}
+		hosts, err = h.svc.ListHostsByState(r.Context(), state)
+	} else {
+		hosts, err = h.svc.ListHosts(r.Context())
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list hosts"})
 		return
@@ -169,6 +179,10 @@ func (h *hostHandlers) hostAction(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.SetOperationalState(r.Context(), id, state); err != nil {
 		if errors.Is(err, host.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "host not found"})
+			return
+		}
+		if errors.Is(err, host.ErrInvalidState) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 			return
 		}
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update host state"})

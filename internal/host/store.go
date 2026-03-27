@@ -64,6 +64,56 @@ func (s *Store) Register(ctx context.Context, id *uuid.UUID, name, address strin
 	return &h, nil
 }
 
+func (s *Store) RegisterOrGet(ctx context.Context, name, address, capability string) (*Host, error) {
+	var h Host
+	cap := []byte(capability)
+	if capability == "" {
+		cap = []byte("{}")
+	}
+	// INSERT ... ON CONFLICT: if hostname already exists and still in registering state,
+	// update address/capability. If already activated (non-registering), just return existing row.
+	err := s.pool.QueryRow(ctx,
+		`INSERT INTO hosts (name, address, operational_state, capability)
+		 VALUES ($1, $2, 'registering', $3)
+		 ON CONFLICT (name) DO UPDATE
+		   SET address = CASE WHEN hosts.operational_state = 'registering' THEN EXCLUDED.address ELSE hosts.address END,
+		       capability = CASE WHEN hosts.operational_state = 'registering' THEN EXCLUDED.capability ELSE hosts.capability END,
+		       updated_at = now()
+		 RETURNING id, name, address, operational_state, capability, resource_physical,
+		           overcommit_ratios, resource_used, last_heartbeat, created_at, updated_at`,
+		name, address, cap,
+	).Scan(&h.ID, &h.Name, &h.Address, &h.OperationalState, &h.Capability,
+		&h.ResourcePhysical, &h.OvercommitRatios, &h.ResourceUsed,
+		&h.LastHeartbeat, &h.CreatedAt, &h.UpdatedAt)
+	if err != nil {
+		return nil, wrapErr("host: register_or_get", err)
+	}
+	return &h, nil
+}
+
+func (s *Store) ListHostsByState(ctx context.Context, state OperationalState) ([]Host, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, name, address, operational_state, capability, resource_physical,
+		        overcommit_ratios, resource_used, last_heartbeat, created_at, updated_at
+		 FROM hosts WHERE operational_state = $1 ORDER BY name`, state)
+	if err != nil {
+		return nil, fmt.Errorf("host: list by state: %w", err)
+	}
+	defer rows.Close()
+
+	var hosts []Host
+	for rows.Next() {
+		var h Host
+		if err := rows.Scan(&h.ID, &h.Name, &h.Address, &h.OperationalState, &h.Capability,
+			&h.ResourcePhysical, &h.OvercommitRatios, &h.ResourceUsed,
+			&h.LastHeartbeat, &h.CreatedAt, &h.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("host: list by state scan: %w", err)
+		}
+		hosts = append(hosts, h)
+	}
+	return hosts, rows.Err()
+}
+
 func (s *Store) GetHost(ctx context.Context, id uuid.UUID) (*Host, error) {
 	var h Host
 	err := s.pool.QueryRow(ctx,
@@ -159,47 +209,84 @@ func (s *Store) UpdateOvercommitRatios(ctx context.Context, hostID uuid.UUID, ra
 	return nil
 }
 
+// validTransitions defines the allowed state transitions per host.md.
+var validTransitions = map[OperationalState][]OperationalState{
+	StateRegistering: {StateActive},
+	StateActive:      {StateDraining, StateMaintenance, StateFaulty},
+	StateDraining:    {StateActive, StateMaintenance, StateFaulty},
+	StateMaintenance: {StateActive, StateRetiring},
+	StateFaulty:      {StateActive, StateMaintenance},
+	StateRetiring:    {}, // terminal state
+}
+
 func (s *Store) SetOperationalState(ctx context.Context, hostID uuid.UUID, state OperationalState) error {
 	switch state {
 	case StateActive, StateMaintenance, StateDraining, StateFaulty, StateRetiring:
-		// valid
+		// valid target
 	default:
 		return fmt.Errorf("host: set operational state: %w: %s", ErrInvalidState, state)
 	}
 
+	// Fetch current state and validate transition
+	var currentState OperationalState
+	err := s.pool.QueryRow(ctx,
+		`SELECT operational_state FROM hosts WHERE id = $1`, hostID,
+	).Scan(&currentState)
+	if err != nil {
+		return wrapErr("host: set operational state", err)
+	}
+
+	allowed := false
+	for _, target := range validTransitions[currentState] {
+		if target == state {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return fmt.Errorf("host: set operational state: transition %s → %s not allowed: %w", currentState, state, ErrInvalidState)
+	}
+
 	tag, err := s.pool.Exec(ctx,
-		`UPDATE hosts SET operational_state = $1, updated_at = now() WHERE id = $2`,
-		state, hostID)
+		`UPDATE hosts SET operational_state = $1, updated_at = now()
+		 WHERE id = $2 AND operational_state = $3`,
+		state, hostID, currentState)
 	if err != nil {
 		return fmt.Errorf("host: set operational state: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("host: set operational state: %w", ErrNotFound)
+		return fmt.Errorf("host: set operational state: concurrent modification: %w", ErrInvalidState)
 	}
 	return nil
 }
 
 func (s *Store) Heartbeat(ctx context.Context, hostID string, report ResourceReport) error {
+	id, err := uuid.Parse(hostID)
+	if err != nil {
+		return fmt.Errorf("host: heartbeat: invalid UUID %q: %w", hostID, err)
+	}
+
 	now := time.Now()
 	resourceUsed, _ := json.Marshal(map[string]any{
 		"vcpus":     report.UsedVcpus,
 		"memory_mb": report.UsedRAMMB,
 	})
 
-	// Try matching by UUID first, fall back to name
-	var query string
-	var param any
-	if id, err := uuid.Parse(hostID); err == nil {
-		query = `UPDATE hosts SET last_heartbeat = $1, resource_used = $2, updated_at = $1 WHERE id = $3`
-		param = id
-	} else {
-		query = `UPDATE hosts SET last_heartbeat = $1, resource_used = $2, updated_at = $1 WHERE name = $3`
-		param = hostID
-	}
-
-	_, err := s.pool.Exec(ctx, query, now, resourceUsed, param)
+	// registering状態: last_heartbeatのみ更新（activate前のheartbeat動作確認用）
+	// active/draining/maintenance/faulty: last_heartbeat + resource_used更新
+	// retiring: 拒否
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE hosts SET
+		   last_heartbeat = $1,
+		   resource_used = CASE WHEN operational_state = 'registering' THEN resource_used ELSE $2 END,
+		   updated_at = $1
+		 WHERE id = $3 AND operational_state != 'retiring'`,
+		now, resourceUsed, id)
 	if err != nil {
 		return fmt.Errorf("host: heartbeat: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("host: heartbeat: %w", ErrNotFound)
 	}
 	return nil
 }

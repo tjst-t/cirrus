@@ -1,4 +1,4 @@
-.PHONY: all build test lint serve stop logs logs-worker logs-sim clean-dev proto
+.PHONY: all build test lint serve stop logs logs-worker logs-sim clean-dev reset-db fresh proto
 
 # ── Configuration ──
 
@@ -6,6 +6,7 @@ CIRRUS_SIM_DIR   ?= $(shell cd .. && pwd)/cirrus-sim
 CIRRUS_SIM_ENV   ?= small
 DB_DSN           ?= postgres://cirrus:cirrus@localhost:5432/cirrus?sslmode=disable
 AUTH_TOKENS      ?= dev-token=dev-admin
+REGISTRATION_TOKEN ?= dev-registration-token
 
 # Temp files
 TMP_DIR          := /tmp/cirrus-dev
@@ -55,10 +56,10 @@ serve: build
 	@$(MAKE) --no-print-directory _start-db
 	@# ── 5. Start controller ──
 	@$(MAKE) --no-print-directory _start-controller
-	@# ── 6. Register hosts ──
-	@$(MAKE) --no-print-directory _register-hosts
-	@# ── 7. Start workers ──
+	@# ── 6. Start workers (self-register via registration token) ──
 	@$(MAKE) --no-print-directory _start-workers
+	@# ── 7. Activate all registered hosts (dev convenience) ──
+	@$(MAKE) --no-print-directory _activate-hosts
 	@echo ""
 	@echo "  All services running. Use 'make logs' to view controller logs."
 	@echo "  Stop: make stop"
@@ -178,13 +179,37 @@ _start-controller:
 	    --awx-endpoint="http://localhost:$$SIM_AWX_PORT" \
 	    --netbox-endpoint="http://localhost:$$SIM_NETBOX_PORT" \
 	    --auth-tokens="$(AUTH_TOKENS)" \
+	    --registration-token="$(REGISTRATION_TOKEN)" \
+	    --log-level=debug \
 	    > $(LOG_CONTROLLER) 2>&1 & \
 	  echo $$! > $(PID_CONTROLLER); \
 	  echo "    PID: $$(cat $(PID_CONTROLLER))"'
 
-# ── Internal: register hosts from cirrus-sim into controller ──
+# ── Internal: activate all registered hosts (dev convenience) ──
 
-_register-hosts:
+_activate-hosts:
+	@bash -c '\
+	  set -a; source $(PORTMAN_ENV); set +a; \
+	  echo "==> Waiting for workers to register..."; \
+	  sleep 3; \
+	  echo "==> Activating all registered hosts (dev convenience)..."; \
+	  TOKEN="$(firstword $(subst =, ,$(AUTH_TOKENS)))"; \
+	  HOSTS=$$(curl -sf -H "Authorization: Bearer $$TOKEN" \
+	    "http://localhost:$$API_PORT/api/v1/hosts?state=registering"); \
+	  HOST_COUNT=$$(echo "$$HOSTS" | jq length); \
+	  for i in $$(seq 0 $$((HOST_COUNT - 1))); do \
+	    HOST_UUID=$$(echo "$$HOSTS" | jq -r ".[$${i}].id"); \
+	    curl -sf -X POST \
+	      -H "Authorization: Bearer $$TOKEN" \
+	      -H "Content-Type: application/json" \
+	      -d "{\"action\":\"activate\"}" \
+	      http://localhost:$$API_PORT/api/v1/hosts/$$HOST_UUID/actions >/dev/null 2>&1 || true; \
+	  done; \
+	  echo "    Activated $$HOST_COUNT hosts"'
+
+# ── Internal: start workers (one per simulated host) ──
+
+_start-workers:
 	@bash -c '\
 	  set -a; source $(PORTMAN_ENV); set +a; \
 	  echo "==> Waiting for controller API..."; \
@@ -194,26 +219,6 @@ _register-hosts:
 	  done; \
 	  curl -sf http://localhost:$$API_PORT/healthz >/dev/null 2>&1 \
 	    || { echo "ERROR: Controller API not ready"; exit 1; }; \
-	  echo "==> Registering hosts from cirrus-sim..."; \
-	  HOSTS=$$(curl -sf http://localhost:$$SIM_LIBVIRT_PORT/sim/hosts); \
-	  HOST_COUNT=$$(echo "$$HOSTS" | jq length); \
-	  TOKEN="$(firstword $(subst =, ,$(AUTH_TOKENS)))"; \
-	  for i in $$(seq 0 $$((HOST_COUNT - 1))); do \
-	    HOST_ID=$$(echo "$$HOSTS" | jq -r ".[$${i}].host_id"); \
-	    LIBVIRT_PORT=$$(echo "$$HOSTS" | jq -r ".[$${i}].libvirt_port"); \
-	    curl -sf -X POST \
-	      -H "Authorization: Bearer $$TOKEN" \
-	      -H "Content-Type: application/json" \
-	      -d "{\"name\":\"$$HOST_ID\",\"address\":\"localhost:$$LIBVIRT_PORT\"}" \
-	      http://localhost:$$API_PORT/api/v1/hosts >/dev/null 2>&1 || true; \
-	  done; \
-	  echo "    Registered $$HOST_COUNT hosts"'
-
-# ── Internal: start workers (one per simulated host) ──
-
-_start-workers:
-	@bash -c '\
-	  set -a; source $(PORTMAN_ENV); set +a; \
 	  echo "==> Fetching host list from cirrus-sim..."; \
 	  HOSTS=$$(curl -sf http://localhost:$$SIM_LIBVIRT_PORT/sim/hosts); \
 	  if [ -z "$$HOSTS" ] || [ "$$HOSTS" = "null" ]; then \
@@ -221,13 +226,13 @@ _start-workers:
 	  fi; \
 	  HOST_COUNT=$$(echo "$$HOSTS" | jq length); \
 	  echo "    Found $$HOST_COUNT hosts"; \
-	  echo "==> Starting workers..."; \
+	  echo "==> Starting workers (self-registration)..."; \
 	  for i in $$(seq 0 $$((HOST_COUNT - 1))); do \
 	    HOST_ID=$$(echo "$$HOSTS" | jq -r ".[$${i}].host_id"); \
 	    LIBVIRT_PORT=$$(echo "$$HOSTS" | jq -r ".[$${i}].libvirt_port"); \
-	    nohup ./bin/cirrus worker \
+	    HOSTNAME_OVERRIDE=$$HOST_ID nohup ./bin/cirrus worker \
 	      --controller="localhost:$$GRPC_PORT" \
-	      --host-id="$$HOST_ID" \
+	      --registration-token="$(REGISTRATION_TOKEN)" \
 	      --libvirt-uri="tcp://localhost:$$LIBVIRT_PORT" \
 	      > $(LOG_WORKER_DIR)/$$HOST_ID.log 2>&1 & \
 	    echo $$! > $(PID_WORKER_DIR)/$$HOST_ID.pid; \
@@ -254,3 +259,12 @@ clean-dev:
 	@$(MAKE) --no-print-directory _stop-all
 	rm -rf $(TMP_DIR)
 	@echo "Cleaned dev state."
+
+# ── Database ──
+
+reset-db:
+	@echo "==> Resetting database (DROP + CREATE schema)..."
+	@go run ./cmd/internal/resetdb "$(DB_DSN)"
+	@echo "    Database reset OK."
+
+fresh: stop reset-db serve

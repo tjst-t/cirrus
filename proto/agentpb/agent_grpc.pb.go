@@ -19,7 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ControllerService_Heartbeat_FullMethodName = "/cirrus.agent.v1.ControllerService/Heartbeat"
+	ControllerService_RegisterHost_FullMethodName = "/cirrus.agent.v1.ControllerService/RegisterHost"
+	ControllerService_Heartbeat_FullMethodName    = "/cirrus.agent.v1.ControllerService/Heartbeat"
 )
 
 // ControllerServiceClient is the client API for ControllerService service.
@@ -28,6 +29,7 @@ const (
 //
 // ControllerService is called BY workers to register and send heartbeats.
 type ControllerServiceClient interface {
+	RegisterHost(ctx context.Context, in *RegisterHostRequest, opts ...grpc.CallOption) (*RegisterHostResponse, error)
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
 }
 
@@ -37,6 +39,16 @@ type controllerServiceClient struct {
 
 func NewControllerServiceClient(cc grpc.ClientConnInterface) ControllerServiceClient {
 	return &controllerServiceClient{cc}
+}
+
+func (c *controllerServiceClient) RegisterHost(ctx context.Context, in *RegisterHostRequest, opts ...grpc.CallOption) (*RegisterHostResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RegisterHostResponse)
+	err := c.cc.Invoke(ctx, ControllerService_RegisterHost_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *controllerServiceClient) Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error) {
@@ -55,6 +67,7 @@ func (c *controllerServiceClient) Heartbeat(ctx context.Context, in *HeartbeatRe
 //
 // ControllerService is called BY workers to register and send heartbeats.
 type ControllerServiceServer interface {
+	RegisterHost(context.Context, *RegisterHostRequest) (*RegisterHostResponse, error)
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
 	mustEmbedUnimplementedControllerServiceServer()
 }
@@ -66,6 +79,9 @@ type ControllerServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedControllerServiceServer struct{}
 
+func (UnimplementedControllerServiceServer) RegisterHost(context.Context, *RegisterHostRequest) (*RegisterHostResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RegisterHost not implemented")
+}
 func (UnimplementedControllerServiceServer) Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Heartbeat not implemented")
 }
@@ -88,6 +104,24 @@ func RegisterControllerServiceServer(s grpc.ServiceRegistrar, srv ControllerServ
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&ControllerService_ServiceDesc, srv)
+}
+
+func _ControllerService_RegisterHost_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RegisterHostRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControllerServiceServer).RegisterHost(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControllerService_RegisterHost_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControllerServiceServer).RegisterHost(ctx, req.(*RegisterHostRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _ControllerService_Heartbeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -115,6 +149,10 @@ var ControllerService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "cirrus.agent.v1.ControllerService",
 	HandlerType: (*ControllerServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "RegisterHost",
+			Handler:    _ControllerService_RegisterHost_Handler,
+		},
 		{
 			MethodName: "Heartbeat",
 			Handler:    _ControllerService_Heartbeat_Handler,

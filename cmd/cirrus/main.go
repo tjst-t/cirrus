@@ -49,14 +49,16 @@ func newControllerCmd() *cobra.Command {
 		},
 	}
 	f := cmd.Flags()
-	f.IntVar(&cfg.APIPort, "api-port", 8080, "HTTP API listen port")
-	f.IntVar(&cfg.GRPCPort, "grpc-port", 9090, "gRPC listen port")
+	f.IntVar(&cfg.APIPort, "api-port", 0, "HTTP API listen port (required)")
+	f.IntVar(&cfg.GRPCPort, "grpc-port", 0, "gRPC listen port (required)")
 	f.StringVar(&cfg.DBDSN, "db-dsn", "", "PostgreSQL connection string")
 	f.StringVar(&cfg.OVNNB, "ovn-nb", "", "OVN Northbound DB address (tcp:host:port)")
 	f.StringVar(&cfg.StorageEndpoint, "storage-endpoint", "", "Storage sim/backend endpoint")
 	f.StringVar(&cfg.AWXEndpoint, "awx-endpoint", "", "AWX endpoint")
 	f.StringVar(&cfg.NetBoxEndpoint, "netbox-endpoint", "", "NetBox endpoint")
 	f.StringVar(&cfg.AuthTokens, "auth-tokens", "", "Static auth tokens (token1=externalid1,token2=externalid2)")
+	f.StringVar(&cfg.RegistrationToken, "registration-token", "", "Shared secret for worker self-registration")
+	f.StringVar(&cfg.LogLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 	return cmd
 }
 
@@ -71,8 +73,11 @@ func newWorkerCmd() *cobra.Command {
 	}
 	f := cmd.Flags()
 	f.StringVar(&cfg.Controller, "controller", "localhost:9090", "Controller gRPC address")
-	f.StringVar(&cfg.HostID, "host-id", "", "Host ID for this worker")
+	f.StringVar(&cfg.HostID, "host-id", "", "Host ID for this worker (deprecated: use --registration-token)")
 	f.StringVar(&cfg.LibvirtURI, "libvirt-uri", "", "Libvirt connection URI (tcp://host:port)")
+	f.StringVar(&cfg.RegistrationToken, "registration-token", "", "Registration token for self-registration")
+	f.IntVar(&cfg.HeartbeatInterval, "heartbeat-interval", 10, "Heartbeat interval in seconds")
+	f.StringVar(&cfg.LogLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 	return cmd
 }
 
@@ -80,7 +85,7 @@ func runController(cfg *config.ControllerConfig) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: config.ParseLogLevel(cfg.LogLevel)}))
 
 	// Database
 	pool, err := state.Connect(ctx, cfg.DBDSN)
@@ -134,7 +139,7 @@ func runController(cfg *config.ControllerConfig) error {
 	}
 
 	// gRPC
-	grpcSrv := controller.NewGRPCServer(logger, hostSvc)
+	grpcSrv := controller.NewGRPCServer(logger, hostSvc, cfg.RegistrationToken)
 	grpcLis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
 	if err != nil {
 		return fmt.Errorf("controller: grpc listen: %w", err)
@@ -179,7 +184,7 @@ func runWorker(cfg *config.WorkerConfig) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: config.ParseLogLevel(cfg.LogLevel)}))
 
 	// Hypervisor driver
 	var driver hypervisor.Driver
@@ -199,10 +204,21 @@ func runWorker(cfg *config.WorkerConfig) error {
 	}
 	defer ag.Close()
 
-	logger.Info("worker starting", "host_id", cfg.HostID, "controller", cfg.Controller)
+	// Self-registration: if registration token is provided, register before heartbeat
+	if cfg.RegistrationToken != "" {
+		if err := ag.Register(ctx, cfg.RegistrationToken, cfg.LibvirtURI); err != nil {
+			return fmt.Errorf("worker: registration failed: %w", err)
+		}
+	}
+
+	logger.Info("worker starting", "host_id", ag.HostID(), "controller", cfg.Controller)
 
 	// Run heartbeat loop (blocks until ctx cancelled)
-	ag.RunHeartbeat(ctx, 10*time.Second)
+	interval := time.Duration(cfg.HeartbeatInterval) * time.Second
+	if interval <= 0 {
+		interval = 10 * time.Second
+	}
+	ag.RunHeartbeat(ctx, interval)
 
 	return nil
 }
