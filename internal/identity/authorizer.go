@@ -27,6 +27,21 @@ const (
 	ActionGetHost         Action = "get_host"
 	ActionUpdateHost      Action = "update_host"
 	ActionHostAction      Action = "host_action"
+
+	ActionCreateStorageDomain Action = "create_storage_domain"
+	ActionListStorageDomains  Action = "list_storage_domains"
+	ActionGetStorageDomain    Action = "get_storage_domain"
+
+	ActionCreateNetworkDomain Action = "create_network_domain"
+	ActionListNetworkDomains  Action = "list_network_domains"
+	ActionGetNetworkDomain    Action = "get_network_domain"
+
+	ActionCreateLocation Action = "create_location"
+	ActionListLocations  Action = "list_locations"
+	ActionGetLocation    Action = "get_location"
+
+	ActionGetComputePool      Action = "get_compute_pool"
+	ActionManageHostTopology  Action = "manage_host_topology"
 )
 
 // Resource represents the target resource of an authorization check.

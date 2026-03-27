@@ -1,0 +1,67 @@
+package topology
+
+import (
+	"encoding/json"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// StorageDomain represents a group of storage backends accessible by a set of hosts.
+type StorageDomain struct {
+	ID        uuid.UUID `json:"id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// NetworkDomain represents an OVN cluster and the hosts it contains.
+type NetworkDomain struct {
+	ID              uuid.UUID `json:"id"`
+	Name            string    `json:"name"`
+	OVNNBConnection string    `json:"ovn_nb_connection"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+// LocationType represents the hierarchy level of a location.
+type LocationType string
+
+const (
+	LocationTypeSite  LocationType = "site"
+	LocationTypeFloor LocationType = "floor"
+	LocationTypeRow   LocationType = "row"
+	LocationTypeRack  LocationType = "rack"
+	LocationTypeUnit  LocationType = "unit"
+)
+
+// IsValidLocationType returns true if the given type is known.
+func IsValidLocationType(t LocationType) bool {
+	switch t {
+	case LocationTypeSite, LocationTypeFloor, LocationTypeRow, LocationTypeRack, LocationTypeUnit:
+		return true
+	}
+	return false
+}
+
+// Location represents a node in the failure topology tree.
+type Location struct {
+	ID              uuid.UUID        `json:"id"`
+	ParentID        *uuid.UUID       `json:"parent_id,omitempty"`
+	Name            string           `json:"name"`
+	Type            LocationType     `json:"type"`
+	FaultAttributes json.RawMessage  `json:"fault_attributes,omitempty"`
+	CreatedAt       time.Time        `json:"created_at"`
+	UpdatedAt       time.Time        `json:"updated_at"`
+	Children        []*Location      `json:"children,omitempty"`
+}
+
+// ComputePool is the derived intersection of a storage domain and a network domain.
+type ComputePool struct {
+	StorageDomainID   uuid.UUID   `json:"storage_domain_id"`
+	StorageDomainName string      `json:"storage_domain_name"`
+	NetworkDomainID   uuid.UUID   `json:"network_domain_id"`
+	NetworkDomainName string      `json:"network_domain_name"`
+	HostIDs           []uuid.UUID `json:"host_ids"`
+	Count             int         `json:"count"`
+}

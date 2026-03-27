@@ -8,10 +8,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tjst-t/cirrus/internal/host"
 	"github.com/tjst-t/cirrus/internal/identity"
+	"github.com/tjst-t/cirrus/internal/topology"
 )
 
 // NewRouter creates the HTTP router with all middleware and routes.
-func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authenticator, authz identity.Authorizer, identitySvc identity.Service, hostSvc host.Service) http.Handler {
+func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authenticator, authz identity.Authorizer, identitySvc identity.Service, hostSvc host.Service, topologySvc topology.Service) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(RequestID)
@@ -24,6 +25,7 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 	// Identity routes (authenticated)
 	ih := &identityHandlers{svc: identitySvc, authz: authz}
 	hh := &hostHandlers{svc: hostSvc, authz: authz}
+	th := &topologyHandlers{svc: topologySvc, authz: authz}
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(Auth(authn))
 
@@ -45,6 +47,32 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		r.Get("/hosts/{host_id}", hh.getHost)
 		r.Delete("/hosts/{host_id}", hh.deleteHost)
 		r.Post("/hosts/{host_id}/actions", hh.hostAction)
+
+		// Host topology associations (infra_admin)
+		r.Post("/hosts/{host_id}/storage-domains", th.associateHostStorageDomain)
+		r.Delete("/hosts/{host_id}/storage-domains/{storage_domain_id}", th.dissociateHostStorageDomain)
+		r.Put("/hosts/{host_id}/network-domain", th.setHostNetworkDomain)
+		r.Put("/hosts/{host_id}/location", th.setHostLocation)
+
+		// Storage domains (infra_admin)
+		r.Post("/storage-domains", th.createStorageDomain)
+		r.Get("/storage-domains", th.listStorageDomains)
+		r.Get("/storage-domains/{storage_domain_id}", th.getStorageDomain)
+
+		// Network domains (infra_admin)
+		r.Post("/network-domains", th.createNetworkDomain)
+		r.Get("/network-domains", th.listNetworkDomains)
+		r.Get("/network-domains/{network_domain_id}", th.getNetworkDomain)
+
+		// Locations (infra_admin)
+		r.Post("/locations", th.createLocation)
+		r.Get("/locations", th.listLocations)
+		r.Get("/locations/{location_id}", th.getLocation)
+		r.Get("/locations/{location_id}/path", th.getLocationPath)
+		r.Get("/locations/{location_id}/tree", th.getLocationTree)
+
+		// Compute pools (derived, read-only)
+		r.Get("/compute-pools", th.getComputePool)
 	})
 
 	return r

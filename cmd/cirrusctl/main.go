@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/google/uuid"
@@ -13,6 +14,7 @@ import (
 	"github.com/tjst-t/cirrus/internal/client"
 	"github.com/tjst-t/cirrus/internal/host"
 	"github.com/tjst-t/cirrus/internal/identity"
+	"github.com/tjst-t/cirrus/internal/topology"
 )
 
 // cli holds the shared state for all commands.
@@ -371,6 +373,10 @@ func (app *cli) newAdminCmd() *cobra.Command {
 		Short: "Infrastructure administration commands",
 	}
 	cmd.AddCommand(app.newAdminHostCmd())
+	cmd.AddCommand(app.newAdminStorageDomainCmd())
+	cmd.AddCommand(app.newAdminNetworkDomainCmd())
+	cmd.AddCommand(app.newAdminLocationCmd())
+	cmd.AddCommand(app.newAdminComputePoolCmd())
 	return cmd
 }
 
@@ -592,7 +598,430 @@ func (app *cli) newHostDeleteCmd() *cobra.Command {
 	}
 }
 
+// --- Admin: Storage Domain commands ---
+
+func (app *cli) newAdminStorageDomainCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "storage-domain",
+		Aliases: []string{"sd"},
+		Short:   "Manage storage domains",
+	}
+	cmd.AddCommand(app.newStorageDomainCreateCmd())
+	cmd.AddCommand(app.newStorageDomainListCmd())
+	cmd.AddCommand(app.newStorageDomainShowCmd())
+	return cmd
+}
+
+func (app *cli) newStorageDomainCreateCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "create <name>",
+		Short: "Create a new storage domain",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			d, err := app.newClient().CreateStorageDomain(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NAME", "CREATED"},
+				[][]string{storageDomainRow(d)},
+			)
+		},
+	}
+}
+
+func (app *cli) newStorageDomainListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List all storage domains",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			domains, err := app.newClient().ListStorageDomains(ctx)
+			if err != nil {
+				return err
+			}
+			rows := make([][]string, len(domains))
+			for i := range domains {
+				rows[i] = storageDomainRow(&domains[i])
+			}
+			return app.printTable(
+				[]string{"ID", "NAME", "CREATED"},
+				rows,
+			)
+		},
+	}
+}
+
+func (app *cli) newStorageDomainShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show <id-or-name>",
+		Short: "Show storage domain details",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			id, err := c.ResolveStorageDomain(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			d, err := c.GetStorageDomain(ctx, id)
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NAME", "CREATED"},
+				[][]string{storageDomainRow(d)},
+			)
+		},
+	}
+}
+
+// --- Admin: Network Domain commands ---
+
+func (app *cli) newAdminNetworkDomainCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "network-domain",
+		Aliases: []string{"nd"},
+		Short:   "Manage network domains",
+	}
+	cmd.AddCommand(app.newNetworkDomainCreateCmd())
+	cmd.AddCommand(app.newNetworkDomainListCmd())
+	cmd.AddCommand(app.newNetworkDomainShowCmd())
+	return cmd
+}
+
+func (app *cli) newNetworkDomainCreateCmd() *cobra.Command {
+	var ovnNB string
+	cmd := &cobra.Command{
+		Use:   "create <name>",
+		Short: "Create a new network domain",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			d, err := app.newClient().CreateNetworkDomain(ctx, args[0], ovnNB)
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NAME", "OVN_NB_CONNECTION", "CREATED"},
+				[][]string{networkDomainRow(d)},
+			)
+		},
+	}
+	cmd.Flags().StringVar(&ovnNB, "ovn-nb-connection", "", "OVN Northbound DB connection string (required)")
+	_ = cmd.MarkFlagRequired("ovn-nb-connection")
+	return cmd
+}
+
+func (app *cli) newNetworkDomainListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List all network domains",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			domains, err := app.newClient().ListNetworkDomains(ctx)
+			if err != nil {
+				return err
+			}
+			rows := make([][]string, len(domains))
+			for i := range domains {
+				rows[i] = networkDomainRow(&domains[i])
+			}
+			return app.printTable(
+				[]string{"ID", "NAME", "OVN_NB_CONNECTION", "CREATED"},
+				rows,
+			)
+		},
+	}
+}
+
+func (app *cli) newNetworkDomainShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show <id-or-name>",
+		Short: "Show network domain details",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			id, err := c.ResolveNetworkDomain(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			d, err := c.GetNetworkDomain(ctx, id)
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NAME", "OVN_NB_CONNECTION", "CREATED"},
+				[][]string{networkDomainRow(d)},
+			)
+		},
+	}
+}
+
+// --- Admin: Location commands ---
+
+func (app *cli) newAdminLocationCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "location",
+		Aliases: []string{"loc"},
+		Short:   "Manage locations",
+	}
+	cmd.AddCommand(app.newLocationCreateCmd())
+	cmd.AddCommand(app.newLocationListCmd())
+	cmd.AddCommand(app.newLocationShowCmd())
+	cmd.AddCommand(app.newLocationPathCmd())
+	cmd.AddCommand(app.newLocationTreeCmd())
+	return cmd
+}
+
+func (app *cli) newLocationCreateCmd() *cobra.Command {
+	var parentID string
+	var locType string
+	var faultAttrs string
+	cmd := &cobra.Command{
+		Use:   "create <name>",
+		Short: "Create a new location",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+
+			var pID *uuid.UUID
+			if parentID != "" {
+				resolved, err := c.ResolveLocation(ctx, parentID)
+				if err != nil {
+					return err
+				}
+				pID = &resolved
+			}
+
+			var fa []byte
+			if faultAttrs != "" {
+				fa = []byte(faultAttrs)
+			}
+
+			loc, err := c.CreateLocation(ctx, pID, args[0], locType, fa)
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "PARENT_ID", "NAME", "TYPE", "CREATED"},
+				[][]string{locationRow(loc)},
+			)
+		},
+	}
+	cmd.Flags().StringVar(&parentID, "parent", "", "Parent location (ID or name)")
+	cmd.Flags().StringVar(&locType, "type", "", "Location type (site, floor, row, rack, unit) (required)")
+	cmd.Flags().StringVar(&faultAttrs, "fault-attributes", "", "Fault attributes as JSON")
+	_ = cmd.MarkFlagRequired("type")
+	return cmd
+}
+
+func (app *cli) newLocationListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List all locations",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			locations, err := app.newClient().ListLocations(ctx)
+			if err != nil {
+				return err
+			}
+			rows := make([][]string, len(locations))
+			for i := range locations {
+				rows[i] = locationRow(&locations[i])
+			}
+			return app.printTable(
+				[]string{"ID", "PARENT_ID", "NAME", "TYPE", "CREATED"},
+				rows,
+			)
+		},
+	}
+}
+
+func (app *cli) newLocationShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show <id-or-name>",
+		Short: "Show location details",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			id, err := c.ResolveLocation(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			loc, err := c.GetLocation(ctx, id)
+			if err != nil {
+				return err
+			}
+			return app.printDetail(loc, locationDetailKV(loc)...)
+		},
+	}
+}
+
+func (app *cli) newLocationPathCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "path <id-or-name>",
+		Short: "Show path from root to location",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			id, err := c.ResolveLocation(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			path, err := c.GetLocationPath(ctx, id)
+			if err != nil {
+				return err
+			}
+			rows := make([][]string, len(path))
+			for i := range path {
+				rows[i] = locationRow(&path[i])
+			}
+			return app.printTable(
+				[]string{"ID", "PARENT_ID", "NAME", "TYPE", "CREATED"},
+				rows,
+			)
+		},
+	}
+}
+
+func (app *cli) newLocationTreeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "tree <id-or-name>",
+		Short: "Show location subtree",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			id, err := c.ResolveLocation(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			tree, err := c.GetLocationTree(ctx, id)
+			if err != nil {
+				return err
+			}
+			if app.output == "json" {
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(tree)
+			}
+			printLocationTree(tree, "")
+			return nil
+		},
+	}
+}
+
+func printLocationTree(loc *topology.Location, indent string) {
+	fmt.Printf("%s%s (%s) [%s]\n", indent, loc.Name, loc.Type, loc.ID)
+	for _, child := range loc.Children {
+		printLocationTree(child, indent+"  ")
+	}
+}
+
+// --- Admin: Compute Pool commands ---
+
+func (app *cli) newAdminComputePoolCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "compute-pool",
+		Aliases: []string{"cp"},
+		Short:   "Query compute pools (derived)",
+	}
+	cmd.AddCommand(app.newComputePoolGetCmd())
+	return cmd
+}
+
+func (app *cli) newComputePoolGetCmd() *cobra.Command {
+	var sd, nd string
+	cmd := &cobra.Command{
+		Use:   "get",
+		Short: "Get compute pool (intersection of storage and network domain)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			sdID, err := c.ResolveStorageDomain(ctx, sd)
+			if err != nil {
+				return err
+			}
+			ndID, err := c.ResolveNetworkDomain(ctx, nd)
+			if err != nil {
+				return err
+			}
+			pool, err := c.GetComputePool(ctx, sdID, ndID)
+			if err != nil {
+				return err
+			}
+			if app.output == "json" {
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(pool)
+			}
+			fmt.Printf("Storage Domain:  %s (%s)\n", pool.StorageDomainName, pool.StorageDomainID)
+			fmt.Printf("Network Domain:  %s (%s)\n", pool.NetworkDomainName, pool.NetworkDomainID)
+			fmt.Printf("Host Count:      %d\n", pool.Count)
+			if pool.Count > 0 {
+				ids := make([]string, len(pool.HostIDs))
+				for i, id := range pool.HostIDs {
+					ids[i] = id.String()
+				}
+				fmt.Printf("Host IDs:        %s\n", strings.Join(ids, ", "))
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&sd, "storage-domain", "", "Storage domain (ID or name) (required)")
+	cmd.Flags().StringVar(&nd, "network-domain", "", "Network domain (ID or name) (required)")
+	_ = cmd.MarkFlagRequired("storage-domain")
+	_ = cmd.MarkFlagRequired("network-domain")
+	return cmd
+}
+
 // --- Row builders ---
+
+func storageDomainRow(d *topology.StorageDomain) []string {
+	return []string{d.ID.String(), d.Name, d.CreatedAt.Format("2006-01-02 15:04:05")}
+}
+
+func networkDomainRow(d *topology.NetworkDomain) []string {
+	return []string{d.ID.String(), d.Name, d.OVNNBConnection, d.CreatedAt.Format("2006-01-02 15:04:05")}
+}
+
+func locationRow(l *topology.Location) []string {
+	parentID := "-"
+	if l.ParentID != nil {
+		parentID = l.ParentID.String()
+	}
+	return []string{l.ID.String(), parentID, l.Name, string(l.Type), l.CreatedAt.Format("2006-01-02 15:04:05")}
+}
+
+func locationDetailKV(l *topology.Location) []string {
+	parentID := "-"
+	if l.ParentID != nil {
+		parentID = l.ParentID.String()
+	}
+	fa := "-"
+	if len(l.FaultAttributes) > 0 {
+		fa = string(l.FaultAttributes)
+	}
+	return []string{
+		"ID", l.ID.String(),
+		"Parent ID", parentID,
+		"Name", l.Name,
+		"Type", string(l.Type),
+		"Fault Attributes", fa,
+		"Created", l.CreatedAt.Format("2006-01-02 15:04:05"),
+		"Updated", l.UpdatedAt.Format("2006-01-02 15:04:05"),
+	}
+}
 
 func hostRow(h *host.Host) []string {
 	heartbeat := "-"

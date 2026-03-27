@@ -24,6 +24,7 @@ import (
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/network/ovn"
 	"github.com/tjst-t/cirrus/internal/state"
+	"github.com/tjst-t/cirrus/internal/topology"
 )
 
 func main() {
@@ -131,8 +132,11 @@ func runController(cfg *config.ControllerConfig) error {
 	// Host service
 	hostSvc := host.NewStore(pool)
 
+	// Topology service
+	topologySvc := topology.NewStore(pool)
+
 	// HTTP API
-	router := api.NewRouter(pool, logger, authn, authz, identitySvc, hostSvc)
+	router := api.NewRouter(pool, logger, authn, authz, identitySvc, hostSvc, topologySvc)
 	httpSrv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.APIPort),
 		Handler: router,
