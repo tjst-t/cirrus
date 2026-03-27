@@ -53,9 +53,11 @@ serve: build
 	@$(MAKE) --no-print-directory _start-sim
 	@# ── 4. Start controller ──
 	@$(MAKE) --no-print-directory _start-controller
-	@# ── 5. Start workers (self-register via registration token) ──
+	@# ── 5. Seed topology (domains + locations for dev) ──
+	@$(MAKE) --no-print-directory _seed-topology
+	@# ── 6. Start workers (self-register with topology declaration) ──
 	@$(MAKE) --no-print-directory _start-workers
-	@# ── 6. Activate all registered hosts (dev convenience) ──
+	@# ── 7. Activate all registered hosts (dev convenience) ──
 	@$(MAKE) --no-print-directory _activate-hosts
 	@echo ""
 	@echo "  All services running. Use 'make logs' to view controller logs."
@@ -182,6 +184,37 @@ _start-controller:
 	  echo $$! > $(PID_CONTROLLER); \
 	  echo "    PID: $$(cat $(PID_CONTROLLER))"'
 
+# ── Internal: seed topology (dev convenience) ──
+
+_seed-topology:
+	@bash -c '\
+	  set -a; source $(PORTMAN_ENV); set +a; \
+	  echo "==> Waiting for controller API..."; \
+	  for i in $$(seq 1 30); do \
+	    curl -sf http://localhost:$$API_PORT/healthz >/dev/null 2>&1 && break; \
+	    sleep 0.5; \
+	  done; \
+	  curl -sf http://localhost:$$API_PORT/healthz >/dev/null 2>&1 \
+	    || { echo "ERROR: Controller API not ready"; exit 1; }; \
+	  TOKEN="$(firstword $(subst =, ,$(AUTH_TOKENS)))"; \
+	  echo "==> Seeding topology (storage-domain, network-domain, location)..."; \
+	  curl -sf -X POST \
+	    -H "Authorization: Bearer $$TOKEN" \
+	    -H "Content-Type: application/json" \
+	    -d "{\"name\":\"default-sd\"}" \
+	    http://localhost:$$API_PORT/api/v1/storage-domains >/dev/null 2>&1 || true; \
+	  curl -sf -X POST \
+	    -H "Authorization: Bearer $$TOKEN" \
+	    -H "Content-Type: application/json" \
+	    -d "{\"name\":\"default-nd\",\"ovn_nb_connection\":\"tcp:localhost:'$$SIM_OVN_PORT'\"}" \
+	    http://localhost:$$API_PORT/api/v1/network-domains >/dev/null 2>&1 || true; \
+	  curl -sf -X POST \
+	    -H "Authorization: Bearer $$TOKEN" \
+	    -H "Content-Type: application/json" \
+	    -d "{\"name\":\"default-site\",\"type\":\"site\"}" \
+	    http://localhost:$$API_PORT/api/v1/locations >/dev/null 2>&1 || true; \
+	  echo "    Topology seeded."'
+
 # ── Internal: activate all registered hosts (dev convenience) ──
 
 _activate-hosts:
@@ -231,6 +264,9 @@ _start-workers:
 	      --controller="localhost:$$GRPC_PORT" \
 	      --registration-token="$(REGISTRATION_TOKEN)" \
 	      --libvirt-uri="tcp://localhost:$$LIBVIRT_PORT" \
+	      --network-domain="default-nd" \
+	      --storage-domains="default-sd" \
+	      --location="default-site" \
 	      > $(LOG_WORKER_DIR)/$$HOST_ID.log 2>&1 & \
 	    echo $$! > $(PID_WORKER_DIR)/$$HOST_ID.pid; \
 	  done; \

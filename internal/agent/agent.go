@@ -39,9 +39,16 @@ func New(controllerAddr, hostID string, logger *slog.Logger, driver hypervisor.D
 	}, nil
 }
 
+// TopologyDeclaration holds the topology information a worker declares at registration.
+type TopologyDeclaration struct {
+	NetworkDomain  string
+	StorageDomains []string
+	Location       string
+}
+
 // Register performs self-registration with the controller using the given token.
 // On success, it stores the assigned host UUID for use in subsequent heartbeats.
-func (a *Agent) Register(ctx context.Context, token, libvirtURI string) error {
+func (a *Agent) Register(ctx context.Context, token, libvirtURI string, topo *TopologyDeclaration) error {
 	// HOSTNAME_OVERRIDE allows multiple workers on the same machine (dev/sim)
 	hostname := os.Getenv("HOSTNAME_OVERRIDE")
 	if hostname == "" {
@@ -57,11 +64,18 @@ func (a *Agent) Register(ctx context.Context, token, libvirtURI string) error {
 
 	a.logger.Info("registering with controller", "hostname", hostname, "address", address)
 
-	resp, err := a.client.RegisterHost(ctx, &pb.RegisterHostRequest{
+	req := &pb.RegisterHostRequest{
 		RegistrationToken: token,
 		Hostname:          hostname,
 		Address:           address,
-	})
+	}
+	if topo != nil {
+		req.NetworkDomain = topo.NetworkDomain
+		req.StorageDomains = topo.StorageDomains
+		req.Location = topo.Location
+	}
+
+	resp, err := a.client.RegisterHost(ctx, req)
 	if err != nil {
 		return fmt.Errorf("agent: register: %w", err)
 	}

@@ -6,9 +6,11 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
 	"google.golang.org/grpc"
 
 	"github.com/tjst-t/cirrus/internal/host"
+	"github.com/tjst-t/cirrus/internal/topology"
 	pb "github.com/tjst-t/cirrus/proto/agentpb"
 )
 
@@ -16,15 +18,17 @@ import (
 type GRPCServer struct {
 	pb.UnimplementedControllerServiceServer
 	hostSvc           host.Service
+	topologySvc       topology.Service
 	logger            *slog.Logger
 	registrationToken string
 }
 
 // NewGRPCServer creates a new gRPC server with the ControllerService registered.
-func NewGRPCServer(logger *slog.Logger, hostSvc host.Service, registrationToken string) *grpc.Server {
+func NewGRPCServer(logger *slog.Logger, hostSvc host.Service, topologySvc topology.Service, registrationToken string) *grpc.Server {
 	srv := grpc.NewServer()
 	pb.RegisterControllerServiceServer(srv, &GRPCServer{
 		hostSvc:           hostSvc,
+		topologySvc:       topologySvc,
 		logger:            logger,
 		registrationToken: registrationToken,
 	})
@@ -60,11 +64,121 @@ func (s *GRPCServer) RegisterHost(ctx context.Context, req *pb.RegisterHostReque
 		"state", h.OperationalState,
 	)
 
+	// Apply topology declarations (best-effort: log warnings for invalid references)
+	if s.topologySvc != nil {
+		s.applyTopology(ctx, h.ID, req)
+	}
+
 	return &pb.RegisterHostResponse{
 		HostId:   h.ID.String(),
 		Accepted: true,
 		Message:  "registered",
 	}, nil
+}
+
+// applyTopology associates a host with declared topology resources.
+// Invalid references are logged as warnings but do not fail registration.
+func (s *GRPCServer) applyTopology(ctx context.Context, hostID uuid.UUID, req *pb.RegisterHostRequest) {
+	if req.NetworkDomain != "" {
+		ndID, err := s.resolveNetworkDomain(ctx, req.NetworkDomain)
+		if err != nil {
+			s.logger.Warn("topology: network domain not found, skipping",
+				"host_id", hostID, "network_domain", req.NetworkDomain, "error", err)
+		} else if err := s.topologySvc.SetHostNetworkDomain(ctx, hostID, ndID); err != nil {
+			s.logger.Warn("topology: failed to set network domain",
+				"host_id", hostID, "network_domain_id", ndID, "error", err)
+		} else {
+			s.logger.Info("topology: network domain set", "host_id", hostID, "network_domain_id", ndID)
+		}
+	}
+
+	for _, sd := range req.StorageDomains {
+		sdID, err := s.resolveStorageDomain(ctx, sd)
+		if err != nil {
+			s.logger.Warn("topology: storage domain not found, skipping",
+				"host_id", hostID, "storage_domain", sd, "error", err)
+			continue
+		}
+		if err := s.topologySvc.AssociateHostStorageDomain(ctx, hostID, sdID); err != nil {
+			s.logger.Warn("topology: failed to associate storage domain",
+				"host_id", hostID, "storage_domain_id", sdID, "error", err)
+		} else {
+			s.logger.Info("topology: storage domain associated", "host_id", hostID, "storage_domain_id", sdID)
+		}
+	}
+
+	if req.Location != "" {
+		locID, err := s.resolveLocation(ctx, req.Location)
+		if err != nil {
+			s.logger.Warn("topology: location not found, skipping",
+				"host_id", hostID, "location", req.Location, "error", err)
+		} else if err := s.topologySvc.SetHostLocation(ctx, hostID, locID); err != nil {
+			s.logger.Warn("topology: failed to set location",
+				"host_id", hostID, "location_id", locID, "error", err)
+		} else {
+			s.logger.Info("topology: location set", "host_id", hostID, "location_id", locID)
+		}
+	}
+}
+
+// resolveNetworkDomain resolves a name or UUID string to a network domain UUID.
+func (s *GRPCServer) resolveNetworkDomain(ctx context.Context, nameOrID string) (uuid.UUID, error) {
+	if id, err := uuid.Parse(nameOrID); err == nil {
+		if _, err := s.topologySvc.GetNetworkDomain(ctx, id); err != nil {
+			return uuid.Nil, err
+		}
+		return id, nil
+	}
+	domains, err := s.topologySvc.ListNetworkDomains(ctx)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	for _, d := range domains {
+		if d.Name == nameOrID {
+			return d.ID, nil
+		}
+	}
+	return uuid.Nil, topology.ErrNotFound
+}
+
+// resolveStorageDomain resolves a name or UUID string to a storage domain UUID.
+func (s *GRPCServer) resolveStorageDomain(ctx context.Context, nameOrID string) (uuid.UUID, error) {
+	if id, err := uuid.Parse(nameOrID); err == nil {
+		if _, err := s.topologySvc.GetStorageDomain(ctx, id); err != nil {
+			return uuid.Nil, err
+		}
+		return id, nil
+	}
+	domains, err := s.topologySvc.ListStorageDomains(ctx)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	for _, d := range domains {
+		if d.Name == nameOrID {
+			return d.ID, nil
+		}
+	}
+	return uuid.Nil, topology.ErrNotFound
+}
+
+// resolveLocation resolves a name or UUID string to a location UUID.
+func (s *GRPCServer) resolveLocation(ctx context.Context, nameOrID string) (uuid.UUID, error) {
+	if id, err := uuid.Parse(nameOrID); err == nil {
+		if _, err := s.topologySvc.GetLocation(ctx, id); err != nil {
+			return uuid.Nil, err
+		}
+		return id, nil
+	}
+	locations, err := s.topologySvc.ListLocations(ctx)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	for _, l := range locations {
+		if l.Name == nameOrID {
+			return l.ID, nil
+		}
+	}
+	return uuid.Nil, topology.ErrNotFound
 }
 
 // Heartbeat receives heartbeat from a worker.

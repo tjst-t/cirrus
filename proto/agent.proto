@@ -18,6 +18,10 @@ message RegisterHostRequest {
   string hostname = 2;
   string address = 3;
   string capability = 4; // JSON-encoded capability
+  // Topology self-declaration (optional; validated against existing domains)
+  string network_domain = 5;          // network domain name or ID
+  repeated string storage_domains = 6; // storage domain names or IDs
+  string location = 7;                // location name or ID
 }
 
 message RegisterHostResponse {

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -79,6 +80,9 @@ func newWorkerCmd() *cobra.Command {
 	f.StringVar(&cfg.RegistrationToken, "registration-token", "", "Registration token for self-registration")
 	f.IntVar(&cfg.HeartbeatInterval, "heartbeat-interval", 10, "Heartbeat interval in seconds")
 	f.StringVar(&cfg.LogLevel, "log-level", "info", "Log level (debug, info, warn, error)")
+	f.StringVar(&cfg.NetworkDomain, "network-domain", "", "Network domain to join (name or ID)")
+	f.StringVar(&cfg.StorageDomains, "storage-domains", "", "Comma-separated storage domains to join")
+	f.StringVar(&cfg.Location, "location", "", "Location in the topology tree (name or ID)")
 	return cmd
 }
 
@@ -143,7 +147,7 @@ func runController(cfg *config.ControllerConfig) error {
 	}
 
 	// gRPC
-	grpcSrv := controller.NewGRPCServer(logger, hostSvc, cfg.RegistrationToken)
+	grpcSrv := controller.NewGRPCServer(logger, hostSvc, topologySvc, cfg.RegistrationToken)
 	grpcLis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
 	if err != nil {
 		return fmt.Errorf("controller: grpc listen: %w", err)
@@ -210,7 +214,22 @@ func runWorker(cfg *config.WorkerConfig) error {
 
 	// Self-registration: if registration token is provided, register before heartbeat
 	if cfg.RegistrationToken != "" {
-		if err := ag.Register(ctx, cfg.RegistrationToken, cfg.LibvirtURI); err != nil {
+		var topo *agent.TopologyDeclaration
+		if cfg.NetworkDomain != "" || cfg.StorageDomains != "" || cfg.Location != "" {
+			topo = &agent.TopologyDeclaration{
+				NetworkDomain: cfg.NetworkDomain,
+				Location:      cfg.Location,
+			}
+			if cfg.StorageDomains != "" {
+				for _, sd := range strings.Split(cfg.StorageDomains, ",") {
+					sd = strings.TrimSpace(sd)
+					if sd != "" {
+						topo.StorageDomains = append(topo.StorageDomains, sd)
+					}
+				}
+			}
+		}
+		if err := ag.Register(ctx, cfg.RegistrationToken, cfg.LibvirtURI, topo); err != nil {
 			return fmt.Errorf("worker: registration failed: %w", err)
 		}
 	}

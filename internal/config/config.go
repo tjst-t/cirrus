@@ -27,6 +27,9 @@ type WorkerConfig struct {
 	RegistrationToken  string `yaml:"registration_token"`  // shared secret for self-registration
 	HeartbeatInterval  int    `yaml:"heartbeat_interval"`  // heartbeat interval in seconds
 	LogLevel           string `yaml:"log_level"`           // debug, info, warn, error
+	NetworkDomain      string `yaml:"network_domain"`      // network domain to join (name or ID)
+	StorageDomains     string `yaml:"storage_domains"`     // comma-separated storage domains to join
+	Location           string `yaml:"location"`            // location in the topology tree (name or ID)
 }
 
 // ParseAuthTokens parses the auth-tokens flag value into a map of token→externalID.
