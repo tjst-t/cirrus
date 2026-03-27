@@ -12,6 +12,31 @@
 
 ## ホストライフサイクル
 
+### 登録フロー
+
+workerがcontrollerに自己登録する push 型の方式を採用する。
+
+```
+1. 管理者が物理サーバに worker をインストール
+   → 設定ファイルに controller アドレス + 登録トークンを記述
+
+2. worker 起動
+   → controller に gRPC 接続
+   → RegisterHost RPC で自ホスト情報を通知（hostname, address, capability）
+   → controller がトークン検証 → DB に registering 状態で登録
+   → 割り当てられた UUID を worker に返却
+
+3. worker は UUID で heartbeat 送信を開始
+
+4. 管理者が承認
+   → cirrusctl admin host activate <name>
+   → registering → active（VM配置対象になる）
+```
+
+- 登録トークンは共有シークレット（将来的にmTLS移行可能な設計）
+- 同一ホスト名での重複登録は冪等（既存UUIDを返す）
+- 未登録・未承認のホストはスケジューラの配置対象外
+
 ### 状態一覧
 
 | 状態 | 意味 | VM配置 | 既存VM |
