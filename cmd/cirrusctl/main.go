@@ -380,10 +380,35 @@ func (app *cli) newAdminHostCmd() *cobra.Command {
 		Use:   "host",
 		Short: "Manage hosts",
 	}
+	cmd.AddCommand(app.newHostCreateCmd())
 	cmd.AddCommand(app.newHostListCmd())
 	cmd.AddCommand(app.newHostShowCmd())
-	cmd.AddCommand(app.newHostMaintenanceCmd())
 	cmd.AddCommand(app.newHostActivateCmd())
+	cmd.AddCommand(app.newHostMaintenanceCmd())
+	cmd.AddCommand(app.newHostDrainCmd())
+	cmd.AddCommand(app.newHostRetireCmd())
+	return cmd
+}
+
+func (app *cli) newHostCreateCmd() *cobra.Command {
+	var address string
+	cmd := &cobra.Command{
+		Use:   "create <name>",
+		Short: "Register a new host",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			h, err := app.newClient().CreateHost(ctx, nil, args[0], address)
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NAME", "ADDRESS", "STATE", "LAST_HEARTBEAT"},
+				[][]string{hostRow(h)},
+			)
+		},
+	}
+	cmd.Flags().StringVar(&address, "address", "", "Host address")
 	return cmd
 }
 
@@ -471,6 +496,54 @@ func (app *cli) newHostActivateCmd() *cobra.Command {
 				return err
 			}
 			h, err := c.HostAction(ctx, id, "activate")
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NAME", "ADDRESS", "STATE", "LAST_HEARTBEAT"},
+				[][]string{hostRow(h)},
+			)
+		},
+	}
+}
+
+func (app *cli) newHostDrainCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "drain <id-or-name>",
+		Short: "Drain a host (prepare for maintenance)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			id, err := c.ResolveHost(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			h, err := c.HostAction(ctx, id, "drain")
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NAME", "ADDRESS", "STATE", "LAST_HEARTBEAT"},
+				[][]string{hostRow(h)},
+			)
+		},
+	}
+}
+
+func (app *cli) newHostRetireCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "retire <id-or-name>",
+		Short: "Retire a host (mark for decommission)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			id, err := c.ResolveHost(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			h, err := c.HostAction(ctx, id, "retire")
 			if err != nil {
 				return err
 			}
