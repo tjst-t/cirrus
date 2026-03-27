@@ -19,11 +19,13 @@ workerがcontrollerに自己登録する push 型の方式を採用する。
 ```
 1. 管理者が物理サーバに worker をインストール
    → 設定ファイルに controller アドレス + 登録トークンを記述
+   → トポロジ情報（network-domain, storage-domains, location）も設定
 
 2. worker 起動
    → controller に gRPC 接続
-   → RegisterHost RPC で自ホスト情報を通知（hostname, address, capability）
+   → RegisterHost RPC で自ホスト情報 + トポロジ申告を送信
    → controller がトークン検証 → DB に registering 状態で登録
+   → 初回登録時のみ、申告されたトポロジを自動関連付け（best-effort）
    → 割り当てられた UUID を worker に返却
 
 3. worker は UUID で heartbeat 送信を開始
@@ -36,6 +38,36 @@ workerがcontrollerに自己登録する push 型の方式を採用する。
 - 登録トークンは共有シークレット（将来的にmTLS移行可能な設計）
 - 同一ホスト名での重複登録は冪等（既存UUIDを返す）
 - 未登録・未承認のホストはスケジューラの配置対象外
+- **トポロジ申告は初回登録時のみ適用**。再登録（worker再起動）時は既存の関連付けを保持し、管理者がAPIで修正した設定を上書きしない
+- 管理者はいつでもAPI/CLIでトポロジ関連付けを修正可能
+
+### 実運用でのデプロイフロー
+
+実運用では NetBox（CMDB）をトポロジの信頼源とし、AWX/Ansible でホストをデプロイする。
+
+```
+NetBox (Source of Truth)
+  ├─ サイト・ラック定義        → Cirrus locations（定期同期 or webhook）
+  ├─ ストレージクラスタ定義    → Cirrus storage_domains
+  └─ ネットワーク区画定義      → Cirrus network_domains
+
+AWX (デプロイ自動化)
+  1. 物理サーバーをプロビジョニング
+  2. ネットワーク・ストレージを接続設定
+  3. cirrus worker をデプロイ・起動
+     └─ NetBoxから取得したトポロジ情報をworker起動パラメータに注入
+        --network-domain=nd-tokyo-1
+        --storage-domains=ceph-ssd-tokyo,ceph-hdd-tokyo
+        --location=rack-a-03-u12
+  4. Worker が自動登録 + トポロジ申告
+  5. 管理者が activate（または将来的な自動承認ポリシー）
+```
+
+ドメイン・ロケーション（インフラの「枠」）は管理者が定義し、ホストは起動時にどの枠に属するかを自己申告する。これにより:
+
+- ドメインの作成は少数かつ低頻度で、管理者が明示的に制御
+- ホストの追加は頻繁で、デプロイ自動化パイプラインに組み込める
+- トポロジの修正は管理者がいつでもAPI/CLIで上書き可能
 
 ### 状態一覧
 
