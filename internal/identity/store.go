@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -20,10 +21,14 @@ func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool}
 }
 
-// wrapErr converts pgx.ErrNoRows to ErrNotFound, wraps others.
+// wrapErr converts pgx errors to domain errors.
 func wrapErr(msg string, err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("%s: %w", msg, ErrNotFound)
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return fmt.Errorf("%s: %w", msg, ErrConflict)
 	}
 	return fmt.Errorf("%s: %w", msg, err)
 }

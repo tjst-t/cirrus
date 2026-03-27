@@ -40,6 +40,10 @@ func (h *identityHandlers) createOrganization(w http.ResponseWriter, r *http.Req
 
 	org, err := h.svc.CreateOrganization(r.Context(), req.Name)
 	if err != nil {
+		if errors.Is(err, identity.ErrConflict) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "organization with this name already exists"})
+			return
+		}
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create organization"})
 		return
 	}
@@ -124,6 +128,10 @@ func (h *identityHandlers) createTenant(w http.ResponseWriter, r *http.Request) 
 
 	tenant, err := h.svc.CreateTenant(r.Context(), orgID, req.Name)
 	if err != nil {
+		if errors.Is(err, identity.ErrConflict) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "tenant with this name already exists"})
+			return
+		}
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create tenant"})
 		return
 	}

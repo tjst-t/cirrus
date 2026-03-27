@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 // Client is an HTTP API client for the Cirrus controller.
@@ -21,7 +22,7 @@ func New(endpoint, token string) *Client {
 	return &Client{
 		endpoint:   endpoint,
 		token:      token,
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 

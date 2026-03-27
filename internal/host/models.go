@@ -19,6 +19,15 @@ const (
 	StateRetiring    OperationalState = "retiring"
 )
 
+// IsValidOperationalState returns true if the given state is a known operational state.
+func IsValidOperationalState(s OperationalState) bool {
+	switch s {
+	case StateRegistering, StateActive, StateMaintenance, StateDraining, StateFaulty, StateRetiring:
+		return true
+	}
+	return false
+}
+
 // Host represents a physical compute host managed by Cirrus.
 type Host struct {
 	ID               uuid.UUID        `json:"id"`
