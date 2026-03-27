@@ -4,7 +4,6 @@
 
 CIRRUS_SIM_DIR   ?= $(shell cd .. && pwd)/cirrus-sim
 CIRRUS_SIM_ENV   ?= small
-DB_DSN           ?= postgres://cirrus:cirrus@localhost:5432/cirrus?sslmode=disable
 AUTH_TOKENS      ?= dev-token=dev-admin
 REGISTRATION_TOKEN ?= dev-registration-token
 
@@ -50,15 +49,13 @@ serve: build
 	@$(MAKE) --no-print-directory _stop-all
 	@# ── 2. Allocate all ports ──
 	@$(MAKE) --no-print-directory _alloc-ports
-	@# ── 3. Start cirrus-sim ──
+	@# ── 3. Start cirrus-sim (includes embedded PostgreSQL) ──
 	@$(MAKE) --no-print-directory _start-sim
-	@# ── 4. Start PostgreSQL ──
-	@$(MAKE) --no-print-directory _start-db
-	@# ── 5. Start controller ──
+	@# ── 4. Start controller ──
 	@$(MAKE) --no-print-directory _start-controller
-	@# ── 6. Start workers (self-register via registration token) ──
+	@# ── 5. Start workers (self-register via registration token) ──
 	@$(MAKE) --no-print-directory _start-workers
-	@# ── 7. Activate all registered hosts (dev convenience) ──
+	@# ── 6. Activate all registered hosts (dev convenience) ──
 	@$(MAKE) --no-print-directory _activate-hosts
 	@echo ""
 	@echo "  All services running. Use 'make logs' to view controller logs."
@@ -95,7 +92,7 @@ _stop-all:
 	  fi; \
 	  rm -f $(PID_CONTROLLER); \
 	fi
-	@# Stop cirrus-sim
+	@# Stop cirrus-sim (includes embedded PostgreSQL)
 	@if [ -f $(PID_SIM) ]; then \
 	  PID=$$(cat $(PID_SIM)); \
 	  if kill -0 $$PID 2>/dev/null; then \
@@ -119,6 +116,8 @@ _alloc-ports:
 	  --name sim-awx \
 	  --name sim-netbox \
 	  --name sim-storage \
+	  --name sim-postgres \
+	  --name sim-postgres-mgmt \
 	  --range sim-libvirt-hosts=20 \
 	  --range sim-ovn-clusters=5 \
 	  --name api:expose \
@@ -144,6 +143,8 @@ _start-sim:
 	    -awx=$$SIM_AWX_PORT \
 	    -netbox=$$SIM_NETBOX_PORT \
 	    -storage=$$SIM_STORAGE_PORT \
+	    -postgres=$$SIM_POSTGRES_PORT \
+	    -postgres-mgmt=$$SIM_POSTGRES_MGMT_PORT \
 	    -env=$(CIRRUS_SIM_DIR)/environments/$(CIRRUS_SIM_ENV).yaml \
 	    > $(LOG_SIM) 2>&1 & \
 	  echo $$! > $(PID_SIM); \
@@ -159,21 +160,17 @@ _start-sim:
 	    && echo "    cirrus-sim is ready." \
 	    || { echo "ERROR: cirrus-sim failed to start. Check $(LOG_SIM)"; exit 1; }'
 
-# ── Internal: check PostgreSQL ──
-
-_start-db:
-	@echo "==> PostgreSQL: $(DB_DSN)"
-
 # ── Internal: start controller ──
 
 _start-controller:
 	@bash -c '\
 	  set -a; source $(PORTMAN_ENV); set +a; \
-	  echo "==> Starting controller (API: $$API_PORT, gRPC: $$GRPC_PORT, log: $(LOG_CONTROLLER))"; \
+	  DB_DSN="postgresql://cirrus:cirrus@localhost:$$SIM_POSTGRES_PORT/cirrus?sslmode=disable"; \
+	  echo "==> Starting controller (API: $$API_PORT, gRPC: $$GRPC_PORT, DB: $$DB_DSN, log: $(LOG_CONTROLLER))"; \
 	  nohup ./bin/cirrus controller \
 	    --api-port=$$API_PORT \
 	    --grpc-port=$$GRPC_PORT \
-	    --db-dsn="$(DB_DSN)" \
+	    --db-dsn="$$DB_DSN" \
 	    --ovn-nb="tcp:localhost:$$SIM_OVN_PORT" \
 	    --storage-endpoint="http://localhost:$$SIM_STORAGE_PORT" \
 	    --awx-endpoint="http://localhost:$$SIM_AWX_PORT" \
@@ -263,8 +260,11 @@ clean-dev:
 # ── Database ──
 
 reset-db:
-	@echo "==> Resetting database (DROP + CREATE schema)..."
-	@go run ./cmd/internal/resetdb "$(DB_DSN)"
-	@echo "    Database reset OK."
+	@bash -c '\
+	  set -a; source $(PORTMAN_ENV); set +a; \
+	  DB_DSN="postgresql://cirrus:cirrus@localhost:$$SIM_POSTGRES_PORT/cirrus?sslmode=disable"; \
+	  echo "==> Resetting database (DROP + CREATE schema)..."; \
+	  go run ./cmd/internal/resetdb "$$DB_DSN"; \
+	  echo "    Database reset OK."'
 
 fresh: stop reset-db serve
