@@ -70,15 +70,38 @@ func (s *Store) RegisterOrGet(ctx context.Context, name, address, capability str
 	if capability == "" {
 		cap = []byte("{}")
 	}
-	// INSERT ... ON CONFLICT: if hostname already exists and still in registering state,
-	// update address/capability. If already activated (non-registering), just return existing row.
+
+	// First, try to find an existing host with this name.
 	err := s.pool.QueryRow(ctx,
+		`SELECT id, name, address, operational_state, capability, resource_physical,
+		        overcommit_ratios, resource_used, last_heartbeat, created_at, updated_at
+		 FROM hosts WHERE name = $1`, name,
+	).Scan(&h.ID, &h.Name, &h.Address, &h.OperationalState, &h.Capability,
+		&h.ResourcePhysical, &h.OvercommitRatios, &h.ResourceUsed,
+		&h.LastHeartbeat, &h.CreatedAt, &h.UpdatedAt)
+
+	if err == nil {
+		// Host exists. If already activated and address differs, reject (different machine).
+		if h.OperationalState != StateRegistering && h.Address != address {
+			return nil, fmt.Errorf("host: register_or_get: hostname %q already registered from different address (%s): %w",
+				name, h.Address, ErrConflict)
+		}
+		// Same host re-registering: update address/capability if still registering.
+		if h.OperationalState == StateRegistering {
+			_, _ = s.pool.Exec(ctx,
+				`UPDATE hosts SET address = $1, capability = $2, updated_at = now() WHERE id = $3`,
+				address, cap, h.ID)
+			h.Address = address
+			h.Capability = cap
+		}
+		return &h, nil
+	}
+
+	// Host does not exist: create new.
+	err = s.pool.QueryRow(ctx,
 		`INSERT INTO hosts (name, address, operational_state, capability)
 		 VALUES ($1, $2, 'registering', $3)
-		 ON CONFLICT (name) DO UPDATE
-		   SET address = CASE WHEN hosts.operational_state = 'registering' THEN EXCLUDED.address ELSE hosts.address END,
-		       capability = CASE WHEN hosts.operational_state = 'registering' THEN EXCLUDED.capability ELSE hosts.capability END,
-		       updated_at = now()
+		 ON CONFLICT (name) DO UPDATE SET updated_at = now()
 		 RETURNING id, name, address, operational_state, capability, resource_physical,
 		           overcommit_ratios, resource_used, last_heartbeat, created_at, updated_at`,
 		name, address, cap,
