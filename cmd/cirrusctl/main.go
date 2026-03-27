@@ -387,6 +387,7 @@ func (app *cli) newAdminHostCmd() *cobra.Command {
 	cmd.AddCommand(app.newHostMaintenanceCmd())
 	cmd.AddCommand(app.newHostDrainCmd())
 	cmd.AddCommand(app.newHostRetireCmd())
+	cmd.AddCommand(app.newHostDeleteCmd())
 	return cmd
 }
 
@@ -548,6 +549,26 @@ func (app *cli) newHostRetireCmd() *cobra.Command {
 				[]string{"ID", "NAME", "ADDRESS", "STATE", "LAST_HEARTBEAT"},
 				[][]string{hostRow(h)},
 			)
+		},
+	}
+}
+
+func (app *cli) newHostDeleteCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete <id-or-name>",
+		Short: "Delete a host (must be in retiring state)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			id, err := c.ResolveHost(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			if err := c.DeleteHost(ctx, id); err != nil {
+				return err
+			}
+			return app.printStatus("Deleted", "host", id.String())
 		},
 	}
 }

@@ -72,6 +72,36 @@ func (h *hostHandlers) listHosts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, hosts)
 }
 
+func (h *hostHandlers) deleteHost(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "host_id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid host id"})
+		return
+	}
+
+	user := UserFromContext(r.Context())
+	decision, authErr := h.authz.Authorize(r.Context(), user, identity.ActionHostAction, identity.Resource{})
+	if authErr != nil || decision == identity.Deny {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	if err := h.svc.DeleteHost(r.Context(), id); err != nil {
+		if errors.Is(err, host.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "host not found"})
+			return
+		}
+		if errors.Is(err, host.ErrInvalidState) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete host"})
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *hostHandlers) getHost(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "host_id"))
 	if err != nil {

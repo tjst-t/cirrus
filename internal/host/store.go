@@ -103,6 +103,23 @@ func (s *Store) ListHosts(ctx context.Context) ([]Host, error) {
 	return hosts, rows.Err()
 }
 
+func (s *Store) DeleteHost(ctx context.Context, id uuid.UUID) error {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM hosts WHERE id = $1 AND operational_state = 'retiring'`, id)
+	if err != nil {
+		return fmt.Errorf("host: delete: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		// Check if host exists but is not in retiring state
+		var state string
+		err := s.pool.QueryRow(ctx, `SELECT operational_state FROM hosts WHERE id = $1`, id).Scan(&state)
+		if err != nil {
+			return fmt.Errorf("host: delete: %w", ErrNotFound)
+		}
+		return fmt.Errorf("host: delete: host is in %s state, must be retiring: %w", state, ErrInvalidState)
+	}
+	return nil
+}
+
 func (s *Store) UpdateCapability(ctx context.Context, hostID uuid.UUID, capability []byte) error {
 	tag, err := s.pool.Exec(ctx,
 		`UPDATE hosts SET capability = $1, updated_at = now() WHERE id = $2`,

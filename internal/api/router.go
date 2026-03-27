@@ -43,6 +43,7 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		r.Post("/hosts", hh.createHost)
 		r.Get("/hosts", hh.listHosts)
 		r.Get("/hosts/{host_id}", hh.getHost)
+		r.Delete("/hosts/{host_id}", hh.deleteHost)
 		r.Post("/hosts/{host_id}/actions", hh.hostAction)
 	})
 

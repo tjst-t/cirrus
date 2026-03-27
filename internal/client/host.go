@@ -65,6 +65,16 @@ func (c *Client) GetHost(ctx context.Context, id uuid.UUID) (*host.Host, error) 
 	return decodeResponse[*host.Host](resp)
 }
 
+// DeleteHost deletes a host (must be in retiring state).
+func (c *Client) DeleteHost(ctx context.Context, id uuid.UUID) error {
+	resp, err := c.do(ctx, "DELETE", fmt.Sprintf("/api/v1/hosts/%s", id), nil)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
 // HostAction performs an operational action on a host (maintenance, activate, drain, retire).
 func (c *Client) HostAction(ctx context.Context, id uuid.UUID, action string) (*host.Host, error) {
 	body := struct {

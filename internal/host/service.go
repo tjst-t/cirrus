@@ -13,6 +13,7 @@ type Service interface {
 	Register(ctx context.Context, id *uuid.UUID, name, address string) (*Host, error)
 	GetHost(ctx context.Context, id uuid.UUID) (*Host, error)
 	ListHosts(ctx context.Context) ([]Host, error)
+	DeleteHost(ctx context.Context, id uuid.UUID) error
 
 	// Capability and resource management
 	UpdateCapability(ctx context.Context, hostID uuid.UUID, capability []byte) error
