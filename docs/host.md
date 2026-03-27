@@ -10,6 +10,79 @@
 - **ロケーション** — 障害トポロジツリー上のパス
 - **稼働状態** — 正常、メンテナンス中、ドレイン中、障害中、退役予定等
 
+## ホストライフサイクル
+
+### 状態一覧
+
+| 状態 | 意味 | VM配置 | 既存VM |
+|------|------|--------|--------|
+| `registering` | 登録直後、初期セットアップ待ち | 不可 | なし |
+| `active` | 正常稼働中 | 可 | 稼働中 |
+| `draining` | 新規配置停止、既存VMの退避中 | 不可 | ライブマイグレーションで退避 |
+| `maintenance` | メンテナンス中（VM不在が前提） | 不可 | なし |
+| `faulty` | 障害検出（heartbeat途絶等） | 不可 | HA failover対象 |
+| `retiring` | 廃止予定、復帰不可 | 不可 | なし（VM不在が前提） |
+
+### 状態遷移図
+
+```
+                   POST /hosts
+                       │
+                       ▼
+               ┌──────────────┐
+               │ registering  │
+               └──────┬───────┘
+                      │ activate
+                      ▼
+               ┌──────────────┐
+          ┌───→│    active    │←──┐
+          │    └──┬───────┬───┘   │
+          │       │       │       │
+          │  drain│       │       │ activate
+          │       ▼       │       │
+          │  ┌──────────┐ │  ┌────┴────────┐
+          │  │ draining │ └─→│ maintenance │
+          │  └────┬─────┘    └─────────────┘
+          │       │ maintenance              ▲
+          │       │  (VM数=0で遷移)          │
+          │       └──────────────────────────┘
+          │
+          │ activate
+          │
+     ┌────┴─────┐
+     │  faulty  │  ← heartbeat途絶で自動遷移
+     └──────────┘
+
+               ┌──────────────┐
+               │   retiring   │  ← maintenance からのみ遷移可
+               └──────────────┘
+```
+
+### 遷移ルール
+
+| 遷移元 | 遷移先 | 条件 |
+|--------|--------|------|
+| `registering` | `active` | 初回heartbeat受信済み、プロファイル適用済み |
+| `active` | `draining` | 管理者操作 |
+| `active` | `maintenance` | 管理者操作（VMが0台の場合のみ） |
+| `active` | `faulty` | heartbeat途絶（3回連続タイムアウト） |
+| `draining` | `maintenance` | 稼働VM数が0になった時点で自動遷移 |
+| `draining` | `active` | 管理者操作（ドレイン取り消し） |
+| `draining` | `faulty` | heartbeat途絶 |
+| `maintenance` | `active` | 管理者操作 |
+| `maintenance` | `retiring` | 管理者操作 |
+| `faulty` | `active` | 管理者操作（障害復旧後） |
+| `faulty` | `maintenance` | 管理者操作（手動修理のため） |
+| `retiring` | ―（終端状態） | 復帰不可。VM配置・activate禁止 |
+
+### 制約
+
+- **draining中のVM配置禁止**: スケジューラがdraining状態のホストを候補から除外する
+- **maintenance遷移はVM不在が前提**: active→maintenanceは稼働VMが0台の場合のみ許可。VMがある場合はまずdrainを経由する
+- **retiring遷移はmaintenanceからのみ**: VMが確実に不在の状態からのみ廃止に移行できる
+- **faulty自動遷移**: controllerがheartbeat監視し、3回連続タイムアウト（デフォルト30秒無応答）で自動的にfaultyに遷移。faulty遷移時にHA failoverをトリガーする
+- **retiring は終端**: 一度retiringに入ったホストはactiveに戻せない。物理的な撤去後にDBから削除する
+
 ## Capability
 
 ホストのハードウェア能力を構造化データとして宣言する。VMの要件とcapability-based matchingで対応。
