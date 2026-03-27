@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -265,6 +266,13 @@ func (s *Store) GetLocationTree(ctx context.Context, id uuid.UUID) (*Location, e
 				parent.Children = append(parent.Children, loc)
 			}
 		}
+	}
+
+	// Sort children by name for deterministic output
+	for _, loc := range all {
+		sort.Slice(loc.Children, func(i, j int) bool {
+			return loc.Children[i].Name < loc.Children[j].Name
+		})
 	}
 
 	// Return updated root from map (with children populated)
