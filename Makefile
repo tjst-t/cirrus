@@ -200,10 +200,11 @@ _register-hosts:
 	  TOKEN="$(firstword $(subst =, ,$(AUTH_TOKENS)))"; \
 	  for i in $$(seq 0 $$((HOST_COUNT - 1))); do \
 	    HOST_ID=$$(echo "$$HOSTS" | jq -r ".[$${i}].host_id"); \
+	    LIBVIRT_PORT=$$(echo "$$HOSTS" | jq -r ".[$${i}].libvirt_port"); \
 	    curl -sf -X POST \
 	      -H "Authorization: Bearer $$TOKEN" \
 	      -H "Content-Type: application/json" \
-	      -d "{\"name\":\"$$HOST_ID\",\"address\":\"localhost\"}" \
+	      -d "{\"name\":\"$$HOST_ID\",\"address\":\"localhost:$$LIBVIRT_PORT\"}" \
 	      http://localhost:$$API_PORT/api/v1/hosts >/dev/null 2>&1 || true; \
 	  done; \
 	  echo "    Registered $$HOST_COUNT hosts"'

@@ -451,10 +451,7 @@ func (app *cli) newHostShowCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return app.printTable(
-				[]string{"ID", "NAME", "ADDRESS", "STATE", "LAST_HEARTBEAT"},
-				[][]string{hostRow(h)},
-			)
+			return app.printDetail(h, hostDetailKV(h)...)
 		},
 	}
 }
@@ -565,6 +562,26 @@ func hostRow(h *host.Host) []string {
 	return []string{h.ID.String(), h.Name, h.Address, string(h.OperationalState), heartbeat}
 }
 
+func hostDetailKV(h *host.Host) []string {
+	heartbeat := "-"
+	if h.LastHeartbeat != nil {
+		heartbeat = h.LastHeartbeat.Format("2006-01-02 15:04:05")
+	}
+	return []string{
+		"ID", h.ID.String(),
+		"Name", h.Name,
+		"Address", h.Address,
+		"State", string(h.OperationalState),
+		"Capability", string(h.Capability),
+		"Resource Physical", string(h.ResourcePhysical),
+		"Overcommit Ratios", string(h.OvercommitRatios),
+		"Resource Used", string(h.ResourceUsed),
+		"Last Heartbeat", heartbeat,
+		"Created", h.CreatedAt.Format("2006-01-02 15:04:05"),
+		"Updated", h.UpdatedAt.Format("2006-01-02 15:04:05"),
+	}
+}
+
 func orgRow(org *identity.Organization) []string {
 	return []string{org.ID.String(), org.Name, org.CreatedAt.Format("2006-01-02 15:04:05")}
 }
@@ -626,6 +643,20 @@ func (app *cli) printRowsJSON(headers []string, rows [][]string) error {
 		return enc.Encode(items[0])
 	}
 	return enc.Encode(items)
+}
+
+// printDetail renders a single resource as key-value pairs (table) or raw JSON.
+func (app *cli) printDetail(v any, kvPairs ...string) error {
+	if app.output == "json" {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(v)
+	}
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	for i := 0; i < len(kvPairs)-1; i += 2 {
+		fmt.Fprintf(w, "%s:\t%s\n", kvPairs[i], kvPairs[i+1])
+	}
+	return w.Flush()
 }
 
 // printStatus outputs a status message for non-data operations (e.g. delete).
