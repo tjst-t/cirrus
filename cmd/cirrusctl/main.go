@@ -609,6 +609,8 @@ func (app *cli) newAdminStorageDomainCmd() *cobra.Command {
 	cmd.AddCommand(app.newStorageDomainCreateCmd())
 	cmd.AddCommand(app.newStorageDomainListCmd())
 	cmd.AddCommand(app.newStorageDomainShowCmd())
+	cmd.AddCommand(app.newStorageDomainAddHostCmd())
+	cmd.AddCommand(app.newStorageDomainRemoveHostCmd())
 	return cmd
 }
 
@@ -678,6 +680,54 @@ func (app *cli) newStorageDomainShowCmd() *cobra.Command {
 	}
 }
 
+func (app *cli) newStorageDomainAddHostCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "add-host <storage-domain> <host>",
+		Short: "Associate a host with this storage domain",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			sdID, err := c.ResolveStorageDomain(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			hostID, err := c.ResolveHost(ctx, args[1])
+			if err != nil {
+				return err
+			}
+			if err := c.AssociateHostStorageDomain(ctx, hostID, sdID); err != nil {
+				return err
+			}
+			return app.printStatus("Associated", "host", hostID.String())
+		},
+	}
+}
+
+func (app *cli) newStorageDomainRemoveHostCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "remove-host <storage-domain> <host>",
+		Short: "Dissociate a host from this storage domain",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			sdID, err := c.ResolveStorageDomain(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			hostID, err := c.ResolveHost(ctx, args[1])
+			if err != nil {
+				return err
+			}
+			if err := c.DissociateHostStorageDomain(ctx, hostID, sdID); err != nil {
+				return err
+			}
+			return app.printStatus("Dissociated", "host", hostID.String())
+		},
+	}
+}
+
 // --- Admin: Network Domain commands ---
 
 func (app *cli) newAdminNetworkDomainCmd() *cobra.Command {
@@ -689,6 +739,7 @@ func (app *cli) newAdminNetworkDomainCmd() *cobra.Command {
 	cmd.AddCommand(app.newNetworkDomainCreateCmd())
 	cmd.AddCommand(app.newNetworkDomainListCmd())
 	cmd.AddCommand(app.newNetworkDomainShowCmd())
+	cmd.AddCommand(app.newNetworkDomainAddHostCmd())
 	return cmd
 }
 
@@ -762,6 +813,30 @@ func (app *cli) newNetworkDomainShowCmd() *cobra.Command {
 	}
 }
 
+func (app *cli) newNetworkDomainAddHostCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "add-host <network-domain> <host>",
+		Short: "Set a host's network domain",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			ndID, err := c.ResolveNetworkDomain(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			hostID, err := c.ResolveHost(ctx, args[1])
+			if err != nil {
+				return err
+			}
+			if err := c.SetHostNetworkDomain(ctx, hostID, ndID); err != nil {
+				return err
+			}
+			return app.printStatus("Associated", "host", hostID.String())
+		},
+	}
+}
+
 // --- Admin: Location commands ---
 
 func (app *cli) newAdminLocationCmd() *cobra.Command {
@@ -775,6 +850,7 @@ func (app *cli) newAdminLocationCmd() *cobra.Command {
 	cmd.AddCommand(app.newLocationShowCmd())
 	cmd.AddCommand(app.newLocationPathCmd())
 	cmd.AddCommand(app.newLocationTreeCmd())
+	cmd.AddCommand(app.newLocationAddHostCmd())
 	return cmd
 }
 
@@ -924,6 +1000,30 @@ func printLocationTree(loc *topology.Location, indent string) {
 	fmt.Printf("%s%s (%s) [%s]\n", indent, loc.Name, loc.Type, loc.ID)
 	for _, child := range loc.Children {
 		printLocationTree(child, indent+"  ")
+	}
+}
+
+func (app *cli) newLocationAddHostCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "add-host <location> <host>",
+		Short: "Set a host's location",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			locID, err := c.ResolveLocation(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			hostID, err := c.ResolveHost(ctx, args[1])
+			if err != nil {
+				return err
+			}
+			if err := c.SetHostLocation(ctx, hostID, locID); err != nil {
+				return err
+			}
+			return app.printStatus("Associated", "host", hostID.String())
+		},
 	}
 }
 
