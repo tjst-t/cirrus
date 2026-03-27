@@ -206,7 +206,7 @@ _seed-topology:
 	  curl -sf -X POST \
 	    -H "Authorization: Bearer $$TOKEN" \
 	    -H "Content-Type: application/json" \
-	    -d "{\"name\":\"default-nd\",\"ovn_nb_connection\":\"tcp:localhost:'$$SIM_OVN_PORT'\"}" \
+	    -d "{\"name\":\"default-nd\",\"ovn_nb_connection\":\"tcp:localhost:$$SIM_OVN_PORT\"}" \
 	    http://localhost:$$API_PORT/api/v1/network-domains >/dev/null 2>&1 || true; \
 	  curl -sf -X POST \
 	    -H "Authorization: Bearer $$TOKEN" \

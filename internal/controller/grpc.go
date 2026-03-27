@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"crypto/subtle"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -135,12 +136,22 @@ func (s *GRPCServer) resolveNetworkDomain(ctx context.Context, nameOrID string) 
 	if err != nil {
 		return uuid.Nil, err
 	}
+	var matched uuid.UUID
+	count := 0
 	for _, d := range domains {
 		if d.Name == nameOrID {
-			return d.ID, nil
+			matched = d.ID
+			count++
 		}
 	}
-	return uuid.Nil, topology.ErrNotFound
+	switch count {
+	case 0:
+		return uuid.Nil, topology.ErrNotFound
+	case 1:
+		return matched, nil
+	default:
+		return uuid.Nil, fmt.Errorf("multiple network domains named %q, use UUID", nameOrID)
+	}
 }
 
 // resolveStorageDomain resolves a name or UUID string to a storage domain UUID.
@@ -155,15 +166,27 @@ func (s *GRPCServer) resolveStorageDomain(ctx context.Context, nameOrID string) 
 	if err != nil {
 		return uuid.Nil, err
 	}
+	var matched uuid.UUID
+	count := 0
 	for _, d := range domains {
 		if d.Name == nameOrID {
-			return d.ID, nil
+			matched = d.ID
+			count++
 		}
 	}
-	return uuid.Nil, topology.ErrNotFound
+	switch count {
+	case 0:
+		return uuid.Nil, topology.ErrNotFound
+	case 1:
+		return matched, nil
+	default:
+		return uuid.Nil, fmt.Errorf("multiple storage domains named %q, use UUID", nameOrID)
+	}
 }
 
 // resolveLocation resolves a name or UUID string to a location UUID.
+// Locations can have duplicate names under different parents, so multiple
+// matches are treated as an error.
 func (s *GRPCServer) resolveLocation(ctx context.Context, nameOrID string) (uuid.UUID, error) {
 	if id, err := uuid.Parse(nameOrID); err == nil {
 		if _, err := s.topologySvc.GetLocation(ctx, id); err != nil {
@@ -175,12 +198,22 @@ func (s *GRPCServer) resolveLocation(ctx context.Context, nameOrID string) (uuid
 	if err != nil {
 		return uuid.Nil, err
 	}
+	var matched uuid.UUID
+	count := 0
 	for _, l := range locations {
 		if l.Name == nameOrID {
-			return l.ID, nil
+			matched = l.ID
+			count++
 		}
 	}
-	return uuid.Nil, topology.ErrNotFound
+	switch count {
+	case 0:
+		return uuid.Nil, topology.ErrNotFound
+	case 1:
+		return matched, nil
+	default:
+		return uuid.Nil, fmt.Errorf("multiple locations named %q, use UUID", nameOrID)
+	}
 }
 
 // Heartbeat receives heartbeat from a worker.
