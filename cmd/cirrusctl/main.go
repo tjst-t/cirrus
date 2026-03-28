@@ -369,6 +369,22 @@ func (app *cli) newRoleDeleteCmd() *cobra.Command {
 	return cmd
 }
 
+// resolveNetwork resolves a network identifier (UUID or name) to a UUID.
+// If the identifier is not a UUID, tenant (and optionally org) must be provided for name-scoped lookup.
+func (app *cli) resolveNetwork(ctx context.Context, c *client.Client, idOrName, tenant, org string) (uuid.UUID, error) {
+	if id, err := uuid.Parse(idOrName); err == nil {
+		return id, nil
+	}
+	if tenant == "" {
+		return uuid.Nil, fmt.Errorf("resolving network by name %q requires a tenant (use --tenant flag or pass UUID)", idOrName)
+	}
+	tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return c.ResolveNetwork(ctx, idOrName, tenantID)
+}
+
 // --- Network commands ---
 
 func (app *cli) newNetworkCmd() *cobra.Command {
@@ -385,7 +401,7 @@ func (app *cli) newNetworkCmd() *cobra.Command {
 }
 
 func (app *cli) newNetworkCreateCmd() *cobra.Command {
-	var tenant, nd string
+	var tenant, org, nd string
 	cmd := &cobra.Command{
 		Use:   "create <name>",
 		Short: "Create a new network",
@@ -393,7 +409,7 @@ func (app *cli) newNetworkCreateCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := app.cmdContext()
 			c := app.newClient()
-			tenantID, err := app.resolveTenant(ctx, c, tenant, "")
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
 			if err != nil {
 				return err
 			}
@@ -412,6 +428,7 @@ func (app *cli) newNetworkCreateCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization (ID or name) for tenant name resolution")
 	cmd.Flags().StringVar(&nd, "network-domain", "", "Network domain (ID or name) (required)")
 	_ = cmd.MarkFlagRequired("tenant")
 	_ = cmd.MarkFlagRequired("network-domain")
@@ -419,7 +436,7 @@ func (app *cli) newNetworkCreateCmd() *cobra.Command {
 }
 
 func (app *cli) newNetworkListCmd() *cobra.Command {
-	var tenant string
+	var tenant, org string
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List networks in a tenant",
@@ -427,7 +444,7 @@ func (app *cli) newNetworkListCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := app.cmdContext()
 			c := app.newClient()
-			tenantID, err := app.resolveTenant(ctx, c, tenant, "")
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
 			if err != nil {
 				return err
 			}
@@ -446,12 +463,13 @@ func (app *cli) newNetworkListCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization (ID or name) for tenant name resolution")
 	_ = cmd.MarkFlagRequired("tenant")
 	return cmd
 }
 
 func (app *cli) newNetworkShowCmd() *cobra.Command {
-	var tenant string
+	var tenant, org string
 	cmd := &cobra.Command{
 		Use:   "show <id-or-name>",
 		Short: "Show network details",
@@ -459,7 +477,7 @@ func (app *cli) newNetworkShowCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := app.cmdContext()
 			c := app.newClient()
-			tenantID, err := app.resolveTenant(ctx, c, tenant, "")
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
 			if err != nil {
 				return err
 			}
@@ -478,11 +496,12 @@ func (app *cli) newNetworkShowCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) for name resolution")
+	cmd.Flags().StringVar(&org, "org", "", "Organization (ID or name) for tenant name resolution")
 	return cmd
 }
 
 func (app *cli) newNetworkDeleteCmd() *cobra.Command {
-	var tenant string
+	var tenant, org string
 	cmd := &cobra.Command{
 		Use:   "delete <id-or-name>",
 		Short: "Delete a network",
@@ -490,7 +509,7 @@ func (app *cli) newNetworkDeleteCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := app.cmdContext()
 			c := app.newClient()
-			tenantID, err := app.resolveTenant(ctx, c, tenant, "")
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
 			if err != nil {
 				return err
 			}
@@ -505,6 +524,7 @@ func (app *cli) newNetworkDeleteCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) for name resolution")
+	cmd.Flags().StringVar(&org, "org", "", "Organization (ID or name) for tenant name resolution")
 	return cmd
 }
 
@@ -523,7 +543,7 @@ func (app *cli) newSubnetCmd() *cobra.Command {
 }
 
 func (app *cli) newSubnetCreateCmd() *cobra.Command {
-	var networkIDStr, cidr, gateway, dhcpStart, dhcpEnd string
+	var networkStr, tenant, org, cidr, gateway, dhcpStart, dhcpEnd string
 	var dns []string
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -532,9 +552,9 @@ func (app *cli) newSubnetCreateCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := app.cmdContext()
 			c := app.newClient()
-			networkID, err := uuid.Parse(networkIDStr)
+			networkID, err := app.resolveNetwork(ctx, c, networkStr, tenant, org)
 			if err != nil {
-				return fmt.Errorf("invalid network ID: %w", err)
+				return err
 			}
 			sub, err := c.CreateSubnet(ctx, networkID, network.SubnetSpec{
 				CIDR:           cidr,
@@ -552,7 +572,9 @@ func (app *cli) newSubnetCreateCmd() *cobra.Command {
 			)
 		},
 	}
-	cmd.Flags().StringVar(&networkIDStr, "network", "", "Network ID (required)")
+	cmd.Flags().StringVar(&networkStr, "network", "", "Network (ID or name) (required)")
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) for network name resolution")
+	cmd.Flags().StringVar(&org, "org", "", "Organization (ID or name) for tenant name resolution")
 	cmd.Flags().StringVar(&cidr, "cidr", "", "Subnet CIDR (e.g. 10.100.0.0/24) (required)")
 	cmd.Flags().StringVar(&gateway, "gateway", "", "Gateway IP (required)")
 	cmd.Flags().StringVar(&dhcpStart, "dhcp-start", "", "DHCP range start IP (required)")
@@ -567,7 +589,7 @@ func (app *cli) newSubnetCreateCmd() *cobra.Command {
 }
 
 func (app *cli) newSubnetListCmd() *cobra.Command {
-	var networkIDStr string
+	var networkStr, tenant, org string
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List subnets in a network",
@@ -575,9 +597,9 @@ func (app *cli) newSubnetListCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := app.cmdContext()
 			c := app.newClient()
-			networkID, err := uuid.Parse(networkIDStr)
+			networkID, err := app.resolveNetwork(ctx, c, networkStr, tenant, org)
 			if err != nil {
-				return fmt.Errorf("invalid network ID: %w", err)
+				return err
 			}
 			subnets, err := c.ListSubnets(ctx, networkID)
 			if err != nil {
@@ -593,7 +615,9 @@ func (app *cli) newSubnetListCmd() *cobra.Command {
 			)
 		},
 	}
-	cmd.Flags().StringVar(&networkIDStr, "network", "", "Network ID (required)")
+	cmd.Flags().StringVar(&networkStr, "network", "", "Network (ID or name) (required)")
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) for network name resolution")
+	cmd.Flags().StringVar(&org, "org", "", "Organization (ID or name) for tenant name resolution")
 	_ = cmd.MarkFlagRequired("network")
 	return cmd
 }
@@ -657,7 +681,7 @@ func (app *cli) newPortCmd() *cobra.Command {
 }
 
 func (app *cli) newPortCreateCmd() *cobra.Command {
-	var tenant, networkIDStr string
+	var tenant, org, networkStr string
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new port (allocates IP and MAC)",
@@ -665,13 +689,13 @@ func (app *cli) newPortCreateCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := app.cmdContext()
 			c := app.newClient()
-			tenantID, err := app.resolveTenant(ctx, c, tenant, "")
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
 			if err != nil {
 				return err
 			}
-			networkID, err := uuid.Parse(networkIDStr)
+			networkID, err := c.ResolveNetwork(ctx, networkStr, tenantID)
 			if err != nil {
-				return fmt.Errorf("invalid network ID: %w", err)
+				return err
 			}
 			p, err := c.CreatePort(ctx, tenantID, networkID)
 			if err != nil {
@@ -684,14 +708,15 @@ func (app *cli) newPortCreateCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) (required)")
-	cmd.Flags().StringVar(&networkIDStr, "network", "", "Network ID (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization (ID or name) for tenant name resolution")
+	cmd.Flags().StringVar(&networkStr, "network", "", "Network (ID or name) (required)")
 	_ = cmd.MarkFlagRequired("tenant")
 	_ = cmd.MarkFlagRequired("network")
 	return cmd
 }
 
 func (app *cli) newPortListCmd() *cobra.Command {
-	var tenant, networkIDStr string
+	var tenant, org, networkStr string
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List ports in a network",
@@ -699,13 +724,13 @@ func (app *cli) newPortListCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := app.cmdContext()
 			c := app.newClient()
-			tenantID, err := app.resolveTenant(ctx, c, tenant, "")
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
 			if err != nil {
 				return err
 			}
-			networkID, err := uuid.Parse(networkIDStr)
+			networkID, err := c.ResolveNetwork(ctx, networkStr, tenantID)
 			if err != nil {
-				return fmt.Errorf("invalid network ID: %w", err)
+				return err
 			}
 			ports, err := c.ListPorts(ctx, tenantID, networkID)
 			if err != nil {
@@ -722,7 +747,8 @@ func (app *cli) newPortListCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) (required)")
-	cmd.Flags().StringVar(&networkIDStr, "network", "", "Network ID (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization (ID or name) for tenant name resolution")
+	cmd.Flags().StringVar(&networkStr, "network", "", "Network (ID or name) (required)")
 	_ = cmd.MarkFlagRequired("tenant")
 	_ = cmd.MarkFlagRequired("network")
 	return cmd
