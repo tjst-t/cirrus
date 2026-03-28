@@ -478,3 +478,35 @@ func (h *topologyHandlers) getComputePool(w http.ResponseWriter, r *http.Request
 	}
 	writeJSON(w, http.StatusOK, pool)
 }
+
+// --- Zones ---
+
+func (h *topologyHandlers) getZones(w http.ResponseWriter, r *http.Request) {
+	user := UserFromContext(r.Context())
+	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionGetLocation, identity.Resource{}); err != nil || decision == identity.Deny {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	levelStr := r.URL.Query().Get("level")
+	if levelStr == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "level query parameter is required (site, floor, row, rack, unit)"})
+		return
+	}
+
+	level := topology.LocationType(levelStr)
+	if !topology.IsValidLocationType(level) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid level: must be one of site, floor, row, rack, unit"})
+		return
+	}
+
+	zones, err := h.svc.GetZones(r.Context(), level)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get zones"})
+		return
+	}
+	if zones == nil {
+		zones = []topology.Zone{}
+	}
+	writeJSON(w, http.StatusOK, zones)
+}

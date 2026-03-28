@@ -385,6 +385,91 @@ func (s *Store) GetComputePool(ctx context.Context, storageDomainID, networkDoma
 	}, nil
 }
 
+// --- Zone derivation ---
+
+func (s *Store) GetZones(ctx context.Context, level LocationType) ([]Zone, error) {
+	if !IsValidLocationType(level) {
+		return nil, fmt.Errorf("topology: get zones: %w: %s", ErrInvalidType, level)
+	}
+
+	// For each location at the given level, find all hosts whose location_id
+	// is either that location itself or any descendant of it.
+	rows, err := s.pool.Query(ctx,
+		`WITH zone_locations AS (
+			SELECT id, name FROM locations WHERE type = $1
+		),
+		descendant_hosts AS (
+			SELECT zl.id AS zone_id, zl.name AS zone_name, h.id AS host_id
+			FROM zone_locations zl
+			JOIN LATERAL (
+				WITH RECURSIVE subtree AS (
+					SELECT id FROM locations WHERE id = zl.id
+					UNION ALL
+					SELECT l.id FROM locations l JOIN subtree st ON l.parent_id = st.id
+				)
+				SELECT id FROM hosts WHERE location_id IN (SELECT id FROM subtree)
+			) h ON true
+		)
+		SELECT zone_id, zone_name, array_agg(host_id ORDER BY host_id) AS host_ids
+		FROM descendant_hosts
+		GROUP BY zone_id, zone_name
+		ORDER BY zone_name`, level)
+	if err != nil {
+		return nil, fmt.Errorf("topology: get zones: %w", err)
+	}
+	defer rows.Close()
+
+	var zones []Zone
+	for rows.Next() {
+		var z Zone
+		z.Level = level
+		if err := rows.Scan(&z.LocationID, &z.LocationName, &z.HostIDs); err != nil {
+			return nil, fmt.Errorf("topology: get zones scan: %w", err)
+		}
+		z.Count = len(z.HostIDs)
+		zones = append(zones, z)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("topology: get zones: %w", err)
+	}
+
+	// Include locations at the level that have no hosts (empty zones)
+	locRows, err := s.pool.Query(ctx,
+		`SELECT id, name FROM locations WHERE type = $1 ORDER BY name`, level)
+	if err != nil {
+		return nil, fmt.Errorf("topology: get zones: %w", err)
+	}
+	defer locRows.Close()
+
+	existing := make(map[uuid.UUID]bool, len(zones))
+	for _, z := range zones {
+		existing[z.LocationID] = true
+	}
+	for locRows.Next() {
+		var id uuid.UUID
+		var name string
+		if err := locRows.Scan(&id, &name); err != nil {
+			return nil, fmt.Errorf("topology: get zones scan: %w", err)
+		}
+		if !existing[id] {
+			zones = append(zones, Zone{
+				LocationID:   id,
+				LocationName: name,
+				Level:        level,
+				HostIDs:      []uuid.UUID{},
+				Count:        0,
+			})
+		}
+	}
+
+	// Sort by name for deterministic output
+	sort.Slice(zones, func(i, j int) bool {
+		return zones[i].LocationName < zones[j].LocationName
+	})
+
+	return zones, locRows.Err()
+}
+
 // --- Reachability queries ---
 
 func (s *Store) ListReachableHosts(ctx context.Context, storageDomainID uuid.UUID) ([]uuid.UUID, error) {

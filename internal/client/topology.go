@@ -244,3 +244,13 @@ func (c *Client) GetComputePool(ctx context.Context, storageDomainID, networkDom
 	}
 	return decodeResponse[*topology.ComputePool](resp)
 }
+
+// --- Zones ---
+
+func (c *Client) GetZones(ctx context.Context, level string) ([]topology.Zone, error) {
+	resp, err := c.do(ctx, "GET", fmt.Sprintf("/api/v1/zones?level=%s", level), nil)
+	if err != nil {
+		return nil, err
+	}
+	return decodeResponse[[]topology.Zone](resp)
+}

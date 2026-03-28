@@ -73,6 +73,9 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 
 		// Compute pools (derived, read-only)
 		r.Get("/compute-pools", th.getComputePool)
+
+		// Zones (derived, read-only)
+		r.Get("/zones", th.getZones)
 	})
 
 	return r

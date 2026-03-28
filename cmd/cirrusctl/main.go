@@ -377,6 +377,7 @@ func (app *cli) newAdminCmd() *cobra.Command {
 	cmd.AddCommand(app.newAdminNetworkDomainCmd())
 	cmd.AddCommand(app.newAdminLocationCmd())
 	cmd.AddCommand(app.newAdminComputePoolCmd())
+	cmd.AddCommand(app.newAdminZoneCmd())
 	return cmd
 }
 
@@ -1082,6 +1083,57 @@ func (app *cli) newComputePoolGetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&nd, "network-domain", "", "Network domain (ID or name) (required)")
 	_ = cmd.MarkFlagRequired("storage-domain")
 	_ = cmd.MarkFlagRequired("network-domain")
+	return cmd
+}
+
+// --- Admin: Zone commands ---
+
+func (app *cli) newAdminZoneCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "zone",
+		Short: "Query zones (derived from location hierarchy)",
+	}
+	cmd.AddCommand(app.newZoneListCmd())
+	return cmd
+}
+
+func (app *cli) newZoneListCmd() *cobra.Command {
+	var level string
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List zones at a given hierarchy level",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			zones, err := app.newClient().GetZones(ctx, level)
+			if err != nil {
+				return err
+			}
+			if app.output == "json" {
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(zones)
+			}
+			rows := make([][]string, len(zones))
+			for i, z := range zones {
+				ids := make([]string, len(z.HostIDs))
+				for j, id := range z.HostIDs {
+					ids[j] = id.String()
+				}
+				hostStr := strings.Join(ids, ", ")
+				if hostStr == "" {
+					hostStr = "-"
+				}
+				rows[i] = []string{z.LocationID.String(), z.LocationName, string(z.Level), fmt.Sprintf("%d", z.Count), hostStr}
+			}
+			return app.printTable(
+				[]string{"LOCATION_ID", "NAME", "LEVEL", "HOSTS", "HOST_IDS"},
+				rows,
+			)
+		},
+	}
+	cmd.Flags().StringVar(&level, "level", "", "Hierarchy level (site, floor, row, rack, unit) (required)")
+	_ = cmd.MarkFlagRequired("level")
 	return cmd
 }
 
