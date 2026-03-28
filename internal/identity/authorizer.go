@@ -42,6 +42,17 @@ const (
 
 	ActionGetComputePool      Action = "get_compute_pool"
 	ActionManageHostTopology  Action = "manage_host_topology"
+
+	// Network actions (tenant-scoped)
+	ActionCreateNetwork Action = "create_network"
+	ActionListNetworks  Action = "list_networks"
+	ActionGetNetwork    Action = "get_network"
+	ActionDeleteNetwork Action = "delete_network"
+
+	ActionCreatePort Action = "create_port"
+	ActionListPorts  Action = "list_ports"
+	ActionGetPort    Action = "get_port"
+	ActionDeletePort Action = "delete_port"
 )
 
 // Resource represents the target resource of an authorization check.
@@ -121,15 +132,21 @@ func (a *RBACAuthorizer) checkPermission(ra RoleAssignment, action Action, resou
 			return resource.TenantID != nil && *resource.TenantID == *ra.ScopeID
 		case ActionAssignRole, ActionListRoles, ActionDeleteRole:
 			return resource.TenantID != nil && *resource.TenantID == *ra.ScopeID
+		case ActionCreateNetwork, ActionListNetworks, ActionGetNetwork, ActionDeleteNetwork,
+			ActionCreatePort, ActionListPorts, ActionGetPort, ActionDeletePort:
+			return resource.TenantID != nil && *resource.TenantID == *ra.ScopeID
 		}
 
 	case RoleTenantMember:
-		// tenant_member can read their tenant
+		// tenant_member can read their tenant and use network resources (read-only)
 		if ra.ScopeType != ScopeTenant || ra.ScopeID == nil {
 			return false
 		}
 		switch action {
 		case ActionGetTenant, ActionListRoles:
+			return resource.TenantID != nil && *resource.TenantID == *ra.ScopeID
+		case ActionListNetworks, ActionGetNetwork,
+			ActionCreatePort, ActionListPorts, ActionGetPort:
 			return resource.TenantID != nil && *resource.TenantID == *ra.ScopeID
 		}
 	}

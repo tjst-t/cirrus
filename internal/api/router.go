@@ -8,11 +8,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tjst-t/cirrus/internal/host"
 	"github.com/tjst-t/cirrus/internal/identity"
+	"github.com/tjst-t/cirrus/internal/network"
 	"github.com/tjst-t/cirrus/internal/topology"
 )
 
 // NewRouter creates the HTTP router with all middleware and routes.
-func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authenticator, authz identity.Authorizer, identitySvc identity.Service, hostSvc host.Service, topologySvc topology.Service) http.Handler {
+func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authenticator, authz identity.Authorizer, identitySvc identity.Service, hostSvc host.Service, topologySvc topology.Service, networkSvc network.Service) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(RequestID)
@@ -76,6 +77,23 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 
 		// Zones (derived, read-only)
 		r.Get("/zones", th.getZones)
+
+		// Network routes (tenant-scoped)
+		nh := &networkHandlers{svc: networkSvc, authz: authz, logger: logger}
+		r.Post("/networks", nh.createNetwork)
+		r.Get("/networks", nh.listNetworks)
+		r.Get("/networks/{network_id}", nh.getNetwork)
+		r.Delete("/networks/{network_id}", nh.deleteNetwork)
+
+		r.Post("/networks/{network_id}/subnets", nh.createSubnet)
+		r.Get("/networks/{network_id}/subnets", nh.listSubnets)
+		r.Get("/subnets/{subnet_id}", nh.getSubnet)
+		r.Delete("/subnets/{subnet_id}", nh.deleteSubnet)
+
+		r.Post("/ports", nh.createPort)
+		r.Get("/ports", nh.listPorts)
+		r.Get("/ports/{port_id}", nh.getPort)
+		r.Delete("/ports/{port_id}", nh.deletePort)
 	})
 
 	return r

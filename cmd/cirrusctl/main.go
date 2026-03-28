@@ -14,6 +14,7 @@ import (
 	"github.com/tjst-t/cirrus/internal/client"
 	"github.com/tjst-t/cirrus/internal/host"
 	"github.com/tjst-t/cirrus/internal/identity"
+	"github.com/tjst-t/cirrus/internal/network"
 	"github.com/tjst-t/cirrus/internal/topology"
 )
 
@@ -47,6 +48,9 @@ func main() {
 	rootCmd.AddCommand(app.newOrgCmd())
 	rootCmd.AddCommand(app.newTenantCmd())
 	rootCmd.AddCommand(app.newRoleCmd())
+	rootCmd.AddCommand(app.newNetworkCmd())
+	rootCmd.AddCommand(app.newSubnetCmd())
+	rootCmd.AddCommand(app.newPortCmd())
 	rootCmd.AddCommand(app.newAdminCmd())
 
 	if err := rootCmd.Execute(); err != nil {
@@ -363,6 +367,409 @@ func (app *cli) newRoleDeleteCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&org, "org", "", "Organization (ID or name) for tenant name resolution")
 	return cmd
+}
+
+// --- Network commands ---
+
+func (app *cli) newNetworkCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "network",
+		Aliases: []string{"net"},
+		Short:   "Manage tenant networks",
+	}
+	cmd.AddCommand(app.newNetworkCreateCmd())
+	cmd.AddCommand(app.newNetworkListCmd())
+	cmd.AddCommand(app.newNetworkShowCmd())
+	cmd.AddCommand(app.newNetworkDeleteCmd())
+	return cmd
+}
+
+func (app *cli) newNetworkCreateCmd() *cobra.Command {
+	var tenant, nd string
+	cmd := &cobra.Command{
+		Use:   "create <name>",
+		Short: "Create a new network",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, "")
+			if err != nil {
+				return err
+			}
+			ndID, err := c.ResolveNetworkDomain(ctx, nd)
+			if err != nil {
+				return err
+			}
+			n, err := c.CreateNetwork(ctx, tenantID, args[0], ndID)
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "TENANT_ID", "NETWORK_DOMAIN_ID", "NAME", "STATUS", "CREATED"},
+				[][]string{networkRow(n)},
+			)
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) (required)")
+	cmd.Flags().StringVar(&nd, "network-domain", "", "Network domain (ID or name) (required)")
+	_ = cmd.MarkFlagRequired("tenant")
+	_ = cmd.MarkFlagRequired("network-domain")
+	return cmd
+}
+
+func (app *cli) newNetworkListCmd() *cobra.Command {
+	var tenant string
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List networks in a tenant",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, "")
+			if err != nil {
+				return err
+			}
+			networks, err := c.ListNetworks(ctx, tenantID)
+			if err != nil {
+				return err
+			}
+			rows := make([][]string, len(networks))
+			for i := range networks {
+				rows[i] = networkRow(&networks[i])
+			}
+			return app.printTable(
+				[]string{"ID", "TENANT_ID", "NETWORK_DOMAIN_ID", "NAME", "STATUS", "CREATED"},
+				rows,
+			)
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) (required)")
+	_ = cmd.MarkFlagRequired("tenant")
+	return cmd
+}
+
+func (app *cli) newNetworkShowCmd() *cobra.Command {
+	var tenant string
+	cmd := &cobra.Command{
+		Use:   "show <id-or-name>",
+		Short: "Show network details",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, "")
+			if err != nil {
+				return err
+			}
+			id, err := c.ResolveNetwork(ctx, args[0], tenantID)
+			if err != nil {
+				return err
+			}
+			n, err := c.GetNetwork(ctx, id)
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "TENANT_ID", "NETWORK_DOMAIN_ID", "NAME", "STATUS", "CREATED"},
+				[][]string{networkRow(n)},
+			)
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) for name resolution")
+	return cmd
+}
+
+func (app *cli) newNetworkDeleteCmd() *cobra.Command {
+	var tenant string
+	cmd := &cobra.Command{
+		Use:   "delete <id-or-name>",
+		Short: "Delete a network",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, "")
+			if err != nil {
+				return err
+			}
+			id, err := c.ResolveNetwork(ctx, args[0], tenantID)
+			if err != nil {
+				return err
+			}
+			if err := c.DeleteNetwork(ctx, id); err != nil {
+				return err
+			}
+			return app.printStatus("Deleted", "network", id.String())
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) for name resolution")
+	return cmd
+}
+
+// --- Subnet commands ---
+
+func (app *cli) newSubnetCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "subnet",
+		Short: "Manage subnets within networks",
+	}
+	cmd.AddCommand(app.newSubnetCreateCmd())
+	cmd.AddCommand(app.newSubnetListCmd())
+	cmd.AddCommand(app.newSubnetShowCmd())
+	cmd.AddCommand(app.newSubnetDeleteCmd())
+	return cmd
+}
+
+func (app *cli) newSubnetCreateCmd() *cobra.Command {
+	var networkIDStr, cidr, gateway, dhcpStart, dhcpEnd string
+	var dns []string
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create a new subnet in a network",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			networkID, err := uuid.Parse(networkIDStr)
+			if err != nil {
+				return fmt.Errorf("invalid network ID: %w", err)
+			}
+			sub, err := c.CreateSubnet(ctx, networkID, network.SubnetSpec{
+				CIDR:           cidr,
+				Gateway:        gateway,
+				DHCPRangeStart: dhcpStart,
+				DHCPRangeEnd:   dhcpEnd,
+				DNSServers:     dns,
+			})
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NETWORK_ID", "CIDR", "GATEWAY", "DHCP_START", "DHCP_END", "CREATED"},
+				[][]string{subnetRow(sub)},
+			)
+		},
+	}
+	cmd.Flags().StringVar(&networkIDStr, "network", "", "Network ID (required)")
+	cmd.Flags().StringVar(&cidr, "cidr", "", "Subnet CIDR (e.g. 10.100.0.0/24) (required)")
+	cmd.Flags().StringVar(&gateway, "gateway", "", "Gateway IP (required)")
+	cmd.Flags().StringVar(&dhcpStart, "dhcp-start", "", "DHCP range start IP (required)")
+	cmd.Flags().StringVar(&dhcpEnd, "dhcp-end", "", "DHCP range end IP (required)")
+	cmd.Flags().StringSliceVar(&dns, "dns", nil, "DNS servers (comma-separated)")
+	_ = cmd.MarkFlagRequired("network")
+	_ = cmd.MarkFlagRequired("cidr")
+	_ = cmd.MarkFlagRequired("gateway")
+	_ = cmd.MarkFlagRequired("dhcp-start")
+	_ = cmd.MarkFlagRequired("dhcp-end")
+	return cmd
+}
+
+func (app *cli) newSubnetListCmd() *cobra.Command {
+	var networkIDStr string
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List subnets in a network",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			networkID, err := uuid.Parse(networkIDStr)
+			if err != nil {
+				return fmt.Errorf("invalid network ID: %w", err)
+			}
+			subnets, err := c.ListSubnets(ctx, networkID)
+			if err != nil {
+				return err
+			}
+			rows := make([][]string, len(subnets))
+			for i := range subnets {
+				rows[i] = subnetRow(&subnets[i])
+			}
+			return app.printTable(
+				[]string{"ID", "NETWORK_ID", "CIDR", "GATEWAY", "DHCP_START", "DHCP_END", "CREATED"},
+				rows,
+			)
+		},
+	}
+	cmd.Flags().StringVar(&networkIDStr, "network", "", "Network ID (required)")
+	_ = cmd.MarkFlagRequired("network")
+	return cmd
+}
+
+func (app *cli) newSubnetShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show <id>",
+		Short: "Show subnet details",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			id, err := uuid.Parse(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid subnet ID: %w", err)
+			}
+			sub, err := c.GetSubnet(ctx, id)
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NETWORK_ID", "CIDR", "GATEWAY", "DHCP_START", "DHCP_END", "CREATED"},
+				[][]string{subnetRow(sub)},
+			)
+		},
+	}
+}
+
+func (app *cli) newSubnetDeleteCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete <id>",
+		Short: "Delete a subnet",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			id, err := uuid.Parse(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid subnet ID: %w", err)
+			}
+			if err := c.DeleteSubnet(ctx, id); err != nil {
+				return err
+			}
+			return app.printStatus("Deleted", "subnet", id.String())
+		},
+	}
+}
+
+// --- Port commands ---
+
+func (app *cli) newPortCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "port",
+		Short: "Manage virtual network ports",
+	}
+	cmd.AddCommand(app.newPortCreateCmd())
+	cmd.AddCommand(app.newPortListCmd())
+	cmd.AddCommand(app.newPortShowCmd())
+	cmd.AddCommand(app.newPortDeleteCmd())
+	return cmd
+}
+
+func (app *cli) newPortCreateCmd() *cobra.Command {
+	var tenant, networkIDStr string
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create a new port (allocates IP and MAC)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, "")
+			if err != nil {
+				return err
+			}
+			networkID, err := uuid.Parse(networkIDStr)
+			if err != nil {
+				return fmt.Errorf("invalid network ID: %w", err)
+			}
+			p, err := c.CreatePort(ctx, tenantID, networkID)
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NETWORK_ID", "SUBNET_ID", "MAC", "IP", "STATUS", "CREATED"},
+				[][]string{portRow(p)},
+			)
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) (required)")
+	cmd.Flags().StringVar(&networkIDStr, "network", "", "Network ID (required)")
+	_ = cmd.MarkFlagRequired("tenant")
+	_ = cmd.MarkFlagRequired("network")
+	return cmd
+}
+
+func (app *cli) newPortListCmd() *cobra.Command {
+	var tenant, networkIDStr string
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List ports in a network",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, "")
+			if err != nil {
+				return err
+			}
+			networkID, err := uuid.Parse(networkIDStr)
+			if err != nil {
+				return fmt.Errorf("invalid network ID: %w", err)
+			}
+			ports, err := c.ListPorts(ctx, tenantID, networkID)
+			if err != nil {
+				return err
+			}
+			rows := make([][]string, len(ports))
+			for i := range ports {
+				rows[i] = portRow(&ports[i])
+			}
+			return app.printTable(
+				[]string{"ID", "NETWORK_ID", "SUBNET_ID", "MAC", "IP", "STATUS", "CREATED"},
+				rows,
+			)
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) (required)")
+	cmd.Flags().StringVar(&networkIDStr, "network", "", "Network ID (required)")
+	_ = cmd.MarkFlagRequired("tenant")
+	_ = cmd.MarkFlagRequired("network")
+	return cmd
+}
+
+func (app *cli) newPortShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show <id>",
+		Short: "Show port details",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			id, err := uuid.Parse(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid port ID: %w", err)
+			}
+			p, err := c.GetPort(ctx, id)
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NETWORK_ID", "SUBNET_ID", "MAC", "IP", "STATUS", "CREATED"},
+				[][]string{portRow(p)},
+			)
+		},
+	}
+}
+
+func (app *cli) newPortDeleteCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete <id>",
+		Short: "Delete a port",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			id, err := uuid.Parse(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid port ID: %w", err)
+			}
+			if err := c.DeletePort(ctx, id); err != nil {
+				return err
+			}
+			return app.printStatus("Deleted", "port", id.String())
+		},
+	}
 }
 
 // --- Admin commands ---
@@ -1138,6 +1545,18 @@ func (app *cli) newZoneListCmd() *cobra.Command {
 }
 
 // --- Row builders ---
+
+func networkRow(n *network.Network) []string {
+	return []string{n.ID.String(), n.TenantID.String(), n.NetworkDomainID.String(), n.Name, string(n.Status), n.CreatedAt.Format("2006-01-02 15:04:05")}
+}
+
+func subnetRow(s *network.Subnet) []string {
+	return []string{s.ID.String(), s.NetworkID.String(), s.CIDR, s.Gateway, s.DHCPRangeStart, s.DHCPRangeEnd, s.CreatedAt.Format("2006-01-02 15:04:05")}
+}
+
+func portRow(p *network.Port) []string {
+	return []string{p.ID.String(), p.NetworkID.String(), p.SubnetID.String(), p.MACAddress, p.IPAddress, string(p.Status), p.CreatedAt.Format("2006-01-02 15:04:05")}
+}
 
 func storageDomainRow(d *topology.StorageDomain) []string {
 	return []string{d.ID.String(), d.Name, d.CreatedAt.Format("2006-01-02 15:04:05")}

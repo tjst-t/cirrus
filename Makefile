@@ -173,7 +173,7 @@ _start-controller:
 	    --api-port=$$API_PORT \
 	    --grpc-port=$$GRPC_PORT \
 	    --db-dsn="$$DB_DSN" \
-	    --ovn-nb="tcp:localhost:$$SIM_OVN_PORT" \
+	    --ovn-nb="tcp:localhost:$$(curl -sf http://localhost:$$SIM_OVN_PORT/sim/clusters | jq -r '.[0].ovsdb_port')" \
 	    --storage-endpoint="http://localhost:$$SIM_STORAGE_PORT" \
 	    --awx-endpoint="http://localhost:$$SIM_AWX_PORT" \
 	    --netbox-endpoint="http://localhost:$$SIM_NETBOX_PORT" \
@@ -206,7 +206,7 @@ _seed-topology:
 	  curl -sf -X POST \
 	    -H "Authorization: Bearer $$TOKEN" \
 	    -H "Content-Type: application/json" \
-	    -d "{\"name\":\"default-nd\",\"ovn_nb_connection\":\"tcp:localhost:$$SIM_OVN_PORT\"}" \
+	    -d "{\"name\":\"default-nd\",\"ovn_nb_connection\":\"tcp:localhost:$$(curl -sf http://localhost:$$SIM_OVN_PORT/sim/clusters | jq -r '.[0].ovsdb_port')\"}" \
 	    http://localhost:$$API_PORT/api/v1/network-domains >/dev/null 2>&1 || true; \
 	  curl -sf -X POST \
 	    -H "Authorization: Bearer $$TOKEN" \

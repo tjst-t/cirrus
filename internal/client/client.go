@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Client is an HTTP API client for the Cirrus controller.
@@ -67,6 +69,59 @@ func (c *Client) do(ctx context.Context, method, path string, body any) (*http.R
 	}
 
 	return resp, nil
+}
+
+// doWithHeaders performs an HTTP request with additional headers.
+func (c *Client) doWithHeaders(ctx context.Context, method, path string, body any, headers map[string]string) (*http.Response, error) {
+	var reqBody io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("marshal request: %w", err)
+		}
+		reqBody = bytes.NewReader(b)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, c.endpoint+path, reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request %s %s: %w", method, path, err)
+	}
+
+	if resp.StatusCode >= 400 {
+		defer resp.Body.Close()
+		respBody, _ := io.ReadAll(resp.Body)
+		var apiErr struct {
+			Error string `json:"error"`
+		}
+		if json.Unmarshal(respBody, &apiErr) == nil && apiErr.Error != "" {
+			return nil, fmt.Errorf("API error (%d): %s", resp.StatusCode, apiErr.Error)
+		}
+		return nil, fmt.Errorf("API error (%d)", resp.StatusCode)
+	}
+
+	return resp, nil
+}
+
+// doWithTenant performs an HTTP request with the X-Tenant-ID header set.
+func (c *Client) doWithTenant(ctx context.Context, method, path string, body any, tenantID uuid.UUID) (*http.Response, error) {
+	return c.doWithHeaders(ctx, method, path, body, map[string]string{
+		"X-Tenant-ID": tenantID.String(),
+	})
 }
 
 // decodeResponse reads and decodes a JSON response body.

@@ -20,9 +20,12 @@ import (
 	"github.com/tjst-t/cirrus/internal/api"
 	"github.com/tjst-t/cirrus/internal/config"
 	"github.com/tjst-t/cirrus/internal/controller"
+	"github.com/tjst-t/cirrus/internal/controller/reconcile"
 	"github.com/tjst-t/cirrus/internal/host"
 	"github.com/tjst-t/cirrus/internal/hypervisor"
 	"github.com/tjst-t/cirrus/internal/identity"
+	"github.com/tjst-t/cirrus/internal/network"
+	"github.com/tjst-t/cirrus/internal/network/ipam"
 	"github.com/tjst-t/cirrus/internal/network/ovn"
 	"github.com/tjst-t/cirrus/internal/state"
 	"github.com/tjst-t/cirrus/internal/topology"
@@ -105,15 +108,6 @@ func runController(cfg *config.ControllerConfig) error {
 	}
 	logger.Info("migrations applied")
 
-	// OVN connection check (non-blocking)
-	if cfg.OVNNB != "" {
-		if err := ovn.CheckConnection(ctx, cfg.OVNNB); err != nil {
-			logger.Warn("OVN NB connection check failed", "addr", cfg.OVNNB, "error", err)
-		} else {
-			logger.Info("OVN NB connection OK", "addr", cfg.OVNNB)
-		}
-	}
-
 	// Identity service
 	identitySvc := identity.NewStore(pool)
 
@@ -139,8 +133,22 @@ func runController(cfg *config.ControllerConfig) error {
 	// Topology service
 	topologySvc := topology.NewStore(pool)
 
+	// Network service (OVN + IPAM)
+	var ovnClient ovn.Client
+	if cfg.OVNNB != "" {
+		c, err := ovn.Dial(ctx, cfg.OVNNB)
+		if err != nil {
+			logger.Warn("OVN client dial failed, network operations will be DB-only", "error", err)
+		} else {
+			ovnClient = c
+			defer c.Close()
+		}
+	}
+	ipamSvc := ipam.NewBuiltinIPAM(pool)
+	networkSvc := network.NewStore(pool, ovnClient, ipamSvc, logger)
+
 	// HTTP API
-	router := api.NewRouter(pool, logger, authn, authz, identitySvc, hostSvc, topologySvc)
+	router := api.NewRouter(pool, logger, authn, authz, identitySvc, hostSvc, topologySvc, networkSvc)
 	httpSrv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.APIPort),
 		Handler: router,
@@ -173,6 +181,15 @@ func runController(cfg *config.ControllerConfig) error {
 		}
 		return nil
 	})
+
+	// OVN Reconciler
+	if ovnClient != nil {
+		reconciler := reconcile.NewOVNReconciler(pool, ovnClient, logger, 5*time.Minute)
+		g.Go(func() error {
+			reconciler.Run(gCtx)
+			return nil
+		})
+	}
 
 	g.Go(func() error {
 		<-gCtx.Done()
