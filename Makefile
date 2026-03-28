@@ -197,7 +197,7 @@ _seed-topology:
 	  curl -sf http://localhost:$$API_PORT/healthz >/dev/null 2>&1 \
 	    || { echo "ERROR: Controller API not ready"; exit 1; }; \
 	  TOKEN="$(firstword $(subst =, ,$(AUTH_TOKENS)))"; \
-	  echo "==> Seeding topology (storage-domain, network-domain, location)..."; \
+	  echo "==> Seeding topology (storage-domain, network-domain, location, AZ)..."; \
 	  curl -sf -X POST \
 	    -H "Authorization: Bearer $$TOKEN" \
 	    -H "Content-Type: application/json" \
@@ -213,6 +213,20 @@ _seed-topology:
 	    -H "Content-Type: application/json" \
 	    -d "{\"name\":\"default-site\",\"type\":\"site\"}" \
 	    http://localhost:$$API_PORT/api/v1/locations >/dev/null 2>&1 || true; \
+	  LOC_ID=$$(curl -sf -H "Authorization: Bearer $$TOKEN" http://localhost:$$API_PORT/api/v1/locations | jq -r '.[0].id'); \
+	  ND_ID=$$(curl -sf -H "Authorization: Bearer $$TOKEN" http://localhost:$$API_PORT/api/v1/network-domains | jq -r '.[0].id'); \
+	  SD_ID=$$(curl -sf -H "Authorization: Bearer $$TOKEN" http://localhost:$$API_PORT/api/v1/storage-domains | jq -r '.[0].id'); \
+	  curl -sf -X POST \
+	    -H "Authorization: Bearer $$TOKEN" \
+	    -H "Content-Type: application/json" \
+	    -d "{\"name\":\"default-az\",\"location_id\":\"$$LOC_ID\",\"network_domain_id\":\"$$ND_ID\"}" \
+	    http://localhost:$$API_PORT/api/v1/admin/availability-zones >/dev/null 2>&1 || true; \
+	  AZ_ID=$$(curl -sf -H "Authorization: Bearer $$TOKEN" http://localhost:$$API_PORT/api/v1/admin/availability-zones | jq -r '.[0].id'); \
+	  curl -sf -X POST \
+	    -H "Authorization: Bearer $$TOKEN" \
+	    -H "Content-Type: application/json" \
+	    -d "{\"storage_domain_id\":\"$$SD_ID\"}" \
+	    http://localhost:$$API_PORT/api/v1/admin/availability-zones/$$AZ_ID/storage-domains >/dev/null 2>&1 || true; \
 	  echo "    Topology seeded."'
 
 # ── Internal: activate all registered hosts (dev convenience) ──

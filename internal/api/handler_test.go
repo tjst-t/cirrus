@@ -13,7 +13,7 @@ import (
 
 func TestHealthz_NoDB(t *testing.T) {
 	// With a nil pool, healthz should return 503
-	router := api.NewRouter(nil, slog.Default(), nil, nil, nil, nil, nil, nil)
+	router := api.NewRouter(nil, slog.Default(), nil, nil, nil, nil, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()

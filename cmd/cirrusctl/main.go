@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"github.com/tjst-t/cirrus/internal/client"
+	"github.com/tjst-t/cirrus/internal/az"
 	"github.com/tjst-t/cirrus/internal/host"
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/network"
@@ -401,7 +402,7 @@ func (app *cli) newNetworkCmd() *cobra.Command {
 }
 
 func (app *cli) newNetworkCreateCmd() *cobra.Command {
-	var tenant, org, nd string
+	var tenant, org, azName string
 	cmd := &cobra.Command{
 		Use:   "create <name>",
 		Short: "Create a new network",
@@ -413,11 +414,7 @@ func (app *cli) newNetworkCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			ndID, err := c.ResolveNetworkDomain(ctx, nd)
-			if err != nil {
-				return err
-			}
-			n, err := c.CreateNetwork(ctx, tenantID, args[0], ndID)
+			n, err := c.CreateNetwork(ctx, tenantID, args[0], azName)
 			if err != nil {
 				return err
 			}
@@ -429,9 +426,8 @@ func (app *cli) newNetworkCreateCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) (required)")
 	cmd.Flags().StringVar(&org, "org", "", "Organization (ID or name) for tenant name resolution")
-	cmd.Flags().StringVar(&nd, "network-domain", "", "Network domain (ID or name) (required)")
+	cmd.Flags().StringVar(&azName, "az", "", "Availability zone (ID or name, optional)")
 	_ = cmd.MarkFlagRequired("tenant")
-	_ = cmd.MarkFlagRequired("network-domain")
 	return cmd
 }
 
@@ -811,6 +807,7 @@ func (app *cli) newAdminCmd() *cobra.Command {
 	cmd.AddCommand(app.newAdminLocationCmd())
 	cmd.AddCommand(app.newAdminComputePoolCmd())
 	cmd.AddCommand(app.newAdminFaultDomainCmd())
+	cmd.AddCommand(app.newAdminAZCmd())
 	return cmd
 }
 
@@ -1519,6 +1516,173 @@ func (app *cli) newComputePoolGetCmd() *cobra.Command {
 	return cmd
 }
 
+// --- Admin: Availability Zone commands ---
+
+func (app *cli) newAdminAZCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "az",
+		Aliases: []string{"availability-zone"},
+		Short:   "Manage availability zones",
+	}
+	cmd.AddCommand(app.newAZCreateCmd())
+	cmd.AddCommand(app.newAZListCmd())
+	cmd.AddCommand(app.newAZShowCmd())
+	cmd.AddCommand(app.newAZDeleteCmd())
+	cmd.AddCommand(app.newAZAddSDCmd())
+	cmd.AddCommand(app.newAZRemoveSDCmd())
+	return cmd
+}
+
+func (app *cli) newAZCreateCmd() *cobra.Command {
+	var locStr, ndStr, desc string
+	cmd := &cobra.Command{
+		Use:   "create <name>",
+		Short: "Create an availability zone",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			locID, err := c.ResolveLocation(ctx, locStr)
+			if err != nil {
+				return err
+			}
+			ndID, err := c.ResolveNetworkDomain(ctx, ndStr)
+			if err != nil {
+				return err
+			}
+			a, err := c.CreateAZ(ctx, args[0], desc, locID, ndID)
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NAME", "LOCATION_ID", "NETWORK_DOMAIN_ID", "ENABLED", "CREATED"},
+				[][]string{azRow(a)},
+			)
+		},
+	}
+	cmd.Flags().StringVar(&locStr, "location", "", "Location (ID or name) (required)")
+	cmd.Flags().StringVar(&ndStr, "network-domain", "", "Network domain (ID or name) (required)")
+	cmd.Flags().StringVar(&desc, "description", "", "Description")
+	_ = cmd.MarkFlagRequired("location")
+	_ = cmd.MarkFlagRequired("network-domain")
+	return cmd
+}
+
+func (app *cli) newAZListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List all availability zones",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			azs, err := app.newClient().ListAllAZs(ctx)
+			if err != nil {
+				return err
+			}
+			rows := make([][]string, len(azs))
+			for i := range azs {
+				rows[i] = azRow(&azs[i])
+			}
+			return app.printTable(
+				[]string{"ID", "NAME", "LOCATION_ID", "NETWORK_DOMAIN_ID", "ENABLED", "CREATED"},
+				rows,
+			)
+		},
+	}
+}
+
+func (app *cli) newAZShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show <id-or-name>",
+		Short: "Show availability zone details",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			id, err := c.ResolveAZ(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			a, err := c.GetAZ(ctx, id)
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NAME", "LOCATION_ID", "NETWORK_DOMAIN_ID", "ENABLED", "CREATED"},
+				[][]string{azRow(a)},
+			)
+		},
+	}
+}
+
+func (app *cli) newAZDeleteCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete <id-or-name>",
+		Short: "Delete an availability zone",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			id, err := c.ResolveAZ(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			if err := c.DeleteAZ(ctx, id); err != nil {
+				return err
+			}
+			return app.printStatus("Deleted", "az", id.String())
+		},
+	}
+}
+
+func (app *cli) newAZAddSDCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "add-storage-domain <az> <storage-domain>",
+		Short: "Associate a storage domain with an AZ",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			azID, err := c.ResolveAZ(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			sdID, err := c.ResolveStorageDomain(ctx, args[1])
+			if err != nil {
+				return err
+			}
+			if err := c.AddAZStorageDomain(ctx, azID, sdID); err != nil {
+				return err
+			}
+			return app.printStatus("Associated", "storage-domain", sdID.String())
+		},
+	}
+}
+
+func (app *cli) newAZRemoveSDCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "remove-storage-domain <az> <storage-domain>",
+		Short: "Dissociate a storage domain from an AZ",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			azID, err := c.ResolveAZ(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			sdID, err := c.ResolveStorageDomain(ctx, args[1])
+			if err != nil {
+				return err
+			}
+			if err := c.RemoveAZStorageDomain(ctx, azID, sdID); err != nil {
+				return err
+			}
+			return app.printStatus("Dissociated", "storage-domain", sdID.String())
+		},
+	}
+}
+
 // --- Admin: Fault Domain commands ---
 
 func (app *cli) newAdminFaultDomainCmd() *cobra.Command {
@@ -1583,6 +1747,14 @@ func subnetRow(s *network.Subnet) []string {
 
 func portRow(p *network.Port) []string {
 	return []string{p.ID.String(), p.NetworkID.String(), p.SubnetID.String(), p.MACAddress, p.IPAddress, string(p.Status), p.CreatedAt.Format("2006-01-02 15:04:05")}
+}
+
+func azRow(a *az.AvailabilityZone) []string {
+	enabled := "true"
+	if !a.Enabled {
+		enabled = "false"
+	}
+	return []string{a.ID.String(), a.Name, a.LocationID.String(), a.NetworkDomainID.String(), enabled, a.CreatedAt.Format("2006-01-02 15:04:05")}
 }
 
 func storageDomainRow(d *topology.StorageDomain) []string {

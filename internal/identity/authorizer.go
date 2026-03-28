@@ -43,6 +43,10 @@ const (
 	ActionGetComputePool      Action = "get_compute_pool"
 	ActionManageHostTopology  Action = "manage_host_topology"
 
+	// Availability Zone actions (infra_admin)
+	ActionCreateAZ Action = "create_az"
+	ActionListAZs  Action = "list_azs"
+
 	// Network actions (tenant-scoped)
 	ActionCreateNetwork Action = "create_network"
 	ActionListNetworks  Action = "list_networks"

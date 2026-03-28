@@ -18,6 +18,7 @@ import (
 
 	"github.com/tjst-t/cirrus/internal/agent"
 	"github.com/tjst-t/cirrus/internal/api"
+	"github.com/tjst-t/cirrus/internal/az"
 	"github.com/tjst-t/cirrus/internal/config"
 	"github.com/tjst-t/cirrus/internal/controller"
 	"github.com/tjst-t/cirrus/internal/controller/reconcile"
@@ -147,8 +148,11 @@ func runController(cfg *config.ControllerConfig) error {
 	ipamSvc := ipam.NewBuiltinIPAM(pool)
 	networkSvc := network.NewStore(pool, ovnClient, ipamSvc, logger)
 
+	// Availability Zone service
+	azSvc := az.NewStore(pool)
+
 	// HTTP API
-	router := api.NewRouter(pool, logger, authn, authz, identitySvc, hostSvc, topologySvc, networkSvc)
+	router := api.NewRouter(pool, logger, authn, authz, identitySvc, hostSvc, topologySvc, networkSvc, azSvc)
 	httpSrv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.APIPort),
 		Handler: router,

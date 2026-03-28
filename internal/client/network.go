@@ -10,11 +10,11 @@ import (
 
 // --- Networks ---
 
-func (c *Client) CreateNetwork(ctx context.Context, tenantID uuid.UUID, name string, networkDomainID uuid.UUID) (*network.Network, error) {
+func (c *Client) CreateNetwork(ctx context.Context, tenantID uuid.UUID, name, azName string) (*network.Network, error) {
 	body := struct {
-		Name            string    `json:"name"`
-		NetworkDomainID uuid.UUID `json:"network_domain_id"`
-	}{Name: name, NetworkDomainID: networkDomainID}
+		Name string `json:"name"`
+		AZ   string `json:"az,omitempty"`
+	}{Name: name, AZ: azName}
 	resp, err := c.doWithTenant(ctx, "POST", "/api/v1/networks", body, tenantID)
 	if err != nil {
 		return nil, err

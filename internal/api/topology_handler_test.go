@@ -202,7 +202,7 @@ func (m *mockTopologySvc) ListReachableBackends(_ context.Context, _ uuid.UUID) 
 // --- helpers ---
 
 func setupTestRouter(svc topology.Service) http.Handler {
-	return api.NewRouter(nil, slog.Default(), &testAuthn{}, &testAuthz{}, nil, nil, svc, nil)
+	return api.NewRouter(nil, slog.Default(), &testAuthn{}, &testAuthz{}, nil, nil, svc, nil, nil)
 }
 
 func jsonReq(handler http.Handler, method, path string, body any) *httptest.ResponseRecorder {

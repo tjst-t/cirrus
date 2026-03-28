@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tjst-t/cirrus/internal/az"
 	"github.com/tjst-t/cirrus/internal/host"
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/network"
@@ -13,7 +14,7 @@ import (
 )
 
 // NewRouter creates the HTTP router with all middleware and routes.
-func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authenticator, authz identity.Authorizer, identitySvc identity.Service, hostSvc host.Service, topologySvc topology.Service, networkSvc network.Service) http.Handler {
+func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authenticator, authz identity.Authorizer, identitySvc identity.Service, hostSvc host.Service, topologySvc topology.Service, networkSvc network.Service, azSvc az.Service) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(RequestID)
@@ -78,8 +79,19 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		// Fault domains (derived, read-only)
 		r.Get("/fault-domains", th.getFaultDomains)
 
+		// Availability zones (admin: CRUD, tenant: read-only)
+		ah := &azHandlers{svc: azSvc, authz: authz}
+		r.Get("/availability-zones", ah.listEnabledAZs) // tenant: enabled AZs only
+		r.Get("/availability-zones/{az_id}", ah.getAZ)
+		r.Post("/admin/availability-zones", ah.createAZ)
+		r.Get("/admin/availability-zones", ah.listAZs)  // admin: all AZs
+		r.Put("/admin/availability-zones/{az_id}", ah.updateAZ)
+		r.Delete("/admin/availability-zones/{az_id}", ah.deleteAZ)
+		r.Post("/admin/availability-zones/{az_id}/storage-domains", ah.addStorageDomain)
+		r.Delete("/admin/availability-zones/{az_id}/storage-domains/{storage_domain_id}", ah.removeStorageDomain)
+
 		// Network routes (tenant-scoped)
-		nh := &networkHandlers{svc: networkSvc, authz: authz, logger: logger}
+		nh := &networkHandlers{svc: networkSvc, azSvc: azSvc, authz: authz, logger: logger}
 		r.Post("/networks", nh.createNetwork)
 		r.Get("/networks", nh.listNetworks)
 		r.Get("/networks/{network_id}", nh.getNetwork)

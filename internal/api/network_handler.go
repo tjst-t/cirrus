@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/tjst-t/cirrus/internal/az"
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/network"
 	"github.com/tjst-t/cirrus/internal/validate"
@@ -15,6 +16,7 @@ import (
 
 type networkHandlers struct {
 	svc    network.Service
+	azSvc  az.Service
 	authz  identity.Authorizer
 	logger *slog.Logger
 }
@@ -35,8 +37,8 @@ func (h *networkHandlers) createNetwork(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var req struct {
-		Name            string    `json:"name"`
-		NetworkDomainID uuid.UUID `json:"network_domain_id"`
+		Name string `json:"name"`
+		AZ   string `json:"az"` // optional: AZ name or ID
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -46,14 +48,22 @@ func (h *networkHandlers) createNetwork(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	if req.NetworkDomainID == uuid.Nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "network_domain_id is required"})
+
+	// Resolve AZ → Network Domain
+	resolvedAZ, azErr := h.resolveAZInternal(r, req.AZ)
+	if azErr != nil {
+		if errors.Is(azErr, az.ErrNotFound) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "availability zone not found"})
+		} else {
+			h.logger.Error("failed to resolve AZ", "error", azErr)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to resolve availability zone"})
+		}
 		return
 	}
 
 	n, err := h.svc.CreateNetwork(r.Context(), *tenantID, network.NetworkSpec{
 		Name:            req.Name,
-		NetworkDomainID: req.NetworkDomainID,
+		NetworkDomainID: resolvedAZ.NetworkDomainID,
 	})
 	if err != nil {
 		if errors.Is(err, network.ErrConflict) {
@@ -471,4 +481,33 @@ func (h *networkHandlers) deletePort(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// resolveAZInternal resolves an AZ name/ID string to an AvailabilityZone.
+// If azStr is empty, the default AZ is used.
+func (h *networkHandlers) resolveAZInternal(r *http.Request, azStr string) (*az.AvailabilityZone, error) {
+	ctx := r.Context()
+	if azStr != "" {
+		// Try UUID first
+		if azID, err := uuid.Parse(azStr); err == nil {
+			a, err := h.azSvc.Get(ctx, azID)
+			if err != nil {
+				return nil, err
+			}
+			return a, nil
+		}
+		// Name lookup
+		azs, err := h.azSvc.ListEnabled(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for i := range azs {
+			if azs[i].Name == azStr {
+				return &azs[i], nil
+			}
+		}
+		return nil, az.ErrNotFound
+	}
+	// Default AZ
+	return h.azSvc.GetDefault(ctx)
 }

@@ -164,6 +164,10 @@ func (s *Store) CreateSubnet(ctx context.Context, networkID uuid.UUID, spec Subn
 		return nil, fmt.Errorf("network: create subnet: %w", ErrInvalidRange)
 	}
 
+	if spec.DNSServers == nil {
+		spec.DNSServers = []string{}
+	}
+
 	var sub Subnet
 	err = s.pool.QueryRow(ctx,
 		`INSERT INTO subnets (network_id, cidr, gateway, dhcp_range_start, dhcp_range_end, dns_servers)
