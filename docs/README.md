@@ -49,6 +49,7 @@ hookの定義には以下を含む:
 | [storage.md](./storage.md) | ストレージ抽象化、バックエンド、スナップショット、レプリケーション |
 | [network.md](./network.md) | OVNによるネットワーク制御、セキュリティグループ、外部連携 |
 | [multitenancy.md](./multitenancy.md) | テナントモデル、認可、クォータ、隔離 |
+| [tenant-model.md](./tenant-model.md) | テナント向けリソース抽象化: AZ、Flavor、Volume Type、API設計 |
 | [database.md](./database.md) | DBスキーマ、ER図、設計判断 |
 | [api.md](./api.md) | REST APIエンドポイント、認証、リクエスト/レスポンス |
 | [sequences.md](./sequences.md) | VM作成までの全体フロー（シーケンス図） |

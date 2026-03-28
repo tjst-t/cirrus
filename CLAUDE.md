@@ -28,7 +28,7 @@ docs/配下に設計ドキュメントがある。実装前に必ず該当ドキ
 - [docs/architecture.md](docs/architecture.md) — コンポーネント構成、モジュール間IF、ディレクトリ構成
 - [docs/roadmap.md](docs/roadmap.md) — 全29スプリントの実装計画
 
-ドメイン別: [host.md](docs/host.md) | [storage.md](docs/storage.md) | [network.md](docs/network.md) | [multitenancy.md](docs/multitenancy.md)
+ドメイン別: [host.md](docs/host.md) | [storage.md](docs/storage.md) | [network.md](docs/network.md) | [multitenancy.md](docs/multitenancy.md) | [tenant-model.md](docs/tenant-model.md)
 実装詳細: [database.md](docs/database.md) | [api.md](docs/api.md) | [sequences.md](docs/sequences.md)
 状態整合性: [reconciliation.md](docs/reconciliation.md) — desired vs actual stateの乖離検出・対応
 テスト: [testing.md](docs/testing.md) — cirrus-simによるシミュレーションテスト
