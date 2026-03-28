@@ -57,11 +57,12 @@ func (c *Client) DeleteAZ(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+// ResolveAZ resolves an AZ by ID or name. Uses the admin endpoint to include disabled AZs.
 func (c *Client) ResolveAZ(ctx context.Context, idOrName string) (uuid.UUID, error) {
 	if id, err := uuid.Parse(idOrName); err == nil {
 		return id, nil
 	}
-	azs, err := c.ListAZs(ctx)
+	azs, err := c.ListAllAZs(ctx)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("resolve az %q: %w", idOrName, err)
 	}

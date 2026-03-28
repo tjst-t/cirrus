@@ -494,6 +494,9 @@ func (h *networkHandlers) resolveAZInternal(r *http.Request, azStr string) (*az.
 			if err != nil {
 				return nil, err
 			}
+			if !a.Enabled {
+				return nil, az.ErrNotFound
+			}
 			return a, nil
 		}
 		// Name lookup

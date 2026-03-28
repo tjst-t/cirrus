@@ -31,7 +31,7 @@ func wrapErr(msg string, err error) error {
 		case "23505": // unique_violation
 			return fmt.Errorf("%s: %w", msg, ErrConflict)
 		case "23503": // foreign_key_violation
-			return fmt.Errorf("%s: %w", msg, ErrNotFound)
+			return fmt.Errorf("%s: referenced resource does not exist: %w", msg, ErrNotFound)
 		}
 	}
 	return fmt.Errorf("%s: %w", msg, err)
@@ -97,26 +97,34 @@ func (s *Store) queryAZs(ctx context.Context, query string, args ...any) ([]Avai
 	return azs, rows.Err()
 }
 
-func (s *Store) Update(ctx context.Context, id uuid.UUID, name, description string, enabled *bool) (*AvailabilityZone, error) {
+func (s *Store) Update(ctx context.Context, id uuid.UUID, name *string, description *string, enabled *bool) (*AvailabilityZone, error) {
 	// Build dynamic update
 	setClauses := "updated_at = now()"
 	args := []any{id}
 	argIdx := 2
+	hasUpdate := false
 
-	if name != "" {
+	if name != nil {
 		setClauses += fmt.Sprintf(", name = $%d", argIdx)
-		args = append(args, name)
+		args = append(args, *name)
 		argIdx++
+		hasUpdate = true
 	}
-	if description != "" {
+	if description != nil {
 		setClauses += fmt.Sprintf(", description = $%d", argIdx)
-		args = append(args, description)
+		args = append(args, nilIfEmpty(*description))
 		argIdx++
+		hasUpdate = true
 	}
 	if enabled != nil {
 		setClauses += fmt.Sprintf(", enabled = $%d", argIdx)
 		args = append(args, *enabled)
 		argIdx++
+		hasUpdate = true
+	}
+
+	if !hasUpdate {
+		return s.Get(ctx, id)
 	}
 
 	row := s.pool.QueryRow(ctx,

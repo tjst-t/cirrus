@@ -85,6 +85,7 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		r.Get("/availability-zones/{az_id}", ah.getAZ)
 		r.Post("/admin/availability-zones", ah.createAZ)
 		r.Get("/admin/availability-zones", ah.listAZs)  // admin: all AZs
+		r.Get("/admin/availability-zones/{az_id}", ah.getAZAdmin) // admin: any AZ
 		r.Put("/admin/availability-zones/{az_id}", ah.updateAZ)
 		r.Delete("/admin/availability-zones/{az_id}", ah.deleteAZ)
 		r.Post("/admin/availability-zones/{az_id}/storage-domains", ah.addStorageDomain)

@@ -45,6 +45,8 @@ const (
 
 	// Availability Zone actions (infra_admin)
 	ActionCreateAZ Action = "create_az"
+	ActionUpdateAZ Action = "update_az"
+	ActionDeleteAZ Action = "delete_az"
 	ActionListAZs  Action = "list_azs"
 
 	// Network actions (tenant-scoped)

@@ -12,7 +12,7 @@ type Service interface {
 	Get(ctx context.Context, id uuid.UUID) (*AvailabilityZone, error)
 	List(ctx context.Context) ([]AvailabilityZone, error)
 	ListEnabled(ctx context.Context) ([]AvailabilityZone, error)
-	Update(ctx context.Context, id uuid.UUID, name, description string, enabled *bool) (*AvailabilityZone, error)
+	Update(ctx context.Context, id uuid.UUID, name *string, description *string, enabled *bool) (*AvailabilityZone, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 
 	// Storage domain associations

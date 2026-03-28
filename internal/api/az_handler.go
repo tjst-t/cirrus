@@ -79,7 +79,33 @@ func (h *azHandlers) listAZs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, azs)
 }
 
+// getAZ is the tenant-facing endpoint. It returns only enabled AZs.
+// All authenticated users can access it (no RBAC check beyond Auth middleware).
 func (h *azHandlers) getAZ(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "az_id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid availability zone ID"})
+		return
+	}
+
+	a, err := h.svc.Get(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, az.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "availability zone not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get availability zone"})
+		return
+	}
+	if !a.Enabled {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "availability zone not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, a)
+}
+
+// getAZAdmin is the admin-facing endpoint. Returns any AZ regardless of enabled status.
+func (h *azHandlers) getAZAdmin(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionListAZs, identity.Resource{}); err != nil || decision == identity.Deny {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
@@ -106,7 +132,7 @@ func (h *azHandlers) getAZ(w http.ResponseWriter, r *http.Request) {
 
 func (h *azHandlers) updateAZ(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
-	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionCreateAZ, identity.Resource{}); err != nil || decision == identity.Deny {
+	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionUpdateAZ, identity.Resource{}); err != nil || decision == identity.Deny {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
@@ -118,13 +144,19 @@ func (h *azHandlers) updateAZ(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		Enabled     *bool  `json:"enabled"`
+		Name        *string `json:"name"`
+		Description *string `json:"description"`
+		Enabled     *bool   `json:"enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
+	}
+	if req.Name != nil {
+		if err := validate.Name(*req.Name); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
 	}
 
 	updated, err := h.svc.Update(r.Context(), id, req.Name, req.Description, req.Enabled)
@@ -145,7 +177,7 @@ func (h *azHandlers) updateAZ(w http.ResponseWriter, r *http.Request) {
 
 func (h *azHandlers) deleteAZ(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
-	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionCreateAZ, identity.Resource{}); err != nil || decision == identity.Deny {
+	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionDeleteAZ, identity.Resource{}); err != nil || decision == identity.Deny {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
@@ -171,7 +203,7 @@ func (h *azHandlers) deleteAZ(w http.ResponseWriter, r *http.Request) {
 
 func (h *azHandlers) addStorageDomain(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
-	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionCreateAZ, identity.Resource{}); err != nil || decision == identity.Deny {
+	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionUpdateAZ, identity.Resource{}); err != nil || decision == identity.Deny {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
@@ -203,7 +235,7 @@ func (h *azHandlers) addStorageDomain(w http.ResponseWriter, r *http.Request) {
 
 func (h *azHandlers) removeStorageDomain(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
-	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionCreateAZ, identity.Resource{}); err != nil || decision == identity.Deny {
+	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionUpdateAZ, identity.Resource{}); err != nil || decision == identity.Deny {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
