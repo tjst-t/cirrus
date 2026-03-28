@@ -56,13 +56,14 @@ type Location struct {
 	Children        []*Location      `json:"children,omitempty"`
 }
 
-// Zone represents a group of hosts under a location at a specified hierarchy level.
-type Zone struct {
-	LocationID   uuid.UUID   `json:"location_id"`
-	LocationName string      `json:"location_name"`
+// FaultDomain represents a group of hosts under a location at a specified hierarchy level.
+// Used for operational purposes: rollout planning, failure analysis, canary deployments.
+type FaultDomain struct {
+	LocationID   uuid.UUID    `json:"location_id"`
+	LocationName string       `json:"location_name"`
 	Level        LocationType `json:"level"`
-	HostIDs      []uuid.UUID `json:"host_ids"`
-	Count        int         `json:"count"`
+	HostIDs      []uuid.UUID  `json:"host_ids"`
+	Count        int          `json:"count"`
 }
 
 // ComputePool is the derived intersection of a storage domain and a network domain.

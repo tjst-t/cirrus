@@ -385,74 +385,74 @@ func (s *Store) GetComputePool(ctx context.Context, storageDomainID, networkDoma
 	}, nil
 }
 
-// --- Zone derivation ---
+// --- Fault domain derivation ---
 
-func (s *Store) GetZones(ctx context.Context, level LocationType) ([]Zone, error) {
+func (s *Store) GetFaultDomains(ctx context.Context, level LocationType) ([]FaultDomain, error) {
 	if !IsValidLocationType(level) {
-		return nil, fmt.Errorf("topology: get zones: %w: %s", ErrInvalidType, level)
+		return nil, fmt.Errorf("topology: get fault domains: %w: %s", ErrInvalidType, level)
 	}
 
 	// For each location at the given level, find all hosts whose location_id
 	// is either that location itself or any descendant of it.
 	rows, err := s.pool.Query(ctx,
-		`WITH zone_locations AS (
+		`WITH fd_locations AS (
 			SELECT id, name FROM locations WHERE type = $1
 		),
 		descendant_hosts AS (
-			SELECT zl.id AS zone_id, zl.name AS zone_name, h.id AS host_id
-			FROM zone_locations zl
+			SELECT fl.id AS fd_id, fl.name AS fd_name, h.id AS host_id
+			FROM fd_locations fl
 			JOIN LATERAL (
 				WITH RECURSIVE subtree AS (
-					SELECT id FROM locations WHERE id = zl.id
+					SELECT id FROM locations WHERE id = fl.id
 					UNION ALL
 					SELECT l.id FROM locations l JOIN subtree st ON l.parent_id = st.id
 				)
 				SELECT id FROM hosts WHERE location_id IN (SELECT id FROM subtree)
 			) h ON true
 		)
-		SELECT zone_id, zone_name, array_agg(host_id ORDER BY host_id) AS host_ids
+		SELECT fd_id, fd_name, array_agg(host_id ORDER BY host_id) AS host_ids
 		FROM descendant_hosts
-		GROUP BY zone_id, zone_name
-		ORDER BY zone_name`, level)
+		GROUP BY fd_id, fd_name
+		ORDER BY fd_name`, level)
 	if err != nil {
-		return nil, fmt.Errorf("topology: get zones: %w", err)
+		return nil, fmt.Errorf("topology: get fault domains: %w", err)
 	}
 	defer rows.Close()
 
-	var zones []Zone
+	var fds []FaultDomain
 	for rows.Next() {
-		var z Zone
-		z.Level = level
-		if err := rows.Scan(&z.LocationID, &z.LocationName, &z.HostIDs); err != nil {
-			return nil, fmt.Errorf("topology: get zones scan: %w", err)
+		var fd FaultDomain
+		fd.Level = level
+		if err := rows.Scan(&fd.LocationID, &fd.LocationName, &fd.HostIDs); err != nil {
+			return nil, fmt.Errorf("topology: get fault domains scan: %w", err)
 		}
-		z.Count = len(z.HostIDs)
-		zones = append(zones, z)
+		fd.Count = len(fd.HostIDs)
+		fds = append(fds, fd)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("topology: get zones: %w", err)
+		return nil, fmt.Errorf("topology: get fault domains: %w", err)
 	}
 
-	// Include locations at the level that have no hosts (empty zones)
+	// Include locations at the level that have no hosts (empty fault domains)
 	locRows, err := s.pool.Query(ctx,
 		`SELECT id, name FROM locations WHERE type = $1 ORDER BY name`, level)
 	if err != nil {
-		return nil, fmt.Errorf("topology: get zones: %w", err)
+		return nil, fmt.Errorf("topology: get fault domains: %w", err)
 	}
 	defer locRows.Close()
 
-	existing := make(map[uuid.UUID]bool, len(zones))
-	for _, z := range zones {
-		existing[z.LocationID] = true
+	existing := make(map[uuid.UUID]bool, len(fds))
+	for _, fd := range fds {
+		existing[fd.LocationID] = true
 	}
 	for locRows.Next() {
 		var id uuid.UUID
 		var name string
 		if err := locRows.Scan(&id, &name); err != nil {
-			return nil, fmt.Errorf("topology: get zones scan: %w", err)
+			return nil, fmt.Errorf("topology: get fault domains scan: %w", err)
 		}
 		if !existing[id] {
-			zones = append(zones, Zone{
+			fds = append(fds, FaultDomain{
 				LocationID:   id,
 				LocationName: name,
 				Level:        level,
@@ -463,11 +463,11 @@ func (s *Store) GetZones(ctx context.Context, level LocationType) ([]Zone, error
 	}
 
 	// Sort by name for deterministic output
-	sort.Slice(zones, func(i, j int) bool {
-		return zones[i].LocationName < zones[j].LocationName
+	sort.Slice(fds, func(i, j int) bool {
+		return fds[i].LocationName < fds[j].LocationName
 	})
 
-	return zones, locRows.Err()
+	return fds, locRows.Err()
 }
 
 // --- Reachability queries ---

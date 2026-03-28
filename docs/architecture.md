@@ -281,8 +281,7 @@ type Service interface {
 
     // ロケーション
     GetLocationPath(ctx context.Context, locationID string) ([]*Location, error)
-    GetZones(ctx context.Context) ([]*Zone, error)
-    GetHostsInZone(ctx context.Context, zoneID string) ([]string, error)
+    GetFaultDomains(ctx context.Context, level string) ([]*FaultDomain, error)
 
     // ストレージドメイン・ネットワークドメイン
     CreateStorageDomain(ctx context.Context, spec StorageDomainSpec) (*StorageDomain, error)

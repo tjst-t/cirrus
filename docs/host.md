@@ -249,7 +249,7 @@ firmware:
 プロファイルを新バージョンに更新する際の展開戦略。
 
 - プロファイルグループ（同一capabilityのホスト群）にロールアウトポリシーを適用
-- ゾーン単位でカナリア的に展開（ゾーン1に適用→問題なければゾーン2）
+- フォルトドメイン単位でカナリア的に展開（fd-1に適用→問題なければfd-2）
 - OVNの場合は中央クラスタを先にアップデートし、ovn-controllerを順次更新する順序制約あり
 - メンテナンス操作の種類ごとに影響範囲を到達性ドメインから導出する
 
@@ -261,7 +261,7 @@ firmware:
   rollback_on:
     - host_health_check_failure
     - vm_error_rate > 1%
-  zone_order: [zone-a, zone-b, zone-c]
+  fault_domain_order: [fd-a, fd-b, fd-c]
 ```
 
 ## プレースメントとDRS

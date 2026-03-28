@@ -810,7 +810,7 @@ func (app *cli) newAdminCmd() *cobra.Command {
 	cmd.AddCommand(app.newAdminNetworkDomainCmd())
 	cmd.AddCommand(app.newAdminLocationCmd())
 	cmd.AddCommand(app.newAdminComputePoolCmd())
-	cmd.AddCommand(app.newAdminZoneCmd())
+	cmd.AddCommand(app.newAdminFaultDomainCmd())
 	return cmd
 }
 
@@ -1519,45 +1519,46 @@ func (app *cli) newComputePoolGetCmd() *cobra.Command {
 	return cmd
 }
 
-// --- Admin: Zone commands ---
+// --- Admin: Fault Domain commands ---
 
-func (app *cli) newAdminZoneCmd() *cobra.Command {
+func (app *cli) newAdminFaultDomainCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "zone",
-		Short: "Query zones (derived from location hierarchy)",
+		Use:     "fault-domain",
+		Aliases: []string{"fd"},
+		Short:   "Query fault domains (derived from location hierarchy)",
 	}
-	cmd.AddCommand(app.newZoneListCmd())
+	cmd.AddCommand(app.newFaultDomainListCmd())
 	return cmd
 }
 
-func (app *cli) newZoneListCmd() *cobra.Command {
+func (app *cli) newFaultDomainListCmd() *cobra.Command {
 	var level string
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List zones at a given hierarchy level",
+		Short: "List fault domains at a given hierarchy level",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := app.cmdContext()
-			zones, err := app.newClient().GetZones(ctx, level)
+			fds, err := app.newClient().GetFaultDomains(ctx, level)
 			if err != nil {
 				return err
 			}
 			if app.output == "json" {
 				enc := json.NewEncoder(os.Stdout)
 				enc.SetIndent("", "  ")
-				return enc.Encode(zones)
+				return enc.Encode(fds)
 			}
-			rows := make([][]string, len(zones))
-			for i, z := range zones {
-				ids := make([]string, len(z.HostIDs))
-				for j, id := range z.HostIDs {
+			rows := make([][]string, len(fds))
+			for i, fd := range fds {
+				ids := make([]string, len(fd.HostIDs))
+				for j, id := range fd.HostIDs {
 					ids[j] = id.String()
 				}
 				hostStr := strings.Join(ids, ", ")
 				if hostStr == "" {
 					hostStr = "-"
 				}
-				rows[i] = []string{z.LocationID.String(), z.LocationName, string(z.Level), fmt.Sprintf("%d", z.Count), hostStr}
+				rows[i] = []string{fd.LocationID.String(), fd.LocationName, string(fd.Level), fmt.Sprintf("%d", fd.Count), hostStr}
 			}
 			return app.printTable(
 				[]string{"LOCATION_ID", "NAME", "LEVEL", "HOSTS", "HOST_IDS"},

@@ -479,9 +479,9 @@ func (h *topologyHandlers) getComputePool(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, pool)
 }
 
-// --- Zones ---
+// --- Fault Domains ---
 
-func (h *topologyHandlers) getZones(w http.ResponseWriter, r *http.Request) {
+func (h *topologyHandlers) getFaultDomains(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionGetLocation, identity.Resource{}); err != nil || decision == identity.Deny {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
@@ -500,13 +500,13 @@ func (h *topologyHandlers) getZones(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	zones, err := h.svc.GetZones(r.Context(), level)
+	fds, err := h.svc.GetFaultDomains(r.Context(), level)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get zones"})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get fault domains"})
 		return
 	}
-	if zones == nil {
-		zones = []topology.Zone{}
+	if fds == nil {
+		fds = []topology.FaultDomain{}
 	}
-	writeJSON(w, http.StatusOK, zones)
+	writeJSON(w, http.StatusOK, fds)
 }

@@ -34,8 +34,8 @@ type Service interface {
 	// Compute pool derivation
 	GetComputePool(ctx context.Context, storageDomainID, networkDomainID uuid.UUID) (*ComputePool, error)
 
-	// Zone derivation
-	GetZones(ctx context.Context, level LocationType) ([]Zone, error)
+	// Fault domain derivation
+	GetFaultDomains(ctx context.Context, level LocationType) ([]FaultDomain, error)
 
 	// Reachability queries
 	ListReachableHosts(ctx context.Context, storageDomainID uuid.UUID) ([]uuid.UUID, error)

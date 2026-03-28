@@ -245,12 +245,12 @@ func (c *Client) GetComputePool(ctx context.Context, storageDomainID, networkDom
 	return decodeResponse[*topology.ComputePool](resp)
 }
 
-// --- Zones ---
+// --- Fault Domains ---
 
-func (c *Client) GetZones(ctx context.Context, level string) ([]topology.Zone, error) {
-	resp, err := c.do(ctx, "GET", fmt.Sprintf("/api/v1/zones?level=%s", level), nil)
+func (c *Client) GetFaultDomains(ctx context.Context, level string) ([]topology.FaultDomain, error) {
+	resp, err := c.do(ctx, "GET", fmt.Sprintf("/api/v1/fault-domains?level=%s", level), nil)
 	if err != nil {
 		return nil, err
 	}
-	return decodeResponse[[]topology.Zone](resp)
+	return decodeResponse[[]topology.FaultDomain](resp)
 }

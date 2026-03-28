@@ -171,8 +171,8 @@ func (m *mockTopologySvc) GetComputePool(_ context.Context, sdID, ndID uuid.UUID
 		HostIDs: hostIDs, Count: len(hostIDs),
 	}, nil
 }
-func (m *mockTopologySvc) GetZones(_ context.Context, level topology.LocationType) ([]topology.Zone, error) {
-	var zones []topology.Zone
+func (m *mockTopologySvc) GetFaultDomains(_ context.Context, level topology.LocationType) ([]topology.FaultDomain, error) {
+	var fds []topology.FaultDomain
 	for _, loc := range m.locations {
 		if loc.Type == level {
 			var hostIDs []uuid.UUID
@@ -184,13 +184,13 @@ func (m *mockTopologySvc) GetZones(_ context.Context, level topology.LocationTyp
 			if hostIDs == nil {
 				hostIDs = []uuid.UUID{}
 			}
-			zones = append(zones, topology.Zone{
+			fds = append(fds, topology.FaultDomain{
 				LocationID: loc.ID, LocationName: loc.Name,
 				Level: level, HostIDs: hostIDs, Count: len(hostIDs),
 			})
 		}
 	}
-	return zones, nil
+	return fds, nil
 }
 func (m *mockTopologySvc) ListReachableHosts(_ context.Context, _ uuid.UUID) ([]uuid.UUID, error) {
 	return nil, nil
@@ -298,20 +298,20 @@ func TestTopology_FullFlow(t *testing.T) {
 		t.Fatalf("pool: want 1 host %s, got %d hosts %v", hostID, pool.Count, pool.HostIDs)
 	}
 
-	// 6. Zones at rack level
-	w = jsonReq(r, "GET", "/api/v1/zones?level=rack", nil)
+	// 6. Fault domains at rack level
+	w = jsonReq(r, "GET", "/api/v1/fault-domains?level=rack", nil)
 	if w.Code != http.StatusOK {
-		t.Fatalf("zones: %d %s", w.Code, w.Body.String())
+		t.Fatalf("fault-domains: %d %s", w.Code, w.Body.String())
 	}
-	zones := decodeBody[[]topology.Zone](t, w)
-	foundZone := false
-	for _, z := range zones {
-		if z.LocationID == rack.ID && z.Count == 1 {
-			foundZone = true
+	fds := decodeBody[[]topology.FaultDomain](t, w)
+	foundFD := false
+	for _, fd := range fds {
+		if fd.LocationID == rack.ID && fd.Count == 1 {
+			foundFD = true
 		}
 	}
-	if !foundZone {
-		t.Fatalf("zone rack-a: want 1 host, got %+v", zones)
+	if !foundFD {
+		t.Fatalf("fault-domain rack-a: want 1 host, got %+v", fds)
 	}
 
 	// 7. Dissociate → pool empty
