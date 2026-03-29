@@ -395,7 +395,7 @@
 - [x] make serve → make test が通ること
 - [x] docker-compose up → workerコンテナ内でOVS + libvirtd-sim + namespace作成が動作すること
 - [x] workerコンテナ間でGeneveトンネルが疎通すること（Sprint 5Nの前提確認）
-- [ ] cirrus-simリポジトリをアーカイブ（手動対応）
+- [x] cirrus-simリポジトリをアーカイブ
 
 **デプロイ確認**: make serve で統合シミュレータが起動 → 既存テスト全パス → make test-integration でdocker-compose環境が動作
 
