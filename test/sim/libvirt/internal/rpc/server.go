@@ -7,6 +7,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/tjst-t/cirrus/test/sim/common/pkg/fault"
 	"github.com/tjst-t/cirrus/test/sim/libvirt/internal/netns"
 	"github.com/tjst-t/cirrus/test/sim/libvirt/internal/state"
 )
@@ -18,8 +19,9 @@ type Server struct {
 	mu        sync.Mutex
 	listeners map[string]net.Listener // key: hostID
 	wg        sync.WaitGroup
-	eventBus  *EventBus
-	netns     netns.Manager
+	eventBus    *EventBus
+	netns       netns.Manager
+	faultEngine *fault.Engine
 }
 
 // NewServer creates a new RPC server.
@@ -36,6 +38,11 @@ func NewServer(store *state.Store, logger *slog.Logger) *Server {
 // SetNetnsManager sets the network namespace manager for all handlers.
 func (s *Server) SetNetnsManager(m netns.Manager) {
 	s.netns = m
+}
+
+// SetFaultEngine sets the fault injection engine for RPC-level fault injection.
+func (s *Server) SetFaultEngine(e *fault.Engine) {
+	s.faultEngine = e
 }
 
 // EventBusRef returns the server's event bus.
@@ -138,6 +145,9 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn, hostID str
 	handler := NewHandler(s.store, hostID, s.logger.With("host_id", hostID, "remote", conn.RemoteAddr()))
 	handler.SetEventBus(s.eventBus)
 	handler.SetNetnsManager(s.netns)
+	if s.faultEngine != nil {
+		handler.SetFaultEngine(s.faultEngine)
+	}
 	clientEvents := s.eventBus.RegisterClient(conn, hostID)
 	handler.SetClientEvents(clientEvents)
 	defer s.eventBus.UnregisterClient(conn)

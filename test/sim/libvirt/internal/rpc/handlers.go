@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
+	"github.com/tjst-t/cirrus/test/sim/common/pkg/fault"
 	"github.com/tjst-t/cirrus/test/sim/libvirt/internal/netns"
 	"github.com/tjst-t/cirrus/test/sim/libvirt/internal/state"
 	domxml "github.com/tjst-t/cirrus/test/sim/libvirt/internal/xml"
@@ -19,6 +21,7 @@ type Handler struct {
 	clientEvents *ClientEvents
 	eventBus     *EventBus
 	netns        netns.Manager
+	faultEngine  *fault.Engine
 }
 
 // NewHandler creates a new RPC handler for a host.
@@ -36,6 +39,11 @@ func (h *Handler) SetNetnsManager(m netns.Manager) {
 	h.netns = m
 }
 
+// SetFaultEngine sets the fault injection engine for RPC-level fault injection.
+func (h *Handler) SetFaultEngine(e *fault.Engine) {
+	h.faultEngine = e
+}
+
 // SetClientEvents sets the client event tracker for this handler.
 func (h *Handler) SetClientEvents(ce *ClientEvents) {
 	h.clientEvents = ce
@@ -49,6 +57,35 @@ func (h *Handler) SetEventBus(eb *EventBus) {
 // HandleMessage dispatches an RPC message to the appropriate handler.
 func (h *Handler) HandleMessage(msg *Message) *Message {
 	h.logger.Debug("handling RPC", "procedure", msg.Header.Procedure, "serial", msg.Header.Serial)
+
+	// Check fault injection before processing
+	if h.faultEngine != nil {
+		opName := procedureName(msg.Header.Procedure)
+		if result := h.faultEngine.Check(context.Background(), "libvirtd-sim", h.hostID, opName); result != nil {
+			switch result.Type {
+			case fault.FaultError:
+				errMsg := result.ErrorMessage
+				if errMsg == "" {
+					errMsg = "injected fault"
+				}
+				h.logger.Info("fault injected", "operation", opName, "type", "error")
+				return h.errorReply(msg, VirErrInternalError, errMsg)
+			case fault.FaultDelay:
+				if result.DelayMs > 0 {
+					h.logger.Info("fault injected", "operation", opName, "type", "delay", "ms", result.DelayMs)
+					time.Sleep(time.Duration(result.DelayMs) * time.Millisecond)
+				}
+			case fault.FaultTimeout:
+				delay := result.TimeoutMs
+				if delay <= 0 {
+					delay = 30000
+				}
+				h.logger.Info("fault injected", "operation", opName, "type", "timeout", "ms", delay)
+				time.Sleep(time.Duration(delay) * time.Millisecond)
+				return nil
+			}
+		}
+	}
 
 	switch msg.Header.Procedure {
 	case ProcAuthList:

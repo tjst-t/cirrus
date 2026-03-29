@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/tjst-t/cirrus/test/sim/common/pkg/fault"
 	"github.com/tjst-t/cirrus/test/sim/libvirt/internal/handler"
 	"github.com/tjst-t/cirrus/test/sim/libvirt/internal/netns"
 	"github.com/tjst-t/cirrus/test/sim/libvirt/internal/rpc"
@@ -155,6 +156,7 @@ func NewHostInstance(cfg HostInstanceConfig, logger *slog.Logger) *HostInstance 
 		nsMgr = netns.NewNoopManager(logger)
 	}
 	rpcServer.SetNetnsManager(nsMgr)
+	rpcServer.SetFaultEngine(fault.New())
 
 	mgmt := handler.NewManagement(store, rpcServer, logger)
 

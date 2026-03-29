@@ -11,6 +11,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -125,8 +126,19 @@ func New(port string, endpoints Endpoints, logger *slog.Logger) *Server {
 	mux.HandleFunc("GET /sim/events", s.handleEvents)
 	mux.HandleFunc("GET /sim/faults", s.handleFaults)
 
-	// Proxy endpoints for direct access to simulators
+	// Fault injection proxy (POST/DELETE to common API)
+	mux.HandleFunc("POST /sim/faults", s.handleProxyFaultAdd)
+	mux.HandleFunc("DELETE /sim/faults", s.handleProxyFaultClear)
+	mux.HandleFunc("DELETE /sim/faults/{id}", s.handleProxyFaultDelete)
+
+	// Snapshot proxy (common API)
+	mux.HandleFunc("POST /sim/snapshots", s.handleProxySnapshotSave)
+	mux.HandleFunc("GET /sim/snapshots", s.handleProxySnapshotList)
+	mux.HandleFunc("POST /sim/snapshots/{id}/restore", s.handleProxySnapshotRestore)
+
+	// Storage proxy
 	mux.HandleFunc("GET /sim/storage/stats", s.handleProxyStorageStats)
+	mux.HandleFunc("GET /sim/storage/backends", s.handleProxyStorageBackends)
 	mux.HandleFunc("GET /sim/awx/stats", s.handleProxyAWXStats)
 	mux.HandleFunc("GET /sim/postgres/stats", s.handleProxyPostgresStats)
 	mux.HandleFunc("GET /sim/postgres/tables", s.handleProxyPostgresTables)
@@ -427,6 +439,70 @@ func (s *Server) handleProxyPostgresTableSchema(w http.ResponseWriter, r *http.R
 	proxyGet(w, r, fmt.Sprintf("%s/sim/tables/%s/schema", s.endpoints.PostgreSim, name))
 }
 
+// --- Fault injection proxy ---
+
+func (s *Server) handleProxyFaultAdd(w http.ResponseWriter, r *http.Request) {
+	if s.endpoints.CommonSim == "" {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "common-sim not configured"})
+		return
+	}
+	proxyRequest(w, r, s.endpoints.CommonSim+"/api/v1/faults")
+}
+
+func (s *Server) handleProxyFaultClear(w http.ResponseWriter, r *http.Request) {
+	if s.endpoints.CommonSim == "" {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "common-sim not configured"})
+		return
+	}
+	proxyRequest(w, r, s.endpoints.CommonSim+"/api/v1/faults")
+}
+
+func (s *Server) handleProxyFaultDelete(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if s.endpoints.CommonSim == "" {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "common-sim not configured"})
+		return
+	}
+	proxyRequest(w, r, fmt.Sprintf("%s/api/v1/faults/%s", s.endpoints.CommonSim, id))
+}
+
+// --- Snapshot proxy ---
+
+func (s *Server) handleProxySnapshotSave(w http.ResponseWriter, r *http.Request) {
+	if s.endpoints.CommonSim == "" {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "common-sim not configured"})
+		return
+	}
+	proxyRequest(w, r, s.endpoints.CommonSim+"/api/v1/state/snapshot")
+}
+
+func (s *Server) handleProxySnapshotList(w http.ResponseWriter, r *http.Request) {
+	if s.endpoints.CommonSim == "" {
+		writeJSON(w, http.StatusOK, []any{})
+		return
+	}
+	proxyGet(w, r, s.endpoints.CommonSim+"/api/v1/state/snapshots")
+}
+
+func (s *Server) handleProxySnapshotRestore(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if s.endpoints.CommonSim == "" {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "common-sim not configured"})
+		return
+	}
+	proxyRequest(w, r, fmt.Sprintf("%s/api/v1/state/restore/%s", s.endpoints.CommonSim, id))
+}
+
+// --- Storage backends proxy ---
+
+func (s *Server) handleProxyStorageBackends(w http.ResponseWriter, r *http.Request) {
+	if s.endpoints.StorageSim == "" {
+		writeJSON(w, http.StatusOK, []any{})
+		return
+	}
+	proxyGet(w, r, s.endpoints.StorageSim+"/sim/backends")
+}
+
 // --- Helpers ---
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -449,6 +525,30 @@ func fetchJSON(ctx context.Context, url string, out any) error {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// proxyRequest forwards the original request (method + body) to the target URL.
+func proxyRequest(w http.ResponseWriter, r *http.Request, url string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, r.Method, url, r.Body)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	req.Header.Set("Content-Type", r.Header.Get("Content-Type"))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
 }
 
 func proxyGet(w http.ResponseWriter, _ *http.Request, url string) {

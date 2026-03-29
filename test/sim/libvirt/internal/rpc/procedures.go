@@ -1,5 +1,7 @@
 package rpc
 
+import "fmt"
+
 // Libvirt remote procedure numbers.
 // These constants match the libvirt RPC protocol specification
 // as defined in github.com/digitalocean/go-libvirt internal/constants/remote_protocol.gen.go.
@@ -75,6 +77,56 @@ const (
 	// ProcConnectGetLibVersion is REMOTE_PROC_CONNECT_GET_LIB_VERSION.
 	ProcConnectGetLibVersion int32 = 157
 )
+
+// procedureName returns a human-readable name for a libvirt RPC procedure number.
+func procedureName(proc int32) string {
+	switch proc {
+	case ProcConnectOpen:
+		return "connect_open"
+	case ProcConnectClose:
+		return "connect_close"
+	case ProcDomainDefineXMLFlags:
+		return "domain_define"
+	case ProcDomainCreateWithFlags:
+		return "domain_create"
+	case ProcDomainDestroyFlags:
+		return "domain_destroy"
+	case ProcDomainShutdownFlags:
+		return "domain_shutdown"
+	case ProcDomainSuspend:
+		return "domain_suspend"
+	case ProcDomainResume:
+		return "domain_resume"
+	case ProcDomainReboot:
+		return "domain_reboot"
+	case ProcDomainUndefineFlags:
+		return "domain_undefine"
+	case ProcDomainGetState:
+		return "domain_get_state"
+	case ProcDomainGetInfo:
+		return "domain_get_info"
+	case ProcDomainGetXMLDesc:
+		return "domain_get_xml"
+	case ProcDomainListAllDomains:
+		return "domain_list_all"
+	case ProcDomainLookupByUUID:
+		return "domain_lookup_uuid"
+	case ProcDomainLookupByName:
+		return "domain_lookup_name"
+	case ProcDomainMigratePrepare3Params:
+		return "migrate_prepare"
+	case ProcDomainMigratePerform3Params:
+		return "migrate_perform"
+	case ProcDomainMigrateFinish3Params:
+		return "migrate_finish"
+	case ProcDomainMigrateConfirm3Params:
+		return "migrate_confirm"
+	case ProcNodeGetInfo:
+		return "node_get_info"
+	default:
+		return fmt.Sprintf("proc_%d", proc)
+	}
+}
 
 // Libvirt error codes.
 const (
