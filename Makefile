@@ -231,20 +231,14 @@ _seed-topology:
 	  curl -sf -X POST \
 	    -H "Authorization: Bearer $$TOKEN" \
 	    -H "Content-Type: application/json" \
-	    -d "{\"name\":\"default-nd\"}" \
-	    http://localhost:$$API_PORT/api/v1/network-domains >/dev/null 2>&1 || true; \
-	  curl -sf -X POST \
-	    -H "Authorization: Bearer $$TOKEN" \
-	    -H "Content-Type: application/json" \
 	    -d "{\"name\":\"default-site\",\"type\":\"site\"}" \
 	    http://localhost:$$API_PORT/api/v1/locations >/dev/null 2>&1 || true; \
 	  LOC_ID=$$(curl -sf -H "Authorization: Bearer $$TOKEN" http://localhost:$$API_PORT/api/v1/locations | jq -r ".[0].id"); \
-	  ND_ID=$$(curl -sf -H "Authorization: Bearer $$TOKEN" http://localhost:$$API_PORT/api/v1/network-domains | jq -r ".[0].id"); \
 	  SD_ID=$$(curl -sf -H "Authorization: Bearer $$TOKEN" http://localhost:$$API_PORT/api/v1/storage-domains | jq -r ".[0].id"); \
 	  curl -sf -X POST \
 	    -H "Authorization: Bearer $$TOKEN" \
 	    -H "Content-Type: application/json" \
-	    -d "{\"name\":\"default-az\",\"location_id\":\"$$LOC_ID\",\"network_domain_id\":\"$$ND_ID\"}" \
+	    -d "{\"name\":\"default-az\",\"location_id\":\"$$LOC_ID\"}" \
 	    http://localhost:$$API_PORT/api/v1/admin/availability-zones >/dev/null 2>&1 || true; \
 	  AZ_ID=$$(curl -sf -H "Authorization: Bearer $$TOKEN" http://localhost:$$API_PORT/api/v1/admin/availability-zones | jq -r ".[0].id"); \
 	  curl -sf -X POST \

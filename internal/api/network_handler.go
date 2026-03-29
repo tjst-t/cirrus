@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/tjst-t/cirrus/internal/az"
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/network"
 	"github.com/tjst-t/cirrus/internal/validate"
@@ -16,7 +15,6 @@ import (
 
 type networkHandlers struct {
 	svc    network.Service
-	azSvc  az.Service
 	authz  identity.Authorizer
 	logger *slog.Logger
 }
@@ -38,7 +36,6 @@ func (h *networkHandlers) createNetwork(w http.ResponseWriter, r *http.Request) 
 
 	var req struct {
 		Name string `json:"name"`
-		AZ   string `json:"az"` // optional: AZ name or ID
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -49,29 +46,12 @@ func (h *networkHandlers) createNetwork(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Resolve AZ → Network Domain
-	resolvedAZ, azErr := h.resolveAZInternal(r, req.AZ)
-	if azErr != nil {
-		if errors.Is(azErr, az.ErrNotFound) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "availability zone not found"})
-		} else {
-			h.logger.Error("failed to resolve AZ", "error", azErr)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to resolve availability zone"})
-		}
-		return
-	}
-
 	n, err := h.svc.CreateNetwork(r.Context(), *tenantID, network.NetworkSpec{
-		Name:            req.Name,
-		NetworkDomainID: resolvedAZ.NetworkDomainID,
+		Name: req.Name,
 	})
 	if err != nil {
 		if errors.Is(err, network.ErrConflict) {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "network with this name already exists in tenant"})
-			return
-		}
-		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "network domain not found"})
 			return
 		}
 		h.logger.Error("failed to create network", "error", err)
@@ -166,216 +146,7 @@ func (h *networkHandlers) deleteNetwork(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// --- Subnets ---
-
-func (h *networkHandlers) createSubnet(w http.ResponseWriter, r *http.Request) {
-	user := UserFromContext(r.Context())
-	networkID, err := uuid.Parse(chi.URLParam(r, "network_id"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid network ID"})
-		return
-	}
-
-	// Verify network exists and check authorization
-	n, err := h.svc.GetNetwork(r.Context(), networkID)
-	if err != nil {
-		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "network not found"})
-			return
-		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get network"})
-		return
-	}
-
-	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionCreateNetwork, identity.Resource{TenantID: &n.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
-		return
-	}
-
-	var req network.SubnetSpec
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-		return
-	}
-	if req.CIDR == "" || req.Gateway == "" || req.DHCPRangeStart == "" || req.DHCPRangeEnd == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cidr, gateway, dhcp_range_start, dhcp_range_end are required"})
-		return
-	}
-
-	sub, err := h.svc.CreateSubnet(r.Context(), networkID, req)
-	if err != nil {
-		if errors.Is(err, network.ErrInvalidCIDR) || errors.Is(err, network.ErrInvalidGateway) || errors.Is(err, network.ErrInvalidRange) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-			return
-		}
-		h.logger.Error("failed to create subnet", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create subnet"})
-		return
-	}
-	writeJSON(w, http.StatusCreated, sub)
-}
-
-func (h *networkHandlers) listSubnets(w http.ResponseWriter, r *http.Request) {
-	user := UserFromContext(r.Context())
-	networkID, err := uuid.Parse(chi.URLParam(r, "network_id"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid network ID"})
-		return
-	}
-
-	n, err := h.svc.GetNetwork(r.Context(), networkID)
-	if err != nil {
-		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "network not found"})
-			return
-		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get network"})
-		return
-	}
-
-	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionGetNetwork, identity.Resource{TenantID: &n.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
-		return
-	}
-
-	subnets, err := h.svc.ListSubnets(r.Context(), networkID)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list subnets"})
-		return
-	}
-	if subnets == nil {
-		subnets = []network.Subnet{}
-	}
-	writeJSON(w, http.StatusOK, subnets)
-}
-
-func (h *networkHandlers) getSubnet(w http.ResponseWriter, r *http.Request) {
-	user := UserFromContext(r.Context())
-	subnetID, err := uuid.Parse(chi.URLParam(r, "subnet_id"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid subnet ID"})
-		return
-	}
-
-	sub, err := h.svc.GetSubnet(r.Context(), subnetID)
-	if err != nil {
-		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "subnet not found"})
-			return
-		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get subnet"})
-		return
-	}
-
-	n, err := h.svc.GetNetwork(r.Context(), sub.NetworkID)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get network"})
-		return
-	}
-
-	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionGetNetwork, identity.Resource{TenantID: &n.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
-		return
-	}
-
-	writeJSON(w, http.StatusOK, sub)
-}
-
-func (h *networkHandlers) deleteSubnet(w http.ResponseWriter, r *http.Request) {
-	user := UserFromContext(r.Context())
-	subnetID, err := uuid.Parse(chi.URLParam(r, "subnet_id"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid subnet ID"})
-		return
-	}
-
-	sub, err := h.svc.GetSubnet(r.Context(), subnetID)
-	if err != nil {
-		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "subnet not found"})
-			return
-		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get subnet"})
-		return
-	}
-
-	// Check authorization via the parent network
-	n, err := h.svc.GetNetwork(r.Context(), sub.NetworkID)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get network"})
-		return
-	}
-
-	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionDeleteNetwork, identity.Resource{TenantID: &n.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
-		return
-	}
-
-	if err := h.svc.DeleteSubnet(r.Context(), subnetID); err != nil {
-		if errors.Is(err, network.ErrHasDependents) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
-			return
-		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete subnet"})
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// --- Ports ---
-
-func (h *networkHandlers) createPort(w http.ResponseWriter, r *http.Request) {
-	user := UserFromContext(r.Context())
-	tenantID := TenantIDFromContext(r.Context())
-	if tenantID == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "X-Tenant-ID header required"})
-		return
-	}
-
-	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionCreatePort, identity.Resource{TenantID: tenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
-		return
-	}
-
-	var req struct {
-		NetworkID uuid.UUID `json:"network_id"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-		return
-	}
-	if req.NetworkID == uuid.Nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "network_id is required"})
-		return
-	}
-
-	// Verify the network belongs to the authorized tenant
-	net, err := h.svc.GetNetwork(r.Context(), req.NetworkID)
-	if err != nil {
-		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "network not found"})
-			return
-		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get network"})
-		return
-	}
-	if net.TenantID != *tenantID {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "network does not belong to this tenant"})
-		return
-	}
-
-	p, err := h.svc.CreatePort(r.Context(), *tenantID, network.PortSpec{NetworkID: req.NetworkID})
-	if err != nil {
-		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-			return
-		}
-		h.logger.Error("failed to create port", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create port"})
-		return
-	}
-	writeJSON(w, http.StatusCreated, p)
-}
+// --- Ports (read-only) ---
 
 func (h *networkHandlers) listPorts(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
@@ -451,66 +222,4 @@ func (h *networkHandlers) getPort(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, p)
-}
-
-func (h *networkHandlers) deletePort(w http.ResponseWriter, r *http.Request) {
-	user := UserFromContext(r.Context())
-	id, err := uuid.Parse(chi.URLParam(r, "port_id"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid port ID"})
-		return
-	}
-
-	p, err := h.svc.GetPort(r.Context(), id)
-	if err != nil {
-		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "port not found"})
-			return
-		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get port"})
-		return
-	}
-
-	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionDeletePort, identity.Resource{TenantID: &p.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
-		return
-	}
-
-	if err := h.svc.DeletePort(r.Context(), id); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete port"})
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// resolveAZInternal resolves an AZ name/ID string to an AvailabilityZone.
-// If azStr is empty, the default AZ is used.
-func (h *networkHandlers) resolveAZInternal(r *http.Request, azStr string) (*az.AvailabilityZone, error) {
-	ctx := r.Context()
-	if azStr != "" {
-		// Try UUID first
-		if azID, err := uuid.Parse(azStr); err == nil {
-			a, err := h.azSvc.Get(ctx, azID)
-			if err != nil {
-				return nil, err
-			}
-			if !a.Enabled {
-				return nil, az.ErrNotFound
-			}
-			return a, nil
-		}
-		// Name lookup
-		azs, err := h.azSvc.ListEnabled(ctx)
-		if err != nil {
-			return nil, err
-		}
-		for i := range azs {
-			if azs[i].Name == azStr {
-				return &azs[i], nil
-			}
-		}
-		return nil, az.ErrNotFound
-	}
-	// Default AZ
-	return h.azSvc.GetDefault(ctx)
 }

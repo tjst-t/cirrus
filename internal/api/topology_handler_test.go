@@ -35,25 +35,19 @@ func (a *testAuthz) Authorize(_ context.Context, _ *identity.User, _ identity.Ac
 
 type mockTopologySvc struct {
 	storageDomains map[uuid.UUID]*topology.StorageDomain
-	networkDomains map[uuid.UUID]*topology.NetworkDomain
 	locations      map[uuid.UUID]*topology.Location
 	hostSD         map[uuid.UUID]map[uuid.UUID]bool
-	hostND         map[uuid.UUID]uuid.UUID
 	hostLoc        map[uuid.UUID]uuid.UUID
 	sdNames        map[string]uuid.UUID
-	ndNames        map[string]uuid.UUID
 }
 
 func newMockTopologySvc() *mockTopologySvc {
 	return &mockTopologySvc{
 		storageDomains: make(map[uuid.UUID]*topology.StorageDomain),
-		networkDomains: make(map[uuid.UUID]*topology.NetworkDomain),
 		locations:      make(map[uuid.UUID]*topology.Location),
 		hostSD:         make(map[uuid.UUID]map[uuid.UUID]bool),
-		hostND:         make(map[uuid.UUID]uuid.UUID),
 		hostLoc:        make(map[uuid.UUID]uuid.UUID),
 		sdNames:        make(map[string]uuid.UUID),
-		ndNames:        make(map[string]uuid.UUID),
 	}
 }
 
@@ -75,28 +69,6 @@ func (m *mockTopologySvc) GetStorageDomain(_ context.Context, id uuid.UUID) (*to
 func (m *mockTopologySvc) ListStorageDomains(_ context.Context) ([]topology.StorageDomain, error) {
 	var out []topology.StorageDomain
 	for _, d := range m.storageDomains {
-		out = append(out, *d)
-	}
-	return out, nil
-}
-func (m *mockTopologySvc) CreateNetworkDomain(_ context.Context, name, ovn string) (*topology.NetworkDomain, error) {
-	if _, exists := m.ndNames[name]; exists {
-		return nil, topology.ErrConflict
-	}
-	d := &topology.NetworkDomain{ID: uuid.New(), Name: name, OVNNBConnection: ovn}
-	m.networkDomains[d.ID] = d
-	m.ndNames[name] = d.ID
-	return d, nil
-}
-func (m *mockTopologySvc) GetNetworkDomain(_ context.Context, id uuid.UUID) (*topology.NetworkDomain, error) {
-	if d, ok := m.networkDomains[id]; ok {
-		return d, nil
-	}
-	return nil, topology.ErrNotFound
-}
-func (m *mockTopologySvc) ListNetworkDomains(_ context.Context) ([]topology.NetworkDomain, error) {
-	var out []topology.NetworkDomain
-	for _, d := range m.networkDomains {
 		out = append(out, *d)
 	}
 	return out, nil
@@ -142,23 +114,18 @@ func (m *mockTopologySvc) DissociateHostStorageDomain(_ context.Context, hostID,
 	}
 	return topology.ErrNotFound
 }
-func (m *mockTopologySvc) SetHostNetworkDomain(_ context.Context, hostID, ndID uuid.UUID) error {
-	m.hostND[hostID] = ndID
-	return nil
-}
 func (m *mockTopologySvc) SetHostLocation(_ context.Context, hostID, locID uuid.UUID) error {
 	m.hostLoc[hostID] = locID
 	return nil
 }
-func (m *mockTopologySvc) GetComputePool(_ context.Context, sdID, ndID uuid.UUID) (*topology.ComputePool, error) {
+func (m *mockTopologySvc) GetComputePool(_ context.Context, sdID uuid.UUID) (*topology.ComputePool, error) {
 	sd := m.storageDomains[sdID]
-	nd := m.networkDomains[ndID]
-	if sd == nil || nd == nil {
+	if sd == nil {
 		return nil, topology.ErrNotFound
 	}
 	var hostIDs []uuid.UUID
 	for hID, sds := range m.hostSD {
-		if sds[sdID] && m.hostND[hID] == ndID {
+		if sds[sdID] {
 			hostIDs = append(hostIDs, hID)
 		}
 	}
@@ -167,7 +134,6 @@ func (m *mockTopologySvc) GetComputePool(_ context.Context, sdID, ndID uuid.UUID
 	}
 	return &topology.ComputePool{
 		StorageDomainID: sdID, StorageDomainName: sd.Name,
-		NetworkDomainID: ndID, NetworkDomainName: nd.Name,
 		HostIDs: hostIDs, Count: len(hostIDs),
 	}, nil
 }
@@ -243,16 +209,7 @@ func TestTopology_FullFlow(t *testing.T) {
 		t.Fatalf("SD name: got %s, want sd-ssd", sd.Name)
 	}
 
-	// 2. Create network domain
-	w = jsonReq(r, "POST", "/api/v1/network-domains", map[string]any{
-		"name": "nd-main", "ovn_nb_connection": "tcp:localhost:6641",
-	})
-	if w.Code != http.StatusCreated {
-		t.Fatalf("create ND: %d %s", w.Code, w.Body.String())
-	}
-	nd := decodeBody[topology.NetworkDomain](t, w)
-
-	// 3. Create location hierarchy
+	// 2. Create location hierarchy
 	w = jsonReq(r, "POST", "/api/v1/locations", map[string]any{"name": "site-a", "type": "site"})
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create site: %d %s", w.Code, w.Body.String())
@@ -267,7 +224,7 @@ func TestTopology_FullFlow(t *testing.T) {
 	}
 	rack := decodeBody[topology.Location](t, w)
 
-	// 4. Associate host with topology
+	// 3. Associate host with topology
 	hostID := uuid.New()
 
 	w = jsonReq(r, "POST", fmt.Sprintf("/api/v1/hosts/%s/storage-domains", hostID),
@@ -276,20 +233,14 @@ func TestTopology_FullFlow(t *testing.T) {
 		t.Fatalf("associate host→SD: %d %s", w.Code, w.Body.String())
 	}
 
-	w = jsonReq(r, "PUT", fmt.Sprintf("/api/v1/hosts/%s/network-domain", hostID),
-		map[string]string{"network_domain_id": nd.ID.String()})
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("set host→ND: %d %s", w.Code, w.Body.String())
-	}
-
 	w = jsonReq(r, "PUT", fmt.Sprintf("/api/v1/hosts/%s/location", hostID),
 		map[string]string{"location_id": rack.ID.String()})
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("set host→location: %d %s", w.Code, w.Body.String())
 	}
 
-	// 5. Compute pool: host in intersection
-	w = jsonReq(r, "GET", fmt.Sprintf("/api/v1/compute-pools?storage_domain_id=%s&network_domain_id=%s", sd.ID, nd.ID), nil)
+	// 4. Compute pool
+	w = jsonReq(r, "GET", fmt.Sprintf("/api/v1/compute-pools?storage_domain_id=%s", sd.ID), nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("compute pool: %d %s", w.Code, w.Body.String())
 	}
@@ -298,7 +249,7 @@ func TestTopology_FullFlow(t *testing.T) {
 		t.Fatalf("pool: want 1 host %s, got %d hosts %v", hostID, pool.Count, pool.HostIDs)
 	}
 
-	// 6. Fault domains at rack level
+	// 5. Fault domains at rack level
 	w = jsonReq(r, "GET", "/api/v1/fault-domains?level=rack", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("fault-domains: %d %s", w.Code, w.Body.String())
@@ -314,18 +265,18 @@ func TestTopology_FullFlow(t *testing.T) {
 		t.Fatalf("fault-domain rack-a: want 1 host, got %+v", fds)
 	}
 
-	// 7. Dissociate → pool empty
+	// 6. Dissociate → pool empty
 	w = jsonReq(r, "DELETE", fmt.Sprintf("/api/v1/hosts/%s/storage-domains/%s", hostID, sd.ID), nil)
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("dissociate: %d %s", w.Code, w.Body.String())
 	}
-	w = jsonReq(r, "GET", fmt.Sprintf("/api/v1/compute-pools?storage_domain_id=%s&network_domain_id=%s", sd.ID, nd.ID), nil)
+	w = jsonReq(r, "GET", fmt.Sprintf("/api/v1/compute-pools?storage_domain_id=%s", sd.ID), nil)
 	pool = decodeBody[topology.ComputePool](t, w)
 	if pool.Count != 0 {
 		t.Fatalf("pool after dissociate: want 0, got %d", pool.Count)
 	}
 
-	// 8. Duplicate → 409
+	// 7. Duplicate → 409
 	w = jsonReq(r, "POST", "/api/v1/storage-domains", map[string]string{"name": "sd-ssd"})
 	if w.Code != http.StatusConflict {
 		t.Fatalf("duplicate SD: want 409, got %d", w.Code)

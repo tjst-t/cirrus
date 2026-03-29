@@ -41,7 +41,6 @@ func New(controllerAddr, hostID string, logger *slog.Logger, driver hypervisor.D
 
 // TopologyDeclaration holds the topology information a worker declares at registration.
 type TopologyDeclaration struct {
-	NetworkDomain  string
 	StorageDomains []string
 	Location       string
 }
@@ -70,7 +69,6 @@ func (a *Agent) Register(ctx context.Context, token, libvirtURI string, topo *To
 		Address:           address,
 	}
 	if topo != nil {
-		req.NetworkDomain = topo.NetworkDomain
 		req.StorageDomains = topo.StorageDomains
 		req.Location = topo.Location
 	}

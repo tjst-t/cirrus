@@ -32,10 +32,6 @@ const (
 	ActionListStorageDomains  Action = "list_storage_domains"
 	ActionGetStorageDomain    Action = "get_storage_domain"
 
-	ActionCreateNetworkDomain Action = "create_network_domain"
-	ActionListNetworkDomains  Action = "list_network_domains"
-	ActionGetNetworkDomain    Action = "get_network_domain"
-
 	ActionCreateLocation Action = "create_location"
 	ActionListLocations  Action = "list_locations"
 	ActionGetLocation    Action = "get_location"
@@ -55,10 +51,8 @@ const (
 	ActionGetNetwork    Action = "get_network"
 	ActionDeleteNetwork Action = "delete_network"
 
-	ActionCreatePort Action = "create_port"
-	ActionListPorts  Action = "list_ports"
-	ActionGetPort    Action = "get_port"
-	ActionDeletePort Action = "delete_port"
+	ActionListPorts Action = "list_ports"
+	ActionGetPort  Action = "get_port"
 )
 
 // Resource represents the target resource of an authorization check.
@@ -139,7 +133,7 @@ func (a *RBACAuthorizer) checkPermission(ra RoleAssignment, action Action, resou
 		case ActionAssignRole, ActionListRoles, ActionDeleteRole:
 			return resource.TenantID != nil && *resource.TenantID == *ra.ScopeID
 		case ActionCreateNetwork, ActionListNetworks, ActionGetNetwork, ActionDeleteNetwork,
-			ActionCreatePort, ActionListPorts, ActionGetPort, ActionDeletePort:
+			ActionListPorts, ActionGetPort:
 			return resource.TenantID != nil && *resource.TenantID == *ra.ScopeID
 		}
 
@@ -152,7 +146,7 @@ func (a *RBACAuthorizer) checkPermission(ra RoleAssignment, action Action, resou
 		case ActionGetTenant, ActionListRoles:
 			return resource.TenantID != nil && *resource.TenantID == *ra.ScopeID
 		case ActionListNetworks, ActionGetNetwork,
-			ActionCreatePort, ActionListPorts, ActionGetPort:
+			ActionListPorts, ActionGetPort:
 			return resource.TenantID != nil && *resource.TenantID == *ra.ScopeID
 		}
 	}

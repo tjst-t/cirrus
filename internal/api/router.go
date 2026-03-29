@@ -53,18 +53,12 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		// Host topology associations (infra_admin)
 		r.Post("/hosts/{host_id}/storage-domains", th.associateHostStorageDomain)
 		r.Delete("/hosts/{host_id}/storage-domains/{storage_domain_id}", th.dissociateHostStorageDomain)
-		r.Put("/hosts/{host_id}/network-domain", th.setHostNetworkDomain)
 		r.Put("/hosts/{host_id}/location", th.setHostLocation)
 
 		// Storage domains (infra_admin)
 		r.Post("/storage-domains", th.createStorageDomain)
 		r.Get("/storage-domains", th.listStorageDomains)
 		r.Get("/storage-domains/{storage_domain_id}", th.getStorageDomain)
-
-		// Network domains (infra_admin)
-		r.Post("/network-domains", th.createNetworkDomain)
-		r.Get("/network-domains", th.listNetworkDomains)
-		r.Get("/network-domains/{network_domain_id}", th.getNetworkDomain)
 
 		// Locations (infra_admin)
 		r.Post("/locations", th.createLocation)
@@ -92,21 +86,14 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		r.Delete("/admin/availability-zones/{az_id}/storage-domains/{storage_domain_id}", ah.removeStorageDomain)
 
 		// Network routes (tenant-scoped)
-		nh := &networkHandlers{svc: networkSvc, azSvc: azSvc, authz: authz, logger: logger}
+		nh := &networkHandlers{svc: networkSvc, authz: authz, logger: logger}
 		r.Post("/networks", nh.createNetwork)
 		r.Get("/networks", nh.listNetworks)
 		r.Get("/networks/{network_id}", nh.getNetwork)
 		r.Delete("/networks/{network_id}", nh.deleteNetwork)
 
-		r.Post("/networks/{network_id}/subnets", nh.createSubnet)
-		r.Get("/networks/{network_id}/subnets", nh.listSubnets)
-		r.Get("/subnets/{subnet_id}", nh.getSubnet)
-		r.Delete("/subnets/{subnet_id}", nh.deleteSubnet)
-
-		r.Post("/ports", nh.createPort)
 		r.Get("/ports", nh.listPorts)
 		r.Get("/ports/{port_id}", nh.getPort)
-		r.Delete("/ports/{port_id}", nh.deletePort)
 	})
 
 	return r

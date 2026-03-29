@@ -15,15 +15,6 @@ type StorageDomain struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// NetworkDomain represents an OVN cluster and the hosts it contains.
-type NetworkDomain struct {
-	ID              uuid.UUID `json:"id"`
-	Name            string    `json:"name"`
-	OVNNBConnection string    `json:"ovn_nb_connection"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
-}
-
 // LocationType represents the hierarchy level of a location.
 type LocationType string
 
@@ -66,12 +57,10 @@ type FaultDomain struct {
 	Count        int          `json:"count"`
 }
 
-// ComputePool is the derived intersection of a storage domain and a network domain.
+// ComputePool is the set of hosts associated with a storage domain.
 type ComputePool struct {
 	StorageDomainID   uuid.UUID   `json:"storage_domain_id"`
 	StorageDomainName string      `json:"storage_domain_name"`
-	NetworkDomainID   uuid.UUID   `json:"network_domain_id"`
-	NetworkDomainName string      `json:"network_domain_name"`
 	HostIDs           []uuid.UUID `json:"host_ids"`
 	Count             int         `json:"count"`
 }

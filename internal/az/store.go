@@ -37,23 +37,23 @@ func wrapErr(msg string, err error) error {
 	return fmt.Errorf("%s: %w", msg, err)
 }
 
-const azColumns = `id, name, COALESCE(description, ''), location_id, network_domain_id, enabled, created_at, updated_at`
+const azColumns = `id, name, COALESCE(description, ''), location_id, enabled, created_at, updated_at`
 
 func scanAZ(row pgx.Row) (*AvailabilityZone, error) {
 	var az AvailabilityZone
-	err := row.Scan(&az.ID, &az.Name, &az.Description, &az.LocationID, &az.NetworkDomainID, &az.Enabled, &az.CreatedAt, &az.UpdatedAt)
+	err := row.Scan(&az.ID, &az.Name, &az.Description, &az.LocationID, &az.Enabled, &az.CreatedAt, &az.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	return &az, nil
 }
 
-func (s *Store) Create(ctx context.Context, name, description string, locationID, networkDomainID uuid.UUID) (*AvailabilityZone, error) {
+func (s *Store) Create(ctx context.Context, name, description string, locationID uuid.UUID) (*AvailabilityZone, error) {
 	row := s.pool.QueryRow(ctx,
-		`INSERT INTO availability_zones (name, description, location_id, network_domain_id)
-		 VALUES ($1, $2, $3, $4)
+		`INSERT INTO availability_zones (name, description, location_id)
+		 VALUES ($1, $2, $3)
 		 RETURNING `+azColumns,
-		name, nilIfEmpty(description), locationID, networkDomainID)
+		name, nilIfEmpty(description), locationID)
 	az, err := scanAZ(row)
 	if err != nil {
 		return nil, wrapErr("az: create", err)
@@ -89,7 +89,7 @@ func (s *Store) queryAZs(ctx context.Context, query string, args ...any) ([]Avai
 	var azs []AvailabilityZone
 	for rows.Next() {
 		var a AvailabilityZone
-		if err := rows.Scan(&a.ID, &a.Name, &a.Description, &a.LocationID, &a.NetworkDomainID, &a.Enabled, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.Description, &a.LocationID, &a.Enabled, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("az: list scan: %w", err)
 		}
 		azs = append(azs, a)
@@ -119,7 +119,6 @@ func (s *Store) Update(ctx context.Context, id uuid.UUID, name *string, descript
 	if enabled != nil {
 		setClauses += fmt.Sprintf(", enabled = $%d", argIdx)
 		args = append(args, *enabled)
-		argIdx++
 		hasUpdate = true
 	}
 
@@ -191,16 +190,6 @@ func (s *Store) ListStorageDomains(ctx context.Context, azID uuid.UUID) ([]uuid.
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
-}
-
-func (s *Store) GetByNetworkDomain(ctx context.Context, networkDomainID uuid.UUID) (*AvailabilityZone, error) {
-	row := s.pool.QueryRow(ctx,
-		`SELECT `+azColumns+` FROM availability_zones WHERE network_domain_id = $1`, networkDomainID)
-	az, err := scanAZ(row)
-	if err != nil {
-		return nil, wrapErr("az: get by network domain", err)
-	}
-	return az, nil
 }
 
 func (s *Store) GetDefault(ctx context.Context) (*AvailabilityZone, error) {

@@ -62,60 +62,6 @@ func (c *Client) ResolveStorageDomain(ctx context.Context, idOrName string) (uui
 	}
 }
 
-// --- Network domains ---
-
-func (c *Client) CreateNetworkDomain(ctx context.Context, name, ovnNBConnection string) (*topology.NetworkDomain, error) {
-	body := struct {
-		Name            string `json:"name"`
-		OVNNBConnection string `json:"ovn_nb_connection"`
-	}{Name: name, OVNNBConnection: ovnNBConnection}
-	resp, err := c.do(ctx, "POST", "/api/v1/network-domains", body)
-	if err != nil {
-		return nil, err
-	}
-	return decodeResponse[*topology.NetworkDomain](resp)
-}
-
-func (c *Client) ListNetworkDomains(ctx context.Context) ([]topology.NetworkDomain, error) {
-	resp, err := c.do(ctx, "GET", "/api/v1/network-domains", nil)
-	if err != nil {
-		return nil, err
-	}
-	return decodeResponse[[]topology.NetworkDomain](resp)
-}
-
-func (c *Client) GetNetworkDomain(ctx context.Context, id uuid.UUID) (*topology.NetworkDomain, error) {
-	resp, err := c.do(ctx, "GET", fmt.Sprintf("/api/v1/network-domains/%s", id), nil)
-	if err != nil {
-		return nil, err
-	}
-	return decodeResponse[*topology.NetworkDomain](resp)
-}
-
-func (c *Client) ResolveNetworkDomain(ctx context.Context, idOrName string) (uuid.UUID, error) {
-	if id, err := uuid.Parse(idOrName); err == nil {
-		return id, nil
-	}
-	domains, err := c.ListNetworkDomains(ctx)
-	if err != nil {
-		return uuid.Nil, fmt.Errorf("resolve network domain %q: %w", idOrName, err)
-	}
-	var matches []topology.NetworkDomain
-	for _, d := range domains {
-		if d.Name == idOrName {
-			matches = append(matches, d)
-		}
-	}
-	switch len(matches) {
-	case 0:
-		return uuid.Nil, fmt.Errorf("network domain %q not found", idOrName)
-	case 1:
-		return matches[0].ID, nil
-	default:
-		return uuid.Nil, fmt.Errorf("multiple network domains named %q found, use ID instead", idOrName)
-	}
-}
-
 // --- Locations ---
 
 func (c *Client) CreateLocation(ctx context.Context, parentID *uuid.UUID, name, locType string, faultAttrs []byte) (*topology.Location, error) {
@@ -211,18 +157,6 @@ func (c *Client) DissociateHostStorageDomain(ctx context.Context, hostID, storag
 	return nil
 }
 
-func (c *Client) SetHostNetworkDomain(ctx context.Context, hostID, networkDomainID uuid.UUID) error {
-	body := struct {
-		NetworkDomainID uuid.UUID `json:"network_domain_id"`
-	}{NetworkDomainID: networkDomainID}
-	resp, err := c.do(ctx, "PUT", fmt.Sprintf("/api/v1/hosts/%s/network-domain", hostID), body)
-	if err != nil {
-		return err
-	}
-	resp.Body.Close()
-	return nil
-}
-
 func (c *Client) SetHostLocation(ctx context.Context, hostID, locationID uuid.UUID) error {
 	body := struct {
 		LocationID uuid.UUID `json:"location_id"`
@@ -237,8 +171,8 @@ func (c *Client) SetHostLocation(ctx context.Context, hostID, locationID uuid.UU
 
 // --- Compute pools ---
 
-func (c *Client) GetComputePool(ctx context.Context, storageDomainID, networkDomainID uuid.UUID) (*topology.ComputePool, error) {
-	resp, err := c.do(ctx, "GET", fmt.Sprintf("/api/v1/compute-pools?storage_domain_id=%s&network_domain_id=%s", storageDomainID, networkDomainID), nil)
+func (c *Client) GetComputePool(ctx context.Context, storageDomainID uuid.UUID) (*topology.ComputePool, error) {
+	resp, err := c.do(ctx, "GET", fmt.Sprintf("/api/v1/compute-pools?storage_domain_id=%s", storageDomainID), nil)
 	if err != nil {
 		return nil, err
 	}

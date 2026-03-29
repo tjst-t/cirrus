@@ -10,7 +10,6 @@ type ControllerConfig struct {
 	APIPort           int    `yaml:"api_port"`
 	GRPCPort          int    `yaml:"grpc_port"`
 	DBDSN             string `yaml:"db_dsn"`
-	OVNNB             string `yaml:"ovn_nb"`
 	StorageEndpoint   string `yaml:"storage_endpoint"`
 	AWXEndpoint       string `yaml:"awx_endpoint"`
 	NetBoxEndpoint    string `yaml:"netbox_endpoint"`
@@ -27,7 +26,6 @@ type WorkerConfig struct {
 	RegistrationToken  string `yaml:"registration_token"`  // shared secret for self-registration
 	HeartbeatInterval  int    `yaml:"heartbeat_interval"`  // heartbeat interval in seconds
 	LogLevel           string `yaml:"log_level"`           // debug, info, warn, error
-	NetworkDomain      string `yaml:"network_domain"`      // network domain to join (name or ID)
 	StorageDomains     string `yaml:"storage_domains"`     // comma-separated storage domains to join
 	Location           string `yaml:"location"`            // location in the topology tree (name or ID)
 }

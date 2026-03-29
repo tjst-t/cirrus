@@ -19,7 +19,7 @@ message RegisterHostRequest {
   string address = 3;
   string capability = 4; // JSON-encoded capability
   // Topology self-declaration (optional; validated against existing domains)
-  string network_domain = 5;          // network domain name or ID
+  reserved 5; // was network_domain (removed in Sprint 5N)
   repeated string storage_domains = 6; // storage domain names or IDs
   string location = 7;                // location name or ID
 }

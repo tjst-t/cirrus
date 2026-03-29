@@ -83,51 +83,6 @@ func (s *Store) ListStorageDomains(ctx context.Context) ([]StorageDomain, error)
 	return domains, rows.Err()
 }
 
-// --- Network domains ---
-
-func (s *Store) CreateNetworkDomain(ctx context.Context, name, ovnNBConnection string) (*NetworkDomain, error) {
-	var d NetworkDomain
-	err := s.pool.QueryRow(ctx,
-		`INSERT INTO network_domains (name, ovn_nb_connection) VALUES ($1, $2)
-		 RETURNING id, name, ovn_nb_connection, created_at, updated_at`,
-		name, ovnNBConnection,
-	).Scan(&d.ID, &d.Name, &d.OVNNBConnection, &d.CreatedAt, &d.UpdatedAt)
-	if err != nil {
-		return nil, wrapErr("topology: create network domain", err)
-	}
-	return &d, nil
-}
-
-func (s *Store) GetNetworkDomain(ctx context.Context, id uuid.UUID) (*NetworkDomain, error) {
-	var d NetworkDomain
-	err := s.pool.QueryRow(ctx,
-		`SELECT id, name, ovn_nb_connection, created_at, updated_at FROM network_domains WHERE id = $1`, id,
-	).Scan(&d.ID, &d.Name, &d.OVNNBConnection, &d.CreatedAt, &d.UpdatedAt)
-	if err != nil {
-		return nil, wrapErr("topology: get network domain", err)
-	}
-	return &d, nil
-}
-
-func (s *Store) ListNetworkDomains(ctx context.Context) ([]NetworkDomain, error) {
-	rows, err := s.pool.Query(ctx,
-		`SELECT id, name, ovn_nb_connection, created_at, updated_at FROM network_domains ORDER BY name`)
-	if err != nil {
-		return nil, fmt.Errorf("topology: list network domains: %w", err)
-	}
-	defer rows.Close()
-
-	var domains []NetworkDomain
-	for rows.Next() {
-		var d NetworkDomain
-		if err := rows.Scan(&d.ID, &d.Name, &d.OVNNBConnection, &d.CreatedAt, &d.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("topology: list network domains scan: %w", err)
-		}
-		domains = append(domains, d)
-	}
-	return domains, rows.Err()
-}
-
 // --- Locations ---
 
 func (s *Store) CreateLocation(ctx context.Context, parentID *uuid.UUID, name string, locType LocationType, faultAttrs []byte) (*Location, error) {
@@ -308,19 +263,6 @@ func (s *Store) DissociateHostStorageDomain(ctx context.Context, hostID, storage
 	return nil
 }
 
-func (s *Store) SetHostNetworkDomain(ctx context.Context, hostID, networkDomainID uuid.UUID) error {
-	tag, err := s.pool.Exec(ctx,
-		`UPDATE hosts SET network_domain_id = $1, updated_at = now() WHERE id = $2`,
-		networkDomainID, hostID)
-	if err != nil {
-		return wrapErr("topology: set host network domain", err)
-	}
-	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("topology: set host network domain: %w", ErrNotFound)
-	}
-	return nil
-}
-
 func (s *Store) SetHostLocation(ctx context.Context, hostID, locationID uuid.UUID) error {
 	tag, err := s.pool.Exec(ctx,
 		`UPDATE hosts SET location_id = $1, updated_at = now() WHERE id = $2`,
@@ -336,24 +278,18 @@ func (s *Store) SetHostLocation(ctx context.Context, hostID, locationID uuid.UUI
 
 // --- Compute pool derivation ---
 
-func (s *Store) GetComputePool(ctx context.Context, storageDomainID, networkDomainID uuid.UUID) (*ComputePool, error) {
-	// Verify both domains exist
+func (s *Store) GetComputePool(ctx context.Context, storageDomainID uuid.UUID) (*ComputePool, error) {
 	sd, err := s.GetStorageDomain(ctx, storageDomainID)
 	if err != nil {
 		return nil, fmt.Errorf("topology: get compute pool: storage domain: %w", err)
 	}
-	nd, err := s.GetNetworkDomain(ctx, networkDomainID)
-	if err != nil {
-		return nil, fmt.Errorf("topology: get compute pool: network domain: %w", err)
-	}
 
-	// Intersection: hosts in both storage domain and network domain
 	rows, err := s.pool.Query(ctx,
 		`SELECT h.id FROM hosts h
 		 JOIN host_storage_domains hsd ON h.id = hsd.host_id
-		 WHERE hsd.storage_domain_id = $1 AND h.network_domain_id = $2
+		 WHERE hsd.storage_domain_id = $1
 		 ORDER BY h.name`,
-		storageDomainID, networkDomainID)
+		storageDomainID)
 	if err != nil {
 		return nil, fmt.Errorf("topology: get compute pool: %w", err)
 	}
@@ -378,8 +314,6 @@ func (s *Store) GetComputePool(ctx context.Context, storageDomainID, networkDoma
 	return &ComputePool{
 		StorageDomainID:   sd.ID,
 		StorageDomainName: sd.Name,
-		NetworkDomainID:   nd.ID,
-		NetworkDomainName: nd.Name,
 		HostIDs:           hostIDs,
 		Count:             len(hostIDs),
 	}, nil

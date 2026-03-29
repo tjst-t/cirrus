@@ -26,13 +26,11 @@ type RegisterHostRequest struct {
 	RegistrationToken string                 `protobuf:"bytes,1,opt,name=registration_token,json=registrationToken,proto3" json:"registration_token,omitempty"`
 	Hostname          string                 `protobuf:"bytes,2,opt,name=hostname,proto3" json:"hostname,omitempty"`
 	Address           string                 `protobuf:"bytes,3,opt,name=address,proto3" json:"address,omitempty"`
-	Capability        string                 `protobuf:"bytes,4,opt,name=capability,proto3" json:"capability,omitempty"` // JSON-encoded capability
-	// Topology self-declaration (optional; validated against existing domains)
-	NetworkDomain  string   `protobuf:"bytes,5,opt,name=network_domain,json=networkDomain,proto3" json:"network_domain,omitempty"`    // network domain name or ID
-	StorageDomains []string `protobuf:"bytes,6,rep,name=storage_domains,json=storageDomains,proto3" json:"storage_domains,omitempty"` // storage domain names or IDs
-	Location       string   `protobuf:"bytes,7,opt,name=location,proto3" json:"location,omitempty"`                                   // location name or ID
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	Capability        string                 `protobuf:"bytes,4,opt,name=capability,proto3" json:"capability,omitempty"`                               // JSON-encoded capability
+	StorageDomains    []string               `protobuf:"bytes,6,rep,name=storage_domains,json=storageDomains,proto3" json:"storage_domains,omitempty"` // storage domain names or IDs
+	Location          string                 `protobuf:"bytes,7,opt,name=location,proto3" json:"location,omitempty"`                                   // location name or ID
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *RegisterHostRequest) Reset() {
@@ -89,13 +87,6 @@ func (x *RegisterHostRequest) GetAddress() string {
 func (x *RegisterHostRequest) GetCapability() string {
 	if x != nil {
 		return x.Capability
-	}
-	return ""
-}
-
-func (x *RegisterHostRequest) GetNetworkDomain() string {
-	if x != nil {
-		return x.NetworkDomain
 	}
 	return ""
 }
@@ -410,17 +401,16 @@ var File_agent_proto protoreflect.FileDescriptor
 
 const file_agent_proto_rawDesc = "" +
 	"\n" +
-	"\vagent.proto\x12\x0fcirrus.agent.v1\"\x86\x02\n" +
+	"\vagent.proto\x12\x0fcirrus.agent.v1\"\xe5\x01\n" +
 	"\x13RegisterHostRequest\x12-\n" +
 	"\x12registration_token\x18\x01 \x01(\tR\x11registrationToken\x12\x1a\n" +
 	"\bhostname\x18\x02 \x01(\tR\bhostname\x12\x18\n" +
 	"\aaddress\x18\x03 \x01(\tR\aaddress\x12\x1e\n" +
 	"\n" +
 	"capability\x18\x04 \x01(\tR\n" +
-	"capability\x12%\n" +
-	"\x0enetwork_domain\x18\x05 \x01(\tR\rnetworkDomain\x12'\n" +
+	"capability\x12'\n" +
 	"\x0fstorage_domains\x18\x06 \x03(\tR\x0estorageDomains\x12\x1a\n" +
-	"\blocation\x18\a \x01(\tR\blocation\"e\n" +
+	"\blocation\x18\a \x01(\tR\blocationJ\x04\b\x05\x10\x06\"e\n" +
 	"\x14RegisterHostResponse\x12\x17\n" +
 	"\ahost_id\x18\x01 \x01(\tR\x06hostId\x12\x1a\n" +
 	"\baccepted\x18\x02 \x01(\bR\baccepted\x12\x18\n" +

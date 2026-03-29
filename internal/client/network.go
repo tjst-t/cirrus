@@ -10,11 +10,10 @@ import (
 
 // --- Networks ---
 
-func (c *Client) CreateNetwork(ctx context.Context, tenantID uuid.UUID, name, azName string) (*network.Network, error) {
+func (c *Client) CreateNetwork(ctx context.Context, tenantID uuid.UUID, name string) (*network.Network, error) {
 	body := struct {
 		Name string `json:"name"`
-		AZ   string `json:"az,omitempty"`
-	}{Name: name, AZ: azName}
+	}{Name: name}
 	resp, err := c.doWithTenant(ctx, "POST", "/api/v1/networks", body, tenantID)
 	if err != nil {
 		return nil, err
@@ -71,53 +70,7 @@ func (c *Client) ResolveNetwork(ctx context.Context, idOrName string, tenantID u
 	}
 }
 
-// --- Subnets ---
-
-func (c *Client) CreateSubnet(ctx context.Context, networkID uuid.UUID, spec network.SubnetSpec) (*network.Subnet, error) {
-	resp, err := c.do(ctx, "POST", fmt.Sprintf("/api/v1/networks/%s/subnets", networkID), spec)
-	if err != nil {
-		return nil, err
-	}
-	return decodeResponse[*network.Subnet](resp)
-}
-
-func (c *Client) GetSubnet(ctx context.Context, id uuid.UUID) (*network.Subnet, error) {
-	resp, err := c.do(ctx, "GET", fmt.Sprintf("/api/v1/subnets/%s", id), nil)
-	if err != nil {
-		return nil, err
-	}
-	return decodeResponse[*network.Subnet](resp)
-}
-
-func (c *Client) ListSubnets(ctx context.Context, networkID uuid.UUID) ([]network.Subnet, error) {
-	resp, err := c.do(ctx, "GET", fmt.Sprintf("/api/v1/networks/%s/subnets", networkID), nil)
-	if err != nil {
-		return nil, err
-	}
-	return decodeResponse[[]network.Subnet](resp)
-}
-
-func (c *Client) DeleteSubnet(ctx context.Context, id uuid.UUID) error {
-	resp, err := c.do(ctx, "DELETE", fmt.Sprintf("/api/v1/subnets/%s", id), nil)
-	if err != nil {
-		return err
-	}
-	resp.Body.Close()
-	return nil
-}
-
-// --- Ports ---
-
-func (c *Client) CreatePort(ctx context.Context, tenantID, networkID uuid.UUID) (*network.Port, error) {
-	body := struct {
-		NetworkID uuid.UUID `json:"network_id"`
-	}{NetworkID: networkID}
-	resp, err := c.doWithTenant(ctx, "POST", "/api/v1/ports", body, tenantID)
-	if err != nil {
-		return nil, err
-	}
-	return decodeResponse[*network.Port](resp)
-}
+// --- Ports (read-only) ---
 
 func (c *Client) ListPorts(ctx context.Context, tenantID, networkID uuid.UUID) ([]network.Port, error) {
 	resp, err := c.doWithTenant(ctx, "GET", fmt.Sprintf("/api/v1/ports?network_id=%s", networkID), nil, tenantID)
@@ -133,13 +86,4 @@ func (c *Client) GetPort(ctx context.Context, id uuid.UUID) (*network.Port, erro
 		return nil, err
 	}
 	return decodeResponse[*network.Port](resp)
-}
-
-func (c *Client) DeletePort(ctx context.Context, id uuid.UUID) error {
-	resp, err := c.do(ctx, "DELETE", fmt.Sprintf("/api/v1/ports/%s", id), nil)
-	if err != nil {
-		return err
-	}
-	resp.Body.Close()
-	return nil
 }

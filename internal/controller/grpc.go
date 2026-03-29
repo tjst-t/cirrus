@@ -82,19 +82,6 @@ func (s *GRPCServer) RegisterHost(ctx context.Context, req *pb.RegisterHostReque
 // applyTopology associates a host with declared topology resources.
 // Invalid references are logged as warnings but do not fail registration.
 func (s *GRPCServer) applyTopology(ctx context.Context, hostID uuid.UUID, req *pb.RegisterHostRequest) {
-	if req.NetworkDomain != "" {
-		ndID, err := s.resolveNetworkDomain(ctx, req.NetworkDomain)
-		if err != nil {
-			s.logger.Warn("topology: network domain not found, skipping",
-				"host_id", hostID, "network_domain", req.NetworkDomain, "error", err)
-		} else if err := s.topologySvc.SetHostNetworkDomain(ctx, hostID, ndID); err != nil {
-			s.logger.Warn("topology: failed to set network domain",
-				"host_id", hostID, "network_domain_id", ndID, "error", err)
-		} else {
-			s.logger.Info("topology: network domain set", "host_id", hostID, "network_domain_id", ndID)
-		}
-	}
-
 	for _, sd := range req.StorageDomains {
 		sdID, err := s.resolveStorageDomain(ctx, sd)
 		if err != nil {
@@ -121,36 +108,6 @@ func (s *GRPCServer) applyTopology(ctx context.Context, hostID uuid.UUID, req *p
 		} else {
 			s.logger.Info("topology: location set", "host_id", hostID, "location_id", locID)
 		}
-	}
-}
-
-// resolveNetworkDomain resolves a name or UUID string to a network domain UUID.
-func (s *GRPCServer) resolveNetworkDomain(ctx context.Context, nameOrID string) (uuid.UUID, error) {
-	if id, err := uuid.Parse(nameOrID); err == nil {
-		if _, err := s.topologySvc.GetNetworkDomain(ctx, id); err != nil {
-			return uuid.Nil, err
-		}
-		return id, nil
-	}
-	domains, err := s.topologySvc.ListNetworkDomains(ctx)
-	if err != nil {
-		return uuid.Nil, err
-	}
-	var matched uuid.UUID
-	count := 0
-	for _, d := range domains {
-		if d.Name == nameOrID {
-			matched = d.ID
-			count++
-		}
-	}
-	switch count {
-	case 0:
-		return uuid.Nil, topology.ErrNotFound
-	case 1:
-		return matched, nil
-	default:
-		return uuid.Nil, fmt.Errorf("multiple network domains named %q, use UUID", nameOrID)
 	}
 }
 

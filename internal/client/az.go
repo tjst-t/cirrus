@@ -10,13 +10,12 @@ import (
 
 // --- Availability Zones ---
 
-func (c *Client) CreateAZ(ctx context.Context, name, description string, locationID, networkDomainID uuid.UUID) (*az.AvailabilityZone, error) {
+func (c *Client) CreateAZ(ctx context.Context, name, description string, locationID uuid.UUID) (*az.AvailabilityZone, error) {
 	body := struct {
-		Name            string    `json:"name"`
-		Description     string    `json:"description,omitempty"`
-		LocationID      uuid.UUID `json:"location_id"`
-		NetworkDomainID uuid.UUID `json:"network_domain_id"`
-	}{Name: name, Description: description, LocationID: locationID, NetworkDomainID: networkDomainID}
+		Name        string    `json:"name"`
+		Description string    `json:"description,omitempty"`
+		LocationID  uuid.UUID `json:"location_id"`
+	}{Name: name, Description: description, LocationID: locationID}
 	resp, err := c.do(ctx, "POST", "/api/v1/admin/availability-zones", body)
 	if err != nil {
 		return nil, err

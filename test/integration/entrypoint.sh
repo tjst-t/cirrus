@@ -49,7 +49,6 @@ cirrus worker \
   --controller="${CONTROLLER_ADDR}" \
   --registration-token="${REGISTRATION_TOKEN:-dev-registration-token}" \
   --libvirt-uri="tcp://localhost:${LIBVIRT_PORT:-16509}" \
-  --network-domain="default-nd" \
   --storage-domains="default-sd" \
   --location="default-site" \
   &

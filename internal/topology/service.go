@@ -13,11 +13,6 @@ type Service interface {
 	GetStorageDomain(ctx context.Context, id uuid.UUID) (*StorageDomain, error)
 	ListStorageDomains(ctx context.Context) ([]StorageDomain, error)
 
-	// Network domains
-	CreateNetworkDomain(ctx context.Context, name, ovnNBConnection string) (*NetworkDomain, error)
-	GetNetworkDomain(ctx context.Context, id uuid.UUID) (*NetworkDomain, error)
-	ListNetworkDomains(ctx context.Context) ([]NetworkDomain, error)
-
 	// Locations
 	CreateLocation(ctx context.Context, parentID *uuid.UUID, name string, locType LocationType, faultAttrs []byte) (*Location, error)
 	GetLocation(ctx context.Context, id uuid.UUID) (*Location, error)
@@ -28,11 +23,10 @@ type Service interface {
 	// Host-domain associations
 	AssociateHostStorageDomain(ctx context.Context, hostID, storageDomainID uuid.UUID) error
 	DissociateHostStorageDomain(ctx context.Context, hostID, storageDomainID uuid.UUID) error
-	SetHostNetworkDomain(ctx context.Context, hostID, networkDomainID uuid.UUID) error
 	SetHostLocation(ctx context.Context, hostID, locationID uuid.UUID) error
 
 	// Compute pool derivation
-	GetComputePool(ctx context.Context, storageDomainID, networkDomainID uuid.UUID) (*ComputePool, error)
+	GetComputePool(ctx context.Context, storageDomainID uuid.UUID) (*ComputePool, error)
 
 	// Fault domain derivation
 	GetFaultDomains(ctx context.Context, level LocationType) ([]FaultDomain, error)

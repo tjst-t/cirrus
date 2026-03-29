@@ -27,10 +27,9 @@ func (h *azHandlers) createAZ(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name            string    `json:"name"`
-		Description     string    `json:"description"`
-		LocationID      uuid.UUID `json:"location_id"`
-		NetworkDomainID uuid.UUID `json:"network_domain_id"`
+		Name        string    `json:"name"`
+		Description string    `json:"description"`
+		LocationID  uuid.UUID `json:"location_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -40,15 +39,15 @@ func (h *azHandlers) createAZ(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	if req.LocationID == uuid.Nil || req.NetworkDomainID == uuid.Nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "location_id and network_domain_id are required"})
+	if req.LocationID == uuid.Nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "location_id is required"})
 		return
 	}
 
-	created, err := h.svc.Create(r.Context(), req.Name, req.Description, req.LocationID, req.NetworkDomainID)
+	created, err := h.svc.Create(r.Context(), req.Name, req.Description, req.LocationID)
 	if err != nil {
 		if errors.Is(err, az.ErrConflict) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "availability zone with this name or network domain already exists"})
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "availability zone with this name already exists"})
 			return
 		}
 		if errors.Is(err, az.ErrNotFound) {

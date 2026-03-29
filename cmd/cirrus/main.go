@@ -21,13 +21,10 @@ import (
 	"github.com/tjst-t/cirrus/internal/az"
 	"github.com/tjst-t/cirrus/internal/config"
 	"github.com/tjst-t/cirrus/internal/controller"
-	"github.com/tjst-t/cirrus/internal/controller/reconcile"
 	"github.com/tjst-t/cirrus/internal/host"
 	"github.com/tjst-t/cirrus/internal/hypervisor"
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/network"
-	"github.com/tjst-t/cirrus/internal/network/ipam"
-	"github.com/tjst-t/cirrus/internal/network/ovn"
 	"github.com/tjst-t/cirrus/internal/state"
 	"github.com/tjst-t/cirrus/internal/topology"
 )
@@ -58,7 +55,6 @@ func newControllerCmd() *cobra.Command {
 	f.IntVar(&cfg.APIPort, "api-port", 0, "HTTP API listen port (required)")
 	f.IntVar(&cfg.GRPCPort, "grpc-port", 0, "gRPC listen port (required)")
 	f.StringVar(&cfg.DBDSN, "db-dsn", "", "PostgreSQL connection string")
-	f.StringVar(&cfg.OVNNB, "ovn-nb", "", "OVN Northbound DB address (tcp:host:port)")
 	f.StringVar(&cfg.StorageEndpoint, "storage-endpoint", "", "Storage sim/backend endpoint")
 	f.StringVar(&cfg.AWXEndpoint, "awx-endpoint", "", "AWX endpoint")
 	f.StringVar(&cfg.NetBoxEndpoint, "netbox-endpoint", "", "NetBox endpoint")
@@ -84,7 +80,6 @@ func newWorkerCmd() *cobra.Command {
 	f.StringVar(&cfg.RegistrationToken, "registration-token", "", "Registration token for self-registration")
 	f.IntVar(&cfg.HeartbeatInterval, "heartbeat-interval", 10, "Heartbeat interval in seconds")
 	f.StringVar(&cfg.LogLevel, "log-level", "info", "Log level (debug, info, warn, error)")
-	f.StringVar(&cfg.NetworkDomain, "network-domain", "", "Network domain to join (name or ID)")
 	f.StringVar(&cfg.StorageDomains, "storage-domains", "", "Comma-separated storage domains to join")
 	f.StringVar(&cfg.Location, "location", "", "Location in the topology tree (name or ID)")
 	return cmd
@@ -134,19 +129,8 @@ func runController(cfg *config.ControllerConfig) error {
 	// Topology service
 	topologySvc := topology.NewStore(pool)
 
-	// Network service (OVN + IPAM)
-	var ovnClient ovn.Client
-	if cfg.OVNNB != "" {
-		c, err := ovn.Dial(ctx, cfg.OVNNB)
-		if err != nil {
-			logger.Warn("OVN client dial failed, network operations will be DB-only", "error", err)
-		} else {
-			ovnClient = c
-			defer c.Close()
-		}
-	}
-	ipamSvc := ipam.NewBuiltinIPAM(pool)
-	networkSvc := network.NewStore(pool, ovnClient, ipamSvc, logger)
+	// Network service
+	networkSvc := network.NewStore(pool, logger)
 
 	// Availability Zone service
 	azSvc := az.NewStore(pool)
@@ -185,15 +169,6 @@ func runController(cfg *config.ControllerConfig) error {
 		}
 		return nil
 	})
-
-	// OVN Reconciler
-	if ovnClient != nil {
-		reconciler := reconcile.NewOVNReconciler(pool, ovnClient, logger, 5*time.Minute)
-		g.Go(func() error {
-			reconciler.Run(gCtx)
-			return nil
-		})
-	}
 
 	g.Go(func() error {
 		<-gCtx.Done()
@@ -236,10 +211,9 @@ func runWorker(cfg *config.WorkerConfig) error {
 	// Self-registration: if registration token is provided, register before heartbeat
 	if cfg.RegistrationToken != "" {
 		var topo *agent.TopologyDeclaration
-		if cfg.NetworkDomain != "" || cfg.StorageDomains != "" || cfg.Location != "" {
+		if cfg.StorageDomains != "" || cfg.Location != "" {
 			topo = &agent.TopologyDeclaration{
-				NetworkDomain: cfg.NetworkDomain,
-				Location:      cfg.Location,
+				Location: cfg.Location,
 			}
 			if cfg.StorageDomains != "" {
 				for _, sd := range strings.Split(cfg.StorageDomains, ",") {
