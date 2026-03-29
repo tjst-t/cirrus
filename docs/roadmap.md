@@ -314,44 +314,94 @@
 
 **ゴール**: cirrus-simリポジトリをcirrusに統合し、3レイヤーテスト体制を構築する。Sprint 5N（ネットワーク再設計）の前提となるテスト基盤を整備する。
 
-#### S5S-1: シミュレータ移行
-- [ ] cirrus-simリポジトリからlibvirtd-sim をcirrus/test/sim/libvirtd/ に移行
-- [ ] cirrus-simリポジトリからstorage-sim をcirrus/test/sim/storage/ に移行
-- [ ] cirrus-simリポジトリからawx-sim をcirrus/test/sim/awx/ に移行
+#### S5S-1: シミュレータコード移行
+- [ ] cirrus-simリポジトリからstorage-sim をcirrus/test/sim/storage/ に移行（API互換維持）
+- [ ] cirrus-simリポジトリからawx-sim をcirrus/test/sim/awx/ に移行（API互換維持）
 - [ ] cirrus-simリポジトリからcommon（イベントログ、障害注入、データジェネレータ）をcirrus/test/sim/common/ に移行
+- [ ] cirrus-simリポジトリからembedded PostgreSQL をcirrus/test/sim/postgres/ に移行
 - [ ] OVN-simは廃止（OVSは結合テストで実物を使用）
-- [ ] NetBox-simは廃止（NetBox連携はPhase 3で外部IPAMとして実装）
+- [ ] NetBox-simは廃止（NetBox連携はPhase 3で外部IPAM/CMDBとして実装）
 - [ ] 環境定義YAML（small/medium/large）をcirrus/test/sim/environments/ に移行
-- [ ] embedded PostgreSQLをcirrus/test/sim/postgres/ に移行
 
-#### S5S-2: テスト基盤（3レイヤー）
-- [ ] test/mock/ovs/: OVSモッククライアント（レイヤー2テスト用、MockOVSClient interface）
-- [ ] test/integration/docker-compose.yml: controller + postgres + worker×3 + storage-sim + awx-sim
-- [ ] test/integration/Dockerfile.worker: cirrus-sim-workerイメージ（OVS実物 + cirrus-agent + libvirtd-sim）
-- [ ] VMシミュレーション: libvirtd-simがVM作成時にnetwork namespace + veth作成
-- [ ] entrypoint.sh: ovs-vswitchd + ovsdb-server + br-int作成 + libvirtd-sim + cirrus-agent起動
+#### S5S-2: libvirtd-simのホスト単位分割 + VMシミュレーション
+- [ ] 現在の libvirtd-sim（1プロセスで全ホストをシミュレート）をホスト単位に分割
+  - 各workerコンテナ内で独立した libvirtd-sim インスタンスが1ホスト分を担当
+  - libvirt RPCプロトコル互換は維持（go-libvirtから接続可能）
+- [ ] VM作成時のnetwork namespace + veth実装（QEMUの代替）
+  - DomainDefineXMLFlags → ドメイン定義を保持（メモリ管理）
+  - DomainCreateWithFlags → network namespace作成 + vethペア作成 + OVSポート接続
+  - DomainDestroyFlags → namespace削除 + vethペア削除 + OVSポート削除
+  ```bash
+  # VM作成時の処理
+  ip netns add vm-${uuid}
+  ip link add vm-${uuid}-tap type veth peer name eth0 netns vm-${uuid}
+  ip link set vm-${uuid}-tap up
+  ovs-vsctl add-port br-int vm-${uuid}-tap -- set Interface vm-${uuid}-tap external_ids:iface-id=${port_id}
+  ip netns exec vm-${uuid} dhclient eth0
+  ```
+- [ ] namespace内でping/curl/dig実行可能なことの確認（エンドツーエンドテストの前提）
+- [ ] ドメインXMLからinterfaceid（PortID）とディスク情報をパースし、OVSポートのexternal_idsに設定
+- [ ] ライブマイグレーションシミュレーション: namespace + vethの移動（DomainMigratePerform3Params等）
 
-#### S5S-3: Makefile + CI
+#### S5S-3: docker-compose結合テスト基盤
+- [ ] test/integration/Dockerfile.worker: cirrus-sim-workerイメージ
+  ```dockerfile
+  FROM ubuntu:24.04
+  RUN apt-get install -y openvswitch-switch iproute2 iputils-ping dnsutils curl
+  COPY cirrus /usr/local/bin/cirrus           # cirrus-agent（実バイナリ）
+  COPY libvirtd-sim /usr/local/bin/libvirtd-sim  # シミュレータ
+  COPY entrypoint.sh /entrypoint.sh
+  ```
+- [ ] test/integration/entrypoint.sh: コンテナ起動スクリプト
+  ```bash
+  #!/bin/bash
+  ovsdb-server --remote=punix:/var/run/openvswitch/db.sock --detach
+  ovs-vswitchd --detach
+  ovs-vsctl add-br br-int
+  libvirtd-sim &       # 1ホスト分のlibvirt RPCシミュレータ
+  cirrus --role worker &  # cirrus-agent含む
+  wait
+  ```
+- [ ] test/integration/docker-compose.yml: controller + postgres + worker×3(privileged) + storage-sim + awx-sim + fabricネットワーク
+- [ ] workerコンテナはprivileged（network namespace操作のため）
+- [ ] fabricネットワーク: workerコンテナ間のGeneveトンネル通信用
+
+#### S5S-4: OVSモッククライアント（レイヤー2テスト用）
+- [ ] test/mock/ovs/: MockOVSClient interface
+  ```go
+  type MockOVSClient interface {
+      AddFlow(table int, priority int, match string, actions string) error
+      DeleteFlow(table int, match string) error
+      AddPort(bridge string, port string) error
+      DeletePort(bridge string, port string) error
+      GetRecordedCommands() []OVSCommand
+  }
+  ```
+- [ ] フロー変換ロジックのテストに使用（実OVS不要、レイヤー2テスト）
+
+#### S5S-5: Makefile + CI
 - [ ] Makefile: test-unit（レイヤー1: Goユニットテスト）ターゲット
 - [ ] Makefile: test-mock（レイヤー2: OVSモッククライアント）ターゲット
 - [ ] Makefile: test-integration（レイヤー3: docker-compose + 実OVS）ターゲット
 - [ ] make serve 更新: 統合されたシミュレータを使用するよう変更
 - [ ] make stop / make logs 更新
 
-#### S5S-4: cirrus-sim CLIツール
+#### S5S-6: cirrus-sim CLIツール
 - [ ] cmd/cirrus-sim-ctl/: 状態確認コマンド（status, hosts list, vms list, backends list, volumes list）
 - [ ] 障害注入コマンド（fault inject/list/clear）
 - [ ] 状態管理コマンド（snapshot save/restore/list, reset）
 - [ ] ポート自動検出（portman envファイル）
 
-#### S5S-5: 障害注入の各シミュレータ統合
+#### S5S-7: 障害注入の各シミュレータ統合
 - [ ] libvirtd-sim: RPCハンドラでfault.Check()を呼び、マッチ時にエラー/遅延/タイムアウトを発生
 - [ ] storage-sim: APIハンドラでfault.Check()を呼ぶ
 - [ ] awx-sim: ジョブ実行でfault.Check()を呼ぶ
 
-#### S5S-6: 既存テストの移行確認
+#### S5S-8: 既存テストの移行確認 + 結合テスト基盤動作確認
 - [ ] Sprint 1-5.5の既存テストが統合後のシミュレータで動作することを確認
 - [ ] make serve → make test が通ること
+- [ ] docker-compose up → workerコンテナ内でOVS + libvirtd-sim + namespace作成が動作すること
+- [ ] workerコンテナ間でGeneveトンネルが疎通すること（Sprint 5Nの前提確認）
 - [ ] cirrus-simリポジトリをアーカイブ
 
 **デプロイ確認**: make serve で統合シミュレータが起動 → 既存テスト全パス → make test-integration でdocker-compose環境が動作
@@ -1348,12 +1398,14 @@
 - [x] 統一バイナリ、embedded PostgreSQL、ダッシュボードWebUI、portman連携
 
 ### 統合時の変更
-- libvirtd-sim: ホスト単位に分割、VM実体をnetwork namespace + vethに変更（Sprint 5S-1, 5S-2）
+- libvirtd-sim: ホスト単位に分割、VM実体をnetwork namespace + vethに変更（Sprint 5S-2）
 - OVN-sim: 廃止。OVSは結合テストで実物を使用
 - storage-sim: test/sim/storage/ に移行（API互換維持、Sprint 5S-1）
 - awx-sim: test/sim/awx/ に移行（API互換維持、Sprint 5S-1）
-- 障害注入: 各シミュレータのハンドラでfault.Check()呼び出し統合（Sprint 5S-5）
-- CLIツール: cmd/cirrus-sim-ctl/ に移行（Sprint 5S-4）
+- docker-compose + Dockerfile.worker: 結合テスト基盤構築（Sprint 5S-3）
+- OVSモッククライアント: レイヤー2テスト用（Sprint 5S-4）
+- 障害注入: 各シミュレータのハンドラでfault.Check()呼び出し統合（Sprint 5S-7）
+- CLIツール: cmd/cirrus-sim-ctl/ に移行（Sprint 5S-6）
 
 ---
 
