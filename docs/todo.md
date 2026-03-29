@@ -23,3 +23,7 @@
 ## API
 
 - [ ] **PUT /api/v1/hosts/{id} 未実装**: api.mdに定義があるがエンドポイント未実装。ホスト属性（address等）の更新用
+
+## ネットワーク
+
+- [ ] **ネットワークモジュールのOVN→VPCモデル移行（Sprint 5N）**: Sprint 5の既存OVN実装を新しいVPCモデル（Network/Group/Policy + OVSデータプレーン）に全面書き換え。前提としてSprint 5S（cirrus-sim統合）を先に完了させる

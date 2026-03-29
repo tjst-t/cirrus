@@ -42,7 +42,7 @@ PostgreSQLも同様にHA構成が前提となる。ただしDB HAはCirrus外部
 | gRPC Heartbeat受信 | 全インスタンスで処理 | ステートレス。DB更新のみ |
 | gRPC RegisterHost | 全インスタンスで処理 | DBのON CONFLICTで冪等 |
 | HeartbeatMonitor | リーダーのみ | last_heartbeatの定期スキャン。重複実行は不正なfaulty遷移を招く |
-| ReconcileLoop | リーダーのみ | OVN/Storage問い合わせ。重複実行はDriftEvent重複を招く |
+| ReconcileLoop | リーダーのみ | Network/Storage状態問い合わせ。重複実行はDriftEvent重複を招く |
 | HostFaultyHandler | リーダーのみ | カスケード状態更新。重複実行は不要 |
 | Scheduler | 分散ロック | 配置決定時にホストリソースを `SELECT FOR UPDATE` で排他。複数インスタンスが同時にスケジュールしてもリソース競合しない |
 | DRS | リーダーのみ | 周期実行。重複実行はマイグレーション計画の競合を招く |

@@ -4,8 +4,8 @@
 
 Cirrusは単一のGoバイナリで、起動時のロール指定によりcontrollerまたはworkerとして動作するモジュラーモノリスである。
 
-- **Controller** — API、スケジューラ、ネットワーク制御（OVN）、ストレージ制御を担う。1台以上。
-- **Worker** — 物理ホストごとに1プロセス。libvirtによるVM操作とボリュームのホスト側アタッチを担う。
+- **Controller** — API、スケジューラ、ネットワーク制御（OVS コントローラ）、ストレージ制御を担う。1台以上。
+- **Worker** — 物理ホストごとに1プロセス。libvirtによるVM操作、ボリュームのホスト側アタッチ、およびcirrus-agentによるOVS制御・DNS・DHCP・メタデータサービスを担う。
 
 ```bash
 cirrus controller --config=/etc/cirrus/controller.yaml
@@ -27,7 +27,7 @@ cirrus worker --config=/etc/cirrus/worker.yaml
 │  │                     Domain Services                          │   │
 │  │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌───────────────┐ │   │
 │  │  │ Compute │  │ Network │  │ Storage │  │   Template    │ │   │
-│  │  │         │  │  (OVN)  │  │         │  │               │ │   │
+│  │  │         │  │(OVS Ctl)│  │         │  │               │ │   │
 │  │  └────┬────┘  └────┬────┘  └────┬────┘  └───────┬───────┘ │   │
 │  └───────┼─────────────┼───────────┼────────────────┼─────────┘   │
 │          │             │           │                │               │
@@ -58,6 +58,11 @@ cirrus worker --config=/etc/cirrus/worker.yaml
 │ │Block │ │ │ │Block │   │
 │ │Dev   │ │ │ │Dev   │   │
 │ └──────┘ │ │ └──────┘   │
+│ ┌──────┐ │ │ ┌──────┐   │
+│ │Net   │ │ │ │Net   │   │
+│ │Agent │ │ │ │Agent │   │
+│ │(OVS) │ │ │ │(OVS) │   │
+│ └──────┘ │ │ └──────┘   │
 └──────────┘ └────────────┘
 ```
 
@@ -70,7 +75,7 @@ cirrus worker --config=/etc/cirrus/worker.yaml
 | API | `internal/api` | HTTPルーティング、リクエスト/レスポンス変換、ミドルウェア |
 | Identity | `internal/identity` | 認証（OIDC）、認可（RBAC）、組織・テナント・ユーザ管理 |
 | Compute | `internal/compute` | VMライフサイクルのオーケストレーション（作成〜削除の一連の流れを調整） |
-| Network | `internal/network` | ネットワーク/サブネット/ポート/ルータ/SG/FloatingIP管理、OVN NB操作 |
+| Network | `internal/network` | Network/Group/Policy/Egress/Ingress管理、HostNetworkState計算・配信、IPアドレス採番 |
 | Storage | `internal/storage` | ボリューム/スナップショット/クローン管理、バックエンドドライバ呼び出し |
 | Template | `internal/template` | テンプレート管理、キャッシュコピーのLRU管理 |
 | Scheduler | `internal/scheduler` | プレースメント判断（フィルタリング、スコアリング、DRS） |
@@ -87,6 +92,7 @@ cirrus worker --config=/etc/cirrus/worker.yaml
 | Agent | `internal/agent` | gRPCサーバ。controllerからの指示を受けてhypervisor/blockdevに委譲 |
 | Hypervisor | `internal/hypervisor` | libvirt経由のVM操作（define, start, stop, destroy, migrate） |
 | BlockDev | `internal/blockdev` | ボリュームのホスト側アタッチ/デタッチ（RBDマップ、iSCSIログイン等） |
+| NetworkAgent | `internal/network/agent` | OVS OpenFlowフロー管理、DHCP応答、DNS応答、メタデータサービス |
 
 ## モジュール間インターフェース
 
@@ -142,45 +148,29 @@ package network
 
 // Service はテナント向けネットワーク操作を提供する。
 type Service interface {
-    // ネットワーク
+    // Network
     CreateNetwork(ctx context.Context, tenantID string, spec NetworkSpec) (*Network, error)
     DeleteNetwork(ctx context.Context, tenantID string, networkID string) error
 
-    // サブネット
-    CreateSubnet(ctx context.Context, networkID string, spec SubnetSpec) (*Subnet, error)
-    DeleteSubnet(ctx context.Context, subnetID string) error
+    // Group
+    CreateGroup(ctx context.Context, networkID string, spec GroupSpec) (*Group, error)
+    DeleteGroup(ctx context.Context, groupID string) error
 
-    // ポート
-    CreatePort(ctx context.Context, tenantID string, spec PortSpec) (*Port, error)
+    // Policy
+    CreatePolicy(ctx context.Context, networkID string, spec PolicySpec) (*Policy, error)
+    DeletePolicy(ctx context.Context, policyID string) error
+
+    // Port（内部API、Computeモジュールから呼び出し）
+    CreatePort(ctx context.Context, spec PortSpec) (*Port, error)
     DeletePort(ctx context.Context, portID string) error
-    BindPort(ctx context.Context, portID string, hostID string) error
-    UnbindPort(ctx context.Context, portID string) error
 
-    // ルータ
-    CreateRouter(ctx context.Context, tenantID string, spec RouterSpec) (*Router, error)
-    AddRouterInterface(ctx context.Context, routerID string, subnetID string) error
-    RemoveRouterInterface(ctx context.Context, interfaceID string) error
+    // Egress
+    CreateEgress(ctx context.Context, networkID string, spec EgressSpec) (*Egress, error)
+    DeleteEgress(ctx context.Context, egressID string) error
 
-    // セキュリティグループ
-    CreateSecurityGroup(ctx context.Context, tenantID string, spec SGSpec) (*SecurityGroup, error)
-    AddSecurityGroupRule(ctx context.Context, sgID string, rule SGRuleSpec) (*SGRule, error)
-
-    // フローティングIP
-    CreateFloatingIP(ctx context.Context, tenantID string, spec FloatingIPSpec) (*FloatingIP, error)
-    AssociateFloatingIP(ctx context.Context, fipID string, portID string) error
-    DisassociateFloatingIP(ctx context.Context, fipID string) error
-}
-
-// OVNClient はOVN Northbound DBとの通信を抽象化する。
-// Network.Serviceの内部実装が使用する。
-type OVNClient interface {
-    CreateLogicalSwitch(ctx context.Context, name string) error
-    CreateLogicalSwitchPort(ctx context.Context, sw string, port LogicalSwitchPort) error
-    CreateLogicalRouter(ctx context.Context, name string) error
-    CreateACL(ctx context.Context, sw string, acl ACL) error
-    CreateNATRule(ctx context.Context, router string, nat NATRule) error
-    UpdatePortBinding(ctx context.Context, port string, chassis string) error
-    // ...
+    // Ingress
+    CreateIngress(ctx context.Context, networkID string, spec IngressSpec) (*Ingress, error)
+    DeleteIngress(ctx context.Context, ingressID string) error
 }
 ```
 
@@ -275,7 +265,7 @@ package topology
 // Service は到達性ドメインとロケーション階層を管理する。
 type Service interface {
     // 到達性ドメイン
-    GetComputePool(ctx context.Context, storageDomainID, networkDomainID string) (*ComputePool, error)
+    GetComputePool(ctx context.Context, storageDomainID string) (*ComputePool, error)
     ListReachableHosts(ctx context.Context, backendID string) ([]string, error)
     ListReachableBackends(ctx context.Context, hostID string) ([]string, error)
 
@@ -283,9 +273,8 @@ type Service interface {
     GetLocationPath(ctx context.Context, locationID string) ([]*Location, error)
     GetFaultDomains(ctx context.Context, level string) ([]*FaultDomain, error)
 
-    // ストレージドメイン・ネットワークドメイン
+    // ストレージドメイン
     CreateStorageDomain(ctx context.Context, spec StorageDomainSpec) (*StorageDomain, error)
-    CreateNetworkDomain(ctx context.Context, spec NetworkDomainSpec) (*NetworkDomain, error)
 }
 ```
 
@@ -407,10 +396,11 @@ type AttachInfo struct {
 
 ## gRPCインターフェース
 
-gRPCは2つのサービスで構成される:
+gRPCは3つのサービスで構成される:
 
 - **ControllerService** — controller側がgRPCサーバ。workerが接続してheartbeatを送信する
 - **WorkerAgent** — worker側がgRPCサーバ。controllerがVM操作等の指示を送る（Sprint 7以降で実装）
+- **NetworkStateService** — controller側がgRPCサーバ。workerのネットワークエージェントにHostNetworkStateをストリーミング配信する
 
 ### ControllerService（Worker → Controller）
 
@@ -419,6 +409,57 @@ workerがcontrollerに接続し、登録・heartbeatを行う。
 ```protobuf
 service ControllerService {
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+}
+```
+
+### NetworkStateService（Controller → Worker）
+
+controllerからworkerのネットワークエージェントへHostNetworkStateをストリーミング配信する。
+
+```protobuf
+service NetworkStateService {
+    rpc StreamHostNetworkState(StreamRequest) returns (stream HostNetworkState);
+}
+
+message HostNetworkState {
+  repeated PortState ports = 1;
+  repeated PolicyRule policies = 2;
+  repeated RemotePort remote_ports = 3;
+  repeated EgressRule egresses = 4;
+  repeated DnsRecord dns_records = 5;
+}
+
+message PortState {
+  string port_id = 1;
+  string vm_id = 2;
+  string network_id = 3;
+  string group_id = 4;
+  string mac_address = 5;
+  string ip_address = 6;
+  string gateway_ip = 7;
+}
+
+message PolicyRule {
+  string network_id = 1;
+  string src_group_id = 2;
+  string dst_group_id = 3;
+  string protocol = 4;
+  int32 dst_port = 5;
+  int32 priority = 6;
+  string action = 7;
+}
+
+message RemotePort {
+  string network_id = 1;
+  string group_id = 2;
+  string ip_address = 3;
+  string host_ip = 4;
+}
+
+message DnsRecord {
+  string name = 1;
+  string ip = 2;
+  string network_id = 3;
 }
 ```
 
@@ -463,9 +504,11 @@ message DiskSpec {
 }
 
 message PortSpec {
-  string port_id = 1;      // OVN LSPのUUID（interfaceid）
-  string mac_address = 2;
-  string ip_address = 3;
+  string port_id = 1;
+  string group_id = 2;
+  string mac_address = 3;
+  string ip_address = 4;
+  string gateway_ip = 5;
 }
 
 message ExportInfo {
@@ -496,7 +539,7 @@ Identity.Authenticate → Identity.Authorize
  ▼
 Compute.CreateVM
  ├─→ Quota.Check → Quota.Reserve
- ├─→ Network.CreatePort（IP/MAC払い出し、OVN LSP作成）
+ ├─→ Network.CreatePort（IP/MAC払い出し、Group割り当て）
  ├─→ Storage.CreateVolume（バックエンドドライバ経由）
  ├─→ Template.EnsureCached（テンプレートキャッシュ確認）
  ├─→ Scheduler.Schedule
@@ -509,7 +552,7 @@ Compute.CreateVM
  │    ├─→ BlockDev.Attach（ホスト側ボリュームマウント）
  │    ├─→ Hypervisor.DefineVM（domain XML生成、libvirt define）
  │    └─→ Hypervisor.StartVM（libvirt start）
- ├─→ Network.BindPort（OVN LSPをホストにバインド）
+ ├─→ HostNetworkState更新 → エージェントにストリーミング配信
  └─→ Quota.Commit
 ```
 
@@ -537,13 +580,10 @@ cirrus/
 │   │
 │   ├── network/                 # ネットワーク管理
 │   │   ├── service.go           # interface定義
-│   │   ├── manager.go           # 実装
-│   │   ├── ipam/                # IPアドレス管理
-│   │   │   ├── ipam.go          # interface定義
-│   │   │   └── builtin.go       # 内蔵IPAM実装
-│   │   └── ovn/                 # OVN NB DBクライアント
-│   │       ├── client.go        # OVNClient interface定義
-│   │       └── ovsdb.go         # OVSDB実装
+│   │   ├── model.go             # Network, Group, Policy
+│   │   ├── controller.go        # 状態計算、エージェントへの配信
+│   │   ├── ipam.go              # IPアドレス採番（/30ブロック）
+│   │   └── agent.go             # OVS制御、OpenFlow変換、DNS、DHCP、メタデータ
 │   │
 │   ├── storage/                 # ボリューム管理
 │   │   ├── service.go           # interface定義
@@ -603,6 +643,17 @@ cirrus/
 │
 ├── proto/
 │   └── agent.proto              # gRPC定義
+├── test/
+│   ├── sim/                 # シミュレータ群
+│   │   ├── libvirtd/        # libvirtdシミュレータ
+│   │   ├── storage/         # ストレージAPIシミュレータ
+│   │   └── awx/             # AWXシミュレータ
+│   ├── mock/
+│   │   └── ovs/             # OVSモッククライアント
+│   └── integration/         # 結合テスト
+│       ├── docker-compose.yml
+│       ├── Dockerfile.worker
+│       └── testcases/
 ├── docs/
 ├── go.mod
 └── go.sum
@@ -645,10 +696,6 @@ identity:
   #     user_id: "user-001"
   #     tenant_id: "tenant-001"
 
-network:
-  # OVNクラスタはnetwork_domainsテーブルから取得
-  # ここではデフォルトを指定
-
 storage:
   drivers:
     ceph:
@@ -683,31 +730,31 @@ blockdev:
     rbd:
       monitors: [192.168.100.20:6789]
     # iscsi: {}
+
+network_agent:
+  ovs_bridge: br-int
+  geneve_local_ip: auto   # アンダーレイIPを自動検出
 ```
 
 ## リソースモデルの全体構造
 
-### 三つの到達性ドメイン
+### 到達性ドメインとコンピュートプール
 
 **ストレージドメイン** — 同一のストレージバックエンド群にアクセス可能なホストの集合。一つのホストが複数ドメインに属し得る。
 
-**ネットワークドメイン** — 同一のOVNクラスタ配下のホストの集合。障害ドメインであり、ソフトウェア更新の単位。
+**ネットワーク** — ネットワークはオーバーレイ（Geneve）のため、L3到達性があれば任意のホスト間で通信可能。管理ドメインの概念は不要。
 
-**コンピュートプール** — 独立に定義するものではなく、ストレージドメインとネットワークドメインの共通部分として導出される。ライブマイグレーション可能な範囲はこの導出結果に一致する。
+**コンピュートプール** — ストレージドメインと物理ファブリックの接続性から導出される。ネットワークドメインの制約がないため、同一ストレージドメインに属し物理ファブリックで接続されたホスト群がコンピュートプールとなる。ライブマイグレーション可能な範囲はこの導出結果に一致する。
 
 ```
 ┌─────────────────────────────────────────────────┐
 │             ストレージドメイン A                    │
-│  ┌───────────────────────────────────┐          │
-│  │        ネットワークドメイン 1       │          │
-│  │  ┌─────────────────────────────┐  │          │
-│  │  │   コンピュートプール A-1     │  │          │
-│  │  │   (導出: A ∩ 1)             │  │          │
-│  │  │                             │  │          │
-│  │  │  [Host-1] [Host-2] [Host-3] │  │ [Host-7] │
-│  │  └─────────────────────────────┘  │          │
-│  │                                    │          │
-│  └────────────────────────────────────┘          │
+│  ┌─────────────────────────────────────────┐    │
+│  │   コンピュートプール A                    │    │
+│  │   (導出: ストレージドメイン A のホスト群)  │    │
+│  │                                          │    │
+│  │  [Host-1] [Host-2] [Host-3] [Host-7]     │    │
+│  └─────────────────────────────────────────┘    │
 │                                                   │
 └───────────────────────────────────────────────────┘
 ```
@@ -717,9 +764,9 @@ blockdev:
 管理プレーンの境界（ドメイン）とデータプレーンの到達性は別概念として扱う。
 
 - **ストレージドメイン ⊆ ストレージ到達性** — レプリケーションによりドメインを跨いだデータ到達が可能
-- **ネットワークドメイン ⊆ ネットワーク到達性** — OVN Interconnect (OVN-IC) によりドメインを跨いだL2延伸が可能
-- **ドメイン内コンピュートプール** — 通常のライブマイグレーションとDRSが動作する範囲
-- **拡張コンピュートプール** — ドメイン跨ぎ。動作するが遅くリスクが高い。明示的な運用操作として扱う
+- **ネットワーク到達性** — Geneveオーバーレイにより、L3ファブリックで接続された全ホスト間で通信可能。専用の管理ドメインは不要
+- **コンピュートプール** — ストレージドメインの範囲で通常のライブマイグレーションとDRSが動作する
+- **拡張コンピュートプール** — ストレージドメイン跨ぎ。動作するが遅くリスクが高い。明示的な運用操作として扱う
 
 ### 障害トポロジ（ロケーション）
 

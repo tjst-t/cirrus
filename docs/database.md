@@ -32,7 +32,6 @@ erDiagram
         INT quota_volumes
         INT quota_snapshots
         INT quota_networks
-        INT quota_floating_ips
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
     }
@@ -59,7 +58,6 @@ erDiagram
         UUID id PK
         VARCHAR name UK
         VARCHAR address
-        UUID network_domain_id FK
         UUID location_id FK
         JSONB capability
         VARCHAR profile_id FK
@@ -80,13 +78,6 @@ erDiagram
     storage_domains {
         UUID id PK
         VARCHAR name UK
-        TIMESTAMPTZ created_at
-    }
-
-    network_domains {
-        UUID id PK
-        VARCHAR name UK
-        VARCHAR ovn_nb_connection "OVN Northbound DB接続先"
         TIMESTAMPTZ created_at
     }
 
@@ -202,86 +193,118 @@ erDiagram
     networks {
         UUID id PK
         UUID tenant_id FK
-        UUID network_domain_id FK
         VARCHAR name
+        CIDR cidr
+        INTEGER vni UK
         VARCHAR status
         TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
     }
 
-    subnets {
+    groups {
         UUID id PK
         UUID network_id FK
-        CIDR cidr
-        INET gateway
-        INET dhcp_range_start
-        INET dhcp_range_end
-        INET dns_servers "配列"
+        VARCHAR name
         TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
     }
 
     ports {
         UUID id PK
-        UUID tenant_id FK
         UUID network_id FK
-        UUID subnet_id FK
-        UUID vm_id FK "nullable"
-        MACADDR mac_address UK
+        UUID group_id FK
+        UUID vm_id FK
+        MACADDR mac_address
         INET ip_address
-        VARCHAR status
-        JSONB driver_data "nullable"
+        UUID host_id FK
+        VARCHAR status "active, migrating, switching, draining"
+        VARCHAR role "default, service_in, service_out"
         TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
     }
 
-    port_security_groups {
-        UUID port_id FK
-        UUID security_group_id FK
-    }
-
-    routers {
+    policies {
         UUID id PK
-        UUID tenant_id FK
+        UUID network_id FK
+        UUID src_group_id FK
+        UUID dst_group_id FK
+        VARCHAR protocol
+        INT dst_port "nullable"
+        INT priority "DEFAULT 1000"
+        VARCHAR action "DEFAULT allow"
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    egresses {
+        UUID id PK
+        UUID network_id FK
+        VARCHAR type
         VARCHAR name
-        UUID external_network_id FK "nullable"
+        JSONB config
         VARCHAR status
         TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
     }
 
-    router_interfaces {
+    ingresses {
         UUID id PK
-        UUID router_id FK
-        UUID subnet_id FK
-        INET ip_address
-        TIMESTAMPTZ created_at
-    }
-
-    security_groups {
-        UUID id PK
-        UUID tenant_id FK
+        UUID network_id FK
+        VARCHAR type
         VARCHAR name
-        VARCHAR description
-        TIMESTAMPTZ created_at
-    }
-
-    security_group_rules {
-        UUID id PK
-        UUID security_group_id FK
-        VARCHAR direction "ingress, egress"
-        VARCHAR ethertype "IPv4, IPv6"
-        VARCHAR protocol "tcp, udp, icmp, null=any"
-        INT port_range_min "nullable"
-        INT port_range_max "nullable"
-        CIDR remote_ip_prefix "nullable"
-        UUID remote_group_id FK "nullable, SGの相互参照"
-        TIMESTAMPTZ created_at
-    }
-
-    floating_ips {
-        UUID id PK
-        UUID tenant_id FK
-        UUID external_network_id FK
-        INET floating_ip
-        UUID port_id FK "nullable"
+        INET public_ip "nullable"
+        JSONB config
         VARCHAR status
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    gateway_nodes {
+        UUID id PK
+        UUID host_id FK
+        INET external_ip
+        INET internal_ip
+        VARCHAR status "DEFAULT active"
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    service_insertions {
+        UUID id PK
+        UUID network_id FK
+        VARCHAR name
+        UUID target_group_id FK
+        JSONB intercept
+        VARCHAR status
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    load_balancers {
+        UUID id PK
+        UUID network_id FK
+        VARCHAR name
+        UUID target_group_id FK
+        INET vip
+        JSONB config
+        VARCHAR status
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    drift_events {
+        UUID id PK
+        VARCHAR layer "compute, network, storage, host"
+        VARCHAR type "expected_missing, unexpected_present, state_mismatch, heartbeat_timeout, host_fault_cascade"
+        VARCHAR severity "critical, high, medium"
+        VARCHAR resource "vm, port, volume, flow, policy_flow, host"
+        UUID resource_id
+        UUID tenant_id FK "nullable"
+        UUID host_id FK "nullable"
+        VARCHAR expected
+        VARCHAR actual
+        VARCHAR detected_by
+        VARCHAR action "alert, auto_heal, failover, suppressed"
         TIMESTAMPTZ created_at
     }
 
@@ -300,18 +323,14 @@ erDiagram
     tenants ||--o{ volumes : "owns"
     tenants ||--o{ snapshots : "owns"
     tenants ||--o{ networks : "owns"
-    tenants ||--o{ ports : "owns"
-    tenants ||--o{ routers : "owns"
-    tenants ||--o{ security_groups : "owns"
-    tenants ||--o{ floating_ips : "owns"
     users ||--o{ role_assignments : "has"
 
     hosts ||--o{ vms : "runs"
+    hosts ||--o{ ports : "located on"
     hosts ||--o{ host_storage_domains : "belongs to"
+    hosts ||--o{ gateway_nodes : "hosts"
     storage_domains ||--o{ host_storage_domains : "contains"
     storage_domains ||--o{ storage_backends : "contains"
-    network_domains ||--o{ hosts : "contains"
-    network_domains ||--o{ networks : "scoped to"
     locations ||--o{ hosts : "positions"
     locations ||--o{ locations : "parent"
     host_profiles ||--o{ hosts : "applied to"
@@ -325,15 +344,18 @@ erDiagram
     vms ||--o{ vm_volumes : "uses"
     templates ||--o{ template_caches : "cached on"
 
-    networks ||--o{ subnets : "contains"
+    networks ||--o{ groups : "contains"
     networks ||--o{ ports : "contains"
-    subnets ||--o{ ports : "assigns IP"
+    networks ||--o{ policies : "defines"
+    networks ||--o{ egresses : "has"
+    networks ||--o{ ingresses : "has"
+    networks ||--o{ service_insertions : "has"
+    networks ||--o{ load_balancers : "has"
+    groups ||--o{ ports : "contains"
+    groups ||--o{ policies : "src/dst"
+    groups ||--o{ service_insertions : "target"
+    groups ||--o{ load_balancers : "target"
     vms ||--o{ ports : "attached"
-    ports ||--o{ port_security_groups : "has"
-    security_groups ||--o{ port_security_groups : "applied to"
-    security_groups ||--o{ security_group_rules : "has"
-    routers ||--o{ router_interfaces : "has"
-    subnets ||--o{ router_interfaces : "connected"
 ```
 
 ## ステータス遷移
@@ -383,6 +405,17 @@ registering → active ←→ maintenance
 ※ active, draining → faulty はheartbeat途絶で自動遷移
 ※ draining → maintenance はVM数0で自動遷移
 ※ retiring は終端状態（復帰不可、DB削除のみ）
+```
+
+### ポート
+
+```
+active → migrating → switching → draining → active
+
+※ ライブマイグレーション時の遷移
+  migrating: 移行先ホストにポート準備中
+  switching: トラフィック切り替え中
+  draining: 旧ホスト側の残存フローを排出中
 ```
 
 ### スナップショット

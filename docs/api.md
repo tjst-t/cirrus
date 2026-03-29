@@ -124,58 +124,74 @@ GET    /api/v1/networks/{id}
 DELETE /api/v1/networks/{id}
 ```
 
-### サブネット（テナント操作）
+### ポート（内部API — Computeモジュールが使用。テナントはGETのみ）
 
 ```
-POST   /api/v1/networks/{network_id}/subnets
-GET    /api/v1/networks/{network_id}/subnets
-GET    /api/v1/subnets/{id}
-DELETE /api/v1/subnets/{id}
+GET    /api/v1/networks/{network_id}/ports     # テナント: 自Network内のポート一覧
+GET    /api/v1/ports/{id}                       # テナント: ポート詳細
 ```
 
-### ポート（テナント操作）
+ポートの作成・削除はVM作成・削除時にComputeモジュールが内部的に行う。テナントが直接操作するAPIではない。
+
+### Group（テナント操作）
 
 ```
-POST   /api/v1/ports
-GET    /api/v1/ports
-GET    /api/v1/ports/{id}
-PUT    /api/v1/ports/{id}                      # セキュリティグループ変更等
-DELETE /api/v1/ports/{id}
+POST   /api/v1/networks/{network_id}/groups
+GET    /api/v1/networks/{network_id}/groups
+GET    /api/v1/groups/{id}
+DELETE /api/v1/groups/{id}
 ```
 
-### ルータ（テナント操作）
+### Policy（テナント操作）
 
 ```
-POST   /api/v1/routers
-GET    /api/v1/routers
-GET    /api/v1/routers/{id}
-PUT    /api/v1/routers/{id}
-DELETE /api/v1/routers/{id}
-POST   /api/v1/routers/{id}/interfaces         # サブネット接続
-DELETE /api/v1/routers/{id}/interfaces/{interface_id}
+POST   /api/v1/networks/{network_id}/policies
+GET    /api/v1/networks/{network_id}/policies
+GET    /api/v1/policies/{id}
+DELETE /api/v1/policies/{id}
 ```
 
-### セキュリティグループ（テナント操作）
+### Egress（テナント操作）
 
 ```
-POST   /api/v1/security-groups
-GET    /api/v1/security-groups
-GET    /api/v1/security-groups/{id}
-DELETE /api/v1/security-groups/{id}
-
-POST   /api/v1/security-groups/{id}/rules
-GET    /api/v1/security-groups/{id}/rules
-DELETE /api/v1/security-groups/{id}/rules/{rule_id}
+POST   /api/v1/networks/{network_id}/egresses
+GET    /api/v1/networks/{network_id}/egresses
+GET    /api/v1/egresses/{id}
+DELETE /api/v1/egresses/{id}
 ```
 
-### フローティングIP（テナント操作）
+### Ingress（テナント操作）
 
 ```
-POST   /api/v1/floating-ips
-GET    /api/v1/floating-ips
-GET    /api/v1/floating-ips/{id}
-DELETE /api/v1/floating-ips/{id}
-PUT    /api/v1/floating-ips/{id}               # ポートへの関連付け/解除
+POST   /api/v1/networks/{network_id}/ingresses
+GET    /api/v1/networks/{network_id}/ingresses
+GET    /api/v1/ingresses/{id}
+DELETE /api/v1/ingresses/{id}
+```
+
+### Service Insertion（テナント操作）
+
+```
+POST   /api/v1/networks/{network_id}/service-insertions
+GET    /api/v1/networks/{network_id}/service-insertions
+DELETE /api/v1/service-insertions/{id}
+```
+
+### Load Balancer（テナント操作）
+
+```
+POST   /api/v1/networks/{network_id}/load-balancers
+GET    /api/v1/networks/{network_id}/load-balancers
+DELETE /api/v1/load-balancers/{id}
+```
+
+### ゲートウェイノード管理（インフラ管理者）
+
+```
+POST   /api/v1/gateway-nodes
+GET    /api/v1/gateway-nodes
+PUT    /api/v1/gateway-nodes/{id}
+DELETE /api/v1/gateway-nodes/{id}
 ```
 
 ### テンプレート
@@ -199,22 +215,13 @@ Content-Type: application/json
 
 {
   "name": "web-01",
-  "vcpus": 2,
-  "ram_mb": 4096,
-  "volumes": [
-    {
-      "volume_type_id": "...",
-      "size_gb": 20,
-      "boot": true,
-      "template_id": "..."
-    }
-  ],
-  "networks": [
-    {
-      "network_id": "...",
-      "security_group_ids": ["..."]
-    }
-  ]
+  "flavor_id": "...",
+  "az": "tokyo-1",
+  "network": "my-app",
+  "group": "api",
+  "volume_type_id": "...",
+  "boot_volume_size_gb": 50,
+  "user_data": "..."
 }
 ```
 
@@ -225,13 +232,13 @@ Content-Type: application/json
   "id": "550e8400-...",
   "name": "web-01",
   "status": "scheduling",
-  "vcpus": 2,
-  "ram_mb": 4096,
+  "flavor_id": "...",
+  "az": "tokyo-1",
   "volumes": [
     {
       "id": "...",
       "volume_type_id": "...",
-      "size_gb": 20,
+      "size_gb": 50,
       "status": "creating"
     }
   ],
@@ -239,9 +246,9 @@ Content-Type: application/json
     {
       "id": "...",
       "network_id": "...",
+      "group_id": "...",
       "mac_address": "02:ab:cd:ef:01:23",
-      "ip_address": "10.100.0.5",
-      "security_group_ids": ["..."]
+      "ip_address": "10.100.0.5"
     }
   ],
   "created_at": "2026-03-26T..."

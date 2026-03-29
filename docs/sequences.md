@@ -12,7 +12,7 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant Sched as Scheduler
     participant Host as Host Agent
-    participant OVN as OVN Northbound DB
+    participant NetCtrl as NetworkCtrl
     participant StorageDrv as Storage Driver
 
     rect rgb(230, 245, 255)
@@ -35,40 +35,37 @@ sequenceDiagram
     end
 
     rect rgb(230, 255, 230)
-        Note over User, OVN: Phase 2 — ネットワーク作成
-        User->>API: POST /api/v1/networks<br/>X-Tenant-ID: {tenant_id}<br/>{"name": "app-net"}
+        Note over User, NetCtrl: Phase 2 — ネットワーク作成
+        User->>API: POST /api/v1/networks<br/>X-Tenant-ID: {tenant_id}<br/>{"name": "my-app"}
         API->>Auth: authorize(user, create, network)
         Auth-->>API: allow
-        API->>DB: INSERT INTO networks
-        API->>OVN: Create Logical Switch
+        API->>DB: INSERT INTO networks (CIDR自動割当, VNI採番)
         API-->>User: 201 Created
 
-        User->>API: POST /api/v1/networks/{id}/subnets<br/>{"cidr": "10.100.0.0/24", "gateway": "10.100.0.1",<br/>"dhcp_range_start": "10.100.0.10", "dhcp_range_end": "10.100.0.254"}
-        API->>OVN: Create DHCP Options
-        API->>DB: INSERT INTO subnets
+        User->>API: POST /api/v1/networks/{id}/groups<br/>{"name": "api"}
+        API->>DB: INSERT INTO groups
         API-->>User: 201 Created
 
-        User->>API: POST /api/v1/security-groups<br/>{"name": "web-sg"}
-        API->>DB: INSERT INTO security_groups
+        User->>API: POST /api/v1/networks/{id}/groups<br/>{"name": "web"}
+        API->>DB: INSERT INTO groups
         API-->>User: 201 Created
 
-        User->>API: POST /api/v1/security-groups/{id}/rules<br/>{"direction": "ingress", "protocol": "tcp",<br/>"port_range_min": 80, "port_range_max": 80, "remote_ip_prefix": "0.0.0.0/0"}
-        API->>OVN: Create ACL
-        API->>DB: INSERT INTO security_group_rules
+        User->>API: POST /api/v1/networks/{id}/policies<br/>{"src_group": "web", "dst_group": "api",<br/>"protocol": "tcp", "dst_port": 8080}
+        API->>DB: INSERT INTO policies
+        API->>NetCtrl: HostNetworkState更新 → エージェントにストリーミング配信
         API-->>User: 201 Created
     end
 
     rect rgb(255, 230, 230)
         Note over User, StorageDrv: Phase 3 — VM作成 (非同期)
 
-        User->>API: POST /api/v1/vms<br/>{"name": "web-01", "vcpus": 2, "ram_mb": 4096,<br/>"volumes": [{"volume_type_id": "...", "size_gb": 20,<br/>"boot": true, "template_id": "..."}],<br/>"networks": [{"network_id": "...", "security_group_ids": ["..."]}]}
+        User->>API: POST /api/v1/vms<br/>{"name": "web-01", "flavor_id": "...", "az": "tokyo-1",<br/>"network": "my-app", "group": "api",<br/>"volume_type_id": "...", "boot_volume_size_gb": 50}
 
         API->>Auth: authorize(user, create, vm)
         API->>DB: クォータチェック（テナント + 組織）
         DB-->>API: quota OK
         API->>DB: INSERT INTO volumes (status=creating)
-        API->>DB: INSERT INTO ports (IP/MAC払い出し)
-        API->>OVN: Create Logical Switch Port
+        API->>NetCtrl: CreatePort（IP/MAC払い出し、Group割り当て）
         API->>DB: INSERT INTO vms (status=scheduling)
         API-->>User: 202 Accepted {id, status: "scheduling", volumes, ports}
 
@@ -100,6 +97,7 @@ sequenceDiagram
         Host->>Host: libvirt define + start
         Host-->>API: success
 
+        API->>NetCtrl: HostNetworkState更新 → エージェントにストリーミング配信
         API->>DB: UPDATE vms SET status=active
         API->>DB: UPDATE volumes SET status=in_use
         API->>DB: UPDATE ports SET status=active
@@ -120,8 +118,7 @@ VM配置要求
 │
 ├─ 1. コンピュートプール絞り込み
 │     ├─ ボリュームタイプ → バックエンド候補
-│     ├─ バックエンド到達可能ホスト
-│     └─ ネットワークドメイン内ホスト
+│     └─ バックエンド到達可能ホスト
 │
 ├─ 2. Capabilityマッチ
 │     ├─ CPU要件（世代、命令セット）
@@ -154,25 +151,34 @@ sequenceDiagram
     participant Trigger as トリガー<br/>(DRS/HA/Drain/手動)
     participant Sched as Scheduler
     participant DB as PostgreSQL
+    participant NetCtrl as NetworkCtrl
     participant SrcHost as 移行元ホスト
     participant DstHost as 移行先ホスト
-    participant OVN as OVN NB DB
+    participant Others as 他ホスト
 
     Trigger->>Sched: MigrateVM(vm_id, reason)
     Sched->>DB: VM情報 + ボリューム情報取得
     Sched->>Sched: 移行先候補の選定<br/>(同一コンピュートプール内)
     Sched-->>DB: UPDATE vms SET status=migrating, target_host_id
 
-    Sched->>DstHost: PrepareMigration(vm_spec)
-    DstHost-->>Sched: ready
+    Sched->>NetCtrl: 移行先ホストにポート+フロー準備
+    NetCtrl->>DstHost: HostNetworkState更新（ポート追加）
+    DstHost-->>NetCtrl: ready
 
     Sched->>SrcHost: StartMigration(vm_id, dst_host)
     SrcHost->>DstHost: libvirt live migration
     Note over SrcHost, DstHost: メモリ転送（iterative pre-copy）
     DstHost-->>Sched: migration complete
 
-    Sched->>OVN: Update port bindings<br/>(chassis → dst_host)
-    Sched->>DB: UPDATE vms SET host_id=dst_host, status=active
+    Sched->>NetCtrl: フロー切替開始
+    NetCtrl->>DstHost: フロー有効化
+    NetCtrl->>SrcHost: Fallback転送設定（Host-Bへ転送）
+    Sched->>DB: UPDATE vms SET host_id=dst_host
+    NetCtrl->>Others: トンネル宛先更新（dst_host向け）
+    Others-->>NetCtrl: ACK返送
+    Note over NetCtrl: 全ACK受信
+    NetCtrl->>SrcHost: Fallback削除 + フロー削除
+    Sched->>DB: UPDATE vms SET status=active
 ```
 
 ## ストレージドレイン

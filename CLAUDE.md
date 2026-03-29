@@ -36,14 +36,14 @@ docs/配下に設計ドキュメントがある。実装前に必ず該当ドキ
 
 ## アーキテクチャ要点
 
-- **Controller**: API, Scheduler, OVN NB操作, Storage Backend操作
-- **Worker**: ホストごとに1プロセス。libvirt VM操作 + ボリュームのホスト側アタッチ
+- **Controller**: API, Scheduler, ネットワーク状態管理（HostNetworkState計算・配信）, Storage Backend操作
+- **Worker**: ホストごとに1プロセス。libvirt VM操作 + ボリュームのホスト側アタッチ + cirrus-agent（OVS制御、DNS、DHCP、メタデータサービス）
 - 物理インフラ管理はhook（AWX等）経由で外部委譲。仮想化層はCirrusが直接制御
 - モジュール間はインターフェース経由のみ。詳細は docs/architecture.md
 
 ## テスト
 
-[cirrus-sim](https://github.com/tjst-t/cirrus-sim) で本番同一プロトコルのシミュレータに接続してテスト。モック不要。詳細は docs/testing.md
+3レイヤーのテスト戦略: レイヤー1（Goユニットテスト）、レイヤー2（OVSモッククライアント）、レイヤー3（実OVS + docker-compose結合テスト）。シミュレータはcirrusリポジトリに統合済み（test/sim/）。詳細は docs/testing.md
 
 ## CLIクライアント（cirrusctl）
 

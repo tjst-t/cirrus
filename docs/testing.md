@@ -2,199 +2,168 @@
 
 ## 基本方針
 
-Cirrusの開発・テストには [cirrus-sim](https://github.com/tjst-t/cirrus-sim) を使用する。cirrus-simは各外部システム（libvirt、OVN、ストレージバックエンド、AWX、NetBox）と同一プロトコルで通信するシミュレータ群を提供し、物理インフラなしでフルスタックのIaaS開発・テストを可能にする。
+シミュレータ群をcirrusリポジトリに統合。3レイヤーのテスト戦略を採用する。
 
 シミュレータは本番と同じプロトコルを話すため、Cirrus側のコードにテスト用の分岐やモックは不要。接続先の設定を切り替えるだけでシミュレータ環境と本番環境を行き来できる。
 
-## シミュレータ構成
-
-| シミュレータ | プロトコル | Cirrusとの対応 |
-|---|---|---|
-| libvirt-sim | libvirt RPC (XDR/TCP) | ホストエージェント経由のVM操作 |
-| ovn-sim | OVSDB (JSON-RPC/TCP) | OVN Northbound DBへのネットワーク制御 |
-| storage-sim | REST API | ストレージバックエンドドライバ |
-| awx-sim | AWX REST API | hook経由の物理インフラ操作 |
-| netbox-sim | NetBox REST API | 障害トポロジの同期アダプタ |
-
-## 環境規模
-
-cirrus-simは用途に応じた環境定義を持つ:
-
-| 環境 | ホスト数 | OVNクラスタ | ストレージ | 用途 |
-|---|---|---|---|---|
-| small | 10 | 1 | 1 | 日常開発、ユニットテスト |
-| medium | 400 | 2 (東京/大阪) | 2 (SSD/HDD) | 結合テスト、マルチドメインテスト |
-| large | 2,500+ | 5 | 4 | 負荷テスト、スケーラビリティ検証 |
-
 ## テスト戦略
 
-### ユニットテスト
+### レイヤー1: ビジネスロジック（Goユニットテスト）
 
-個々のパッケージのロジックテスト。外部依存はインターフェース経由で差し替え可能だが、基本的にcirrus-sim (small環境) に接続してテストする。
+OVSもネットワークも不要。純粋なGoのユニットテストで完結する。テスト対象の大半がここ。
 
-```bash
-# cirrus-simを起動（別ターミナルまたはバックグラウンド）
-cd ../cirrus-sim && make serve
-
-# テスト実行
-make test
-```
-
-テスト対象の例:
+- IPAM（/30採番、CIDR管理）
+- Policy評価ロジック
+- HostNetworkState計算
+- DNSレコード生成
+- メタデータレスポンス生成
 - スケジューラのcapability-basedマッチング
 - クォータの階層化チェック
-- スナップショット依存関係グラフの整合性検証
 - 認可判定ロジック
 
-### 結合テスト
+### レイヤー2: OVSフロー変換（モッククライアント）
 
-Cirrusのコントローラーを起動し、APIを通じてリソースのライフサイクルを一通り実行する。cirrus-simのmedium環境を使用し、マルチドメイン構成もテストする。
+HostNetworkState→OpenFlowフローへの変換ロジックをテスト。MockOVSClient interfaceでコマンド記録・検証。
 
-テストシナリオの例:
-
-1. **VM作成→停止→削除の基本フロー**
-   - テナント作成 → ネットワーク作成 → サブネット作成 → セキュリティグループ作成 → VM作成
-   - OVN論理スイッチポートが作成されたことを確認
-   - ストレージバックエンドにボリュームが作成されたことを確認
-   - libvirtにドメインが定義・起動されたことを確認
-
-2. **スケジューラのプレースメント検証**
-   - capability要件付きVMが適切なホストに配置されるか
-   - アンチアフィニティルールが遵守されるか
-   - ボリュームタイプ要件とバックエンド到達性が正しく評価されるか
-
-3. **マルチテナンシーの隔離検証**
-   - テナントAのリソースがテナントBから見えないこと
-   - クォータ超過時にリソース作成が拒否されること
-   - ロールに基づくアクセス制御が正しく機能すること
-
-4. **ライブマイグレーション**（Phase 2）
-   - 同一コンピュートプール内のVM移行
-   - 移行中のネットワーク接続維持（OVNポートバインディング更新）
-
-5. **ストレージドレイン**（Phase 2）
-   - バックエンドのドレイン開始→ボリューム移行→退役
-   - 依存関係を持つスナップショット/クローンの移行順序
-
-### 障害テスト
-
-cirrus-simの障害注入機能を使い、異常系の振る舞いを検証する。
-
-```bash
-# ホストの障害注入（DomainCreateが50%の確率で失敗）
-curl -X POST http://localhost:<COMMON_PORT>/api/v1/faults \
-  -d '{"target":"host-001","operation":"DomainCreate","failure_rate":0.5}'
-
-# ホストのメンテナンスモード移行
-curl -X PUT http://localhost:<SIM_PORT>/sim/hosts/host-001/state \
-  -d '{"state":"maintenance"}'
+```go
+type MockOVSClient interface {
+    AddFlow(table int, priority int, match string, actions string) error
+    DeleteFlow(table int, match string) error
+    AddPort(bridge string, port string) error
+    DeletePort(bridge string, port string) error
+    GetRecordedCommands() []OVSCommand
+}
 ```
 
-テストシナリオの例:
-- ホスト障害時のHA failover
-- ストレージバックエンド障害時のエラーハンドリング
-- OVNクラスタ接続断時の振る舞い
-- AWXジョブ失敗時のリトライ・ロールバック
+### レイヤー3: 結合テスト（実OVS + docker-compose）
 
-### 負荷テスト
+cirrus-sim-workerコンテナで実行。実際にパケットを流して検証する。
 
-cirrus-simのlarge環境を使い、大規模構成での性能を検証する。
+- コントローラ→エージェント gRPC通信
+- HostNetworkState配信と差分更新
+- OVSフロー注入（実OVS）
+- VM(namespace)間のGeneveトンネル通信
+- DHCP応答
+- DNS応答とNetwork隔離
+- メタデータサービス
+- Policy（conntrack）による通信許可/拒否
+- ライブマイグレーション（namespace移動 + フロー更新）
 
-検証項目:
-- 2,500ホスト環境でのスケジューラ応答時間
-- 同時VM作成リクエストの処理能力
-- DRSの再配分計算時間
-- DBクエリ性能（ホスト列挙、リソース集計）
+## シミュレータ構成（cirrusリポジトリ内）
+
+| シミュレータ | プロトコル | 配置 |
+|---|---|---|
+| libvirtd-sim | libvirt RPC | test/sim/libvirtd/ |
+| storage-sim | REST API | test/sim/storage/ |
+| awx-sim | AWX REST API | test/sim/awx/ |
+| OVSモック | Go interface | test/mock/ovs/ |
+
+Note: OVN-simは廃止。OVSは結合テストで実物を使用。
+
+## docker-compose構成
+
+```yaml
+services:
+  controller:
+    image: cirrus
+    command: cirrus --role controller
+    depends_on: [postgres]
+
+  postgres:
+    image: postgres:16
+
+  worker-1:
+    image: cirrus-sim-worker
+    privileged: true
+    networks: [fabric]
+
+  worker-2:
+    image: cirrus-sim-worker
+    privileged: true
+    networks: [fabric]
+
+  worker-3:
+    image: cirrus-sim-worker
+    privileged: true
+    networks: [fabric]
+
+  storage-sim:
+    image: cirrus-sim-storage
+
+  awx-sim:
+    image: cirrus-sim-awx
+
+networks:
+  fabric:
+    driver: bridge
+```
+
+## cirrus-sim-workerイメージ
+
+### Dockerfile
+
+```dockerfile
+FROM ubuntu:24.04
+
+# OVS（実物）
+RUN apt-get install -y openvswitch-switch
+
+# cirrus-agent（実バイナリ）
+COPY cirrus /usr/local/bin/cirrus
+
+# libvirtd-sim（シミュレータ）
+COPY libvirtd-sim /usr/local/bin/libvirtd-sim
+
+COPY entrypoint.sh /entrypoint.sh
+```
+
+### entrypoint.sh
+
+```bash
+#!/bin/bash
+ovs-vswitchd &
+ovsdb-server &
+ovs-vsctl add-br br-int
+
+libvirtd-sim &
+cirrus --role worker &
+
+wait
+```
+
+## VMシミュレーション
+
+network namespaceとvethペアでVM代替。namespace内からping/curl/dig可能。
+
+```bash
+# VM作成時
+ip netns add vm-${uuid}
+ip link add vm-${uuid}-tap type veth peer name eth0 netns vm-${uuid}
+ip link set vm-${uuid}-tap up
+ovs-vsctl add-port br-int vm-${uuid}-tap
+ip netns exec vm-${uuid} dhclient eth0
+```
+
+Linuxのnetwork namespaceはネストではなくカーネル上の平坦な構造のため、Dockerコンテナ内（`--privileged`）でも問題なく動作する。
 
 ## 開発ワークフロー
 
-### ローカル開発
+### ローカル開発（レイヤー1/2）
 
 ```bash
-# 1. cirrus-simを起動（small環境）
-cd ../cirrus-sim && make serve
+make test
+```
 
-# 2. Cirrusコントローラーを起動
-make serve
+外部依存なし。純粋なGoテストで完結する。
 
-# 3. APIでリソース操作
-curl -X POST http://localhost:<PORT>/api/v1/organizations ...
+### 結合テスト（レイヤー3）
 
-# 4. cirrus-simの管理APIで状態確認
-curl http://localhost:<SIM_PORT>/sim/stats
-curl http://localhost:<COMMON_PORT>/api/v1/events?limit=20
+```bash
+docker-compose up
+make test-integration
 ```
 
 ### CI
 
-CIではcirrus-simをプロセスとして起動し、テストスイートを実行する。
-
-```bash
-# cirrus-sim起動
-cirrus-sim -env environments/small.yaml &
-
-# テスト実行
-make test
-make test-integration
-```
-
-### イベントログによるデバッグ
-
-cirrus-simは全操作のイベントログを記録する。テスト失敗時にCirrusが発行した操作の順序と内容を確認できる。
-
-```bash
-# 直近のイベント取得
-curl http://localhost:<COMMON_PORT>/api/v1/events?simulator=libvirt-sim&limit=50
-curl http://localhost:<COMMON_PORT>/api/v1/events?simulator=ovn-sim&limit=50
-```
-
-## Cirrusとcirrus-simの接続
-
-Cirrusの設定ファイルでシミュレータの接続先を指定する。本番環境との違いは接続先だけ。
-
-```yaml
-# cirrus.yaml（開発環境）
-hosts:
-  # cirrus-simの管理APIからホスト一覧を取得し、各ホストのlibvirt RPCポートに接続
-  discovery: "http://localhost:<LIBVIRT_SIM_PORT>/sim/hosts"
-
-network:
-  ovn_nb_connection: "tcp:localhost:<OVN_SIM_PORT>"
-
-storage:
-  backends:
-    - name: "ceph-pool-ssd"
-      driver: "cirrus-storage-api"
-      endpoint: "http://localhost:<STORAGE_SIM_PORT>"
-
-hooks:
-  awx:
-    endpoint: "http://localhost:<AWX_SIM_PORT>"
-
-topology_sync:
-  netbox:
-    endpoint: "http://localhost:<NETBOX_SIM_PORT>"
-```
-
-## VM作成の全体フロー（シミュレータ経由）
-
-Cirrusが1台のVMを作成する際、各シミュレータへの操作は以下の順で行われる:
-
-```
-1. OVN NB DB (ovn-sim) に Logical_Switch_Port を作成
-   → OVSDB transact: insert into Logical_Switch_Port
-
-2. Storage API (storage-sim) でボリュームを作成
-   → POST /api/v1/volumes
-
-3. Storage API (storage-sim) でボリュームをエクスポート（ホストに接続）
-   → POST /api/v1/volumes/{id}/export
-
-4. libvirt RPC (libvirt-sim) でドメインを定義
-   → DomainDefineXMLFlags (interfaceid で OVN LSP と紐付け、rbd で volume と紐付け)
-
-5. libvirt RPC (libvirt-sim) でドメインを起動
-   → DomainCreateWithFlags
-```
-
-シミュレータ間の直接連携は不要。Cirrusが各シミュレータを独立に操作し、`interfaceid` と `volume_id` で論理的に紐付ける。
+- レイヤー1/2: 通常のGoテスト
+- レイヤー3: docker-compose + privileged containers
