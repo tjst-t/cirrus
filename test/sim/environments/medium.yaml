@@ -1,0 +1,62 @@
+environment:
+  name: "medium-test"
+
+  sites:
+    - name: "site-tokyo"
+      rack_rows: 5
+      racks_per_row: 10
+      hosts_per_rack: 5
+      host_template: "standard-compute"
+
+    - name: "site-osaka"
+      rack_rows: 3
+      racks_per_row: 10
+      hosts_per_rack: 5
+      host_template: "standard-compute"
+
+  host_templates:
+    standard-compute:
+      cpu_model: "Intel Xeon Gold 6348"
+      cpu_sockets: 2
+      cores_per_socket: 28
+      threads_per_core: 2
+      memory_gb: 512
+      numa_nodes: 2
+      nics:
+        - name: "ens1f0"
+          speed_gbps: 25
+          sriov: true
+        - name: "ens2f0"
+          speed_gbps: 25
+          sriov: false
+
+  storage_backends:
+    - name: "ceph-pool-ssd"
+      type: "ceph"
+      total_capacity_tb: 200
+      total_iops: 300000
+      capabilities: ["ssd", "snapshot", "clone", "live_migration", "differential_transfer"]
+      accessible_from: ["site-tokyo"]
+
+    - name: "ceph-pool-hdd"
+      type: "ceph"
+      total_capacity_tb: 2000
+      total_iops: 30000
+      capabilities: ["hdd", "snapshot", "clone"]
+      accessible_from: ["site-tokyo", "site-osaka"]
+
+  ovn_clusters:
+    - name: "ovn-tokyo"
+      covers: ["site-tokyo"]
+    - name: "ovn-osaka"
+      covers: ["site-osaka"]
+
+  preload:
+    vms_per_host:
+      min: 20
+      max: 50
+    volumes_per_vm:
+      min: 1
+      max: 3
+    networks_per_tenant: 2
+    tenants: 20

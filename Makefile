@@ -1,8 +1,8 @@
-.PHONY: all build test lint serve stop logs logs-worker logs-sim clean-dev reset-db fresh proto
+.PHONY: all build test lint serve stop logs logs-worker logs-sim clean-dev reset-db fresh proto \
+       test-unit test-mock test-integration build-sim
 
 # ── Configuration ──
 
-CIRRUS_SIM_DIR   ?= $(shell cd .. && pwd)/cirrus-sim
 CIRRUS_SIM_ENV   ?= small
 AUTH_TOKENS      ?= dev-token=dev-admin
 REGISTRATION_TOKEN ?= dev-registration-token
@@ -25,6 +25,11 @@ build:
 	go build -o bin/cirrus ./cmd/cirrus/
 	go build -o bin/cirrusctl ./cmd/cirrusctl/
 
+build-sim:
+	go build -o bin/cirrus-sim ./cmd/cirrus-sim/
+	go build -o bin/libvirtd-sim ./cmd/libvirtd-sim/
+	go build -o bin/cirrus-sim-ctl ./cmd/cirrus-sim-ctl/
+
 # ── Proto ──
 
 proto:
@@ -35,15 +40,31 @@ proto:
 
 # ── Test / Lint ──
 
-test:
+test: test-unit
+
+test-unit:
 	go test ./...
+
+test-mock:
+	go test ./test/mock/...
+
+test-integration:
+	@echo "==> Building test images..."
+	@cd test/integration && docker compose build
+	@echo "==> Starting integration environment..."
+	@cd test/integration && docker compose up -d
+	@echo "==> Waiting for services..."
+	@sleep 10
+	@echo "==> Running integration checks..."
+	@cd test/integration && docker compose ps
+	@echo "==> Integration environment is up. Run 'cd test/integration && docker compose down' to stop."
 
 lint:
 	golangci-lint run ./...
 
 # ── Serve (all-in-one: sim + controller + workers) ──
 
-serve: build
+serve: build build-sim
 	@mkdir -p $(TMP_DIR) $(PID_WORKER_DIR) $(LOG_WORKER_DIR)
 	@# ── 1. Stop existing processes ──
 	@$(MAKE) --no-print-directory _stop-all
@@ -113,15 +134,13 @@ _alloc-ports:
 	@portman env \
 	  --name sim-common \
 	  --name sim-dashboard:expose \
+	  --name sim-aggregator:expose \
 	  --name sim-libvirt \
-	  --name sim-ovn \
 	  --name sim-awx \
-	  --name sim-netbox \
 	  --name sim-storage \
 	  --name sim-postgres \
 	  --name sim-postgres-mgmt \
 	  --range sim-libvirt-hosts=20 \
-	  --range sim-ovn-clusters=5 \
 	  --name api:expose \
 	  --name grpc \
 	  --output $(PORTMAN_ENV)
@@ -129,25 +148,19 @@ _alloc-ports:
 # ── Internal: start cirrus-sim ──
 
 _start-sim:
-	@if [ ! -x $(CIRRUS_SIM_DIR)/bin/cirrus-sim ]; then \
-	  echo "ERROR: cirrus-sim binary not found at $(CIRRUS_SIM_DIR)/bin/cirrus-sim"; \
-	  echo "       Run 'make build-unified' in $(CIRRUS_SIM_DIR) first."; \
-	  exit 1; \
-	fi
 	@bash -c '\
 	  set -a; source $(PORTMAN_ENV); set +a; \
 	  echo "==> Starting cirrus-sim (env: $(CIRRUS_SIM_ENV), log: $(LOG_SIM))"; \
-	  nohup $(CIRRUS_SIM_DIR)/bin/cirrus-sim \
+	  nohup ./bin/cirrus-sim \
 	    -common=$$SIM_COMMON_PORT \
 	    -dashboard=$$SIM_DASHBOARD_PORT \
+	    -aggregator=$$SIM_AGGREGATOR_PORT \
 	    -libvirt=$$SIM_LIBVIRT_PORT \
-	    -ovn=$$SIM_OVN_PORT \
 	    -awx=$$SIM_AWX_PORT \
-	    -netbox=$$SIM_NETBOX_PORT \
 	    -storage=$$SIM_STORAGE_PORT \
 	    -postgres=$$SIM_POSTGRES_PORT \
 	    -postgres-mgmt=$$SIM_POSTGRES_MGMT_PORT \
-	    -env=$(CIRRUS_SIM_DIR)/environments/$(CIRRUS_SIM_ENV).yaml \
+	    -env=test/sim/environments/$(CIRRUS_SIM_ENV).yaml \
 	    > $(LOG_SIM) 2>&1 & \
 	  echo $$! > $(PID_SIM); \
 	  echo "    PID: $$(cat $(PID_SIM))"'
@@ -173,10 +186,8 @@ _start-controller:
 	    --api-port=$$API_PORT \
 	    --grpc-port=$$GRPC_PORT \
 	    --db-dsn="$$DB_DSN" \
-	    --ovn-nb="tcp:localhost:$$(curl -sf http://localhost:$$SIM_OVN_PORT/sim/clusters | jq -r '.[0].ovsdb_port')" \
 	    --storage-endpoint="http://localhost:$$SIM_STORAGE_PORT" \
 	    --awx-endpoint="http://localhost:$$SIM_AWX_PORT" \
-	    --netbox-endpoint="http://localhost:$$SIM_NETBOX_PORT" \
 	    --auth-tokens="$(AUTH_TOKENS)" \
 	    --registration-token="$(REGISTRATION_TOKEN)" \
 	    --log-level=debug \
@@ -206,7 +217,7 @@ _seed-topology:
 	  curl -sf -X POST \
 	    -H "Authorization: Bearer $$TOKEN" \
 	    -H "Content-Type: application/json" \
-	    -d "{\"name\":\"default-nd\",\"ovn_nb_connection\":\"tcp:localhost:$$(curl -sf http://localhost:$$SIM_OVN_PORT/sim/clusters | jq -r '.[0].ovsdb_port')\"}" \
+	    -d "{\"name\":\"default-nd\"}" \
 	    http://localhost:$$API_PORT/api/v1/network-domains >/dev/null 2>&1 || true; \
 	  curl -sf -X POST \
 	    -H "Authorization: Bearer $$TOKEN" \

@@ -114,10 +114,7 @@ func (h *topologyHandlers) createNetworkDomain(w http.ResponseWriter, r *http.Re
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	if req.OVNNBConnection == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "ovn_nb_connection is required"})
-		return
-	}
+	// ovn_nb_connection is optional (OVN→VPC migration: Sprint 5N will remove this field entirely)
 
 	created, err := h.svc.CreateNetworkDomain(r.Context(), req.Name, req.OVNNBConnection)
 	if err != nil {

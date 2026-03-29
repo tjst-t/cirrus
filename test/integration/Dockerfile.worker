@@ -1,0 +1,22 @@
+FROM ubuntu:24.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openvswitch-switch \
+    iproute2 \
+    iputils-ping \
+    dnsutils \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy binaries
+COPY cirrus /usr/local/bin/cirrus
+COPY libvirtd-sim /usr/local/bin/libvirtd-sim
+
+# Copy entrypoint
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

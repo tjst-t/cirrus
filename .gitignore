@@ -1,5 +1,8 @@
 /cirrus
 /cirrusctl
+/cirrus-sim
+/libvirtd-sim
+/cirrus-sim-ctl
 /bin/
 .env
 *.log

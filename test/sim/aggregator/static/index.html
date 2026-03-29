@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cirrus-Sim — Aggregator Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --color-bg:#ffffff;
+  --color-bg-subtle:#f5f6f7;
+  --color-bg-muted:#ebedf0;
+  --color-border:#dddfe2;
+  --color-border-strong:#bec3c9;
+  --color-text:#1c1e21;
+  --color-text-secondary:#606770;
+  --color-text-tertiary:#8a8d91;
+  --color-accent:#1877f2;
+  --color-accent-hover:#1466d4;
+  --color-accent-subtle:#e7f3ff;
+  --color-accent-border:#a3d0fb;
+  --color-success:#31a24c;
+  --color-success-subtle:#e9f7ed;
+  --color-success-border:#a8dbb5;
+  --color-warning:#f0960a;
+  --color-warning-subtle:#fef4dc;
+  --color-warning-border:#fad980;
+  --color-danger:#e4363a;
+  --color-danger-subtle:#fdebeb;
+  --color-danger-border:#f5aaac;
+  --color-chart-blue:#1877f2;
+  --color-chart-green:#31a24c;
+  --color-chart-amber:#f0960a;
+  --color-chart-red:#e4363a;
+  --color-chart-purple:#a033ff;
+  --color-chart-cyan:#00a3e0;
+  --font-sans:'Geist','Noto Sans JP',system-ui,sans-serif;
+  --font-mono:'Geist Mono','JetBrains Mono',ui-monospace,monospace;
+  --radius-sm:2px;
+  --radius-md:4px;
+  --radius-lg:6px;
+  --radius-xl:8px;
+  --shadow-sm:0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md:0 1px 4px rgba(0,0,0,0.06),0 1px 2px rgba(0,0,0,0.03);
+  --shadow-lg:0 4px 12px rgba(0,0,0,0.07),0 1px 3px rgba(0,0,0,0.04);
+  --topbar-h:44px;
+  --statusbar-h:36px;
+}
+html{font-size:13px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+body{
+  background:var(--color-bg-muted);
+  color:var(--color-text);
+  font-family:var(--font-sans);
+  font-weight:400;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+/* ═══════ TOPBAR ═══════ */
+.topbar{
+  height:var(--topbar-h);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;
+  background:var(--color-bg);
+  border-bottom:1px solid var(--color-border);
+  position:sticky;top:0;z-index:100;
+  user-select:none;
+}
+.topbar-left{display:flex;align-items:center;gap:10px}
+.logo{
+  font-weight:600;font-size:14px;letter-spacing:-0.04em;
+  color:var(--color-text);
+  display:flex;align-items:center;gap:6px;
+}
+.logo-sub{font-weight:400;color:var(--color-text-tertiary);font-size:13px}
+.tag{
+  font-family:var(--font-mono);font-size:10px;font-weight:500;
+  padding:2px 7px;border-radius:var(--radius-md);
+  background:var(--color-accent-subtle);color:var(--color-accent);
+  border:1px solid var(--color-accent-border);
+  letter-spacing:0.05em;text-transform:uppercase;
+}
+.topbar-right{display:flex;align-items:center;gap:14px}
+.clock{font-family:var(--font-mono);font-size:11px;color:var(--color-text-tertiary);letter-spacing:0.02em}
+.pulse-ring{
+  position:relative;width:8px;height:8px;
+}
+.pulse-ring::before{
+  content:'';position:absolute;inset:-3px;border-radius:50%;
+  background:var(--color-success);opacity:0.25;
+  animation:ring 2.5s cubic-bezier(0.4,0,0.6,1) infinite;
+}
+.pulse-ring::after{
+  content:'';position:absolute;inset:0;border-radius:50%;
+  background:var(--color-success);
+}
+@keyframes ring{0%{transform:scale(1);opacity:0.25}50%{transform:scale(1.8);opacity:0}100%{transform:scale(1);opacity:0}}
+
+/* ═══════ STATUS BAR ═══════ */
+.statusbar{
+  height:var(--statusbar-h);
+  display:flex;align-items:stretch;
+  background:var(--color-bg);
+  border-bottom:1px solid var(--color-border);
+  overflow-x:auto;
+  scrollbar-width:none;
+}
+.statusbar::-webkit-scrollbar{display:none}
+.worker-chip{
+  display:flex;align-items:center;gap:7px;
+  padding:0 14px;
+  border-right:1px solid var(--color-border);
+  font-size:11px;font-weight:500;letter-spacing:0.02em;
+  color:var(--color-text-secondary);
+  cursor:default;white-space:nowrap;
+  transition:background 0.12s;
+}
+.worker-chip:last-child{border-right:none}
+.worker-chip:hover{background:var(--color-bg-subtle)}
+.dot{width:5px;height:5px;border-radius:50%;flex-shrink:0;transition:background 0.3s}
+.dot.up{background:var(--color-success)}
+.dot.down{background:var(--color-danger)}
+.dot.unknown{background:var(--color-text-tertiary)}
+.worker-chip .label{text-transform:uppercase;letter-spacing:0.04em}
+
+/* ═══════ MAIN GRID ═══════ */
+.main{
+  display:grid;
+  grid-template-columns:repeat(12,1fr);
+  gap:12px;
+  padding:14px;
+  max-width:1600px;
+  margin:0 auto;
+}
+
+/* ═══════ CARD ═══════ */
+.card{
+  background:var(--color-bg);
+  border:1px solid var(--color-border);
+  border-radius:var(--radius-xl);
+  box-shadow:var(--shadow-sm);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+  transition:box-shadow 0.15s;
+  min-width:0;
+}
+.card:hover{box-shadow:var(--shadow-md)}
+.card-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px;
+  border-bottom:1px solid var(--color-border);
+  background:var(--color-bg-subtle);
+}
+.card-title{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-secondary)}
+.card-badge{
+  font-family:var(--font-mono);font-size:10px;font-weight:500;
+  padding:1px 6px;border-radius:var(--radius-sm);
+  background:var(--color-bg-muted);border:1px solid var(--color-border);
+  color:var(--color-text-tertiary);
+}
+.card-body{padding:14px;display:flex;flex-direction:column;gap:10px;flex:1}
+
+/* card sizes */
+.card-overview{grid-column:span 12}
+.card-hosts{grid-column:span 8}
+.card-storage{grid-column:span 4}
+.card-awx{grid-column:span 4}
+.card-postgres{grid-column:span 4}
+.card-events{grid-column:span 4}
+.card-faults{grid-column:span 4}
+
+@media(max-width:1100px){
+  .card-overview,.card-hosts,.card-storage,.card-awx,.card-postgres,.card-events,.card-faults{grid-column:span 12}
+}
+@media(min-width:1100px) and (max-width:1400px){
+  .card-hosts{grid-column:span 12}
+  .card-storage{grid-column:span 6}
+  .card-awx{grid-column:span 6}
+  .card-postgres{grid-column:span 6}
+  .card-events{grid-column:span 6}
+  .card-faults{grid-column:span 6}
+}
+
+/* ═══════ METRICS ROW ═══════ */
+.metrics{display:flex;gap:8px;flex-wrap:wrap}
+.metric{
+  flex:1;min-width:100px;
+  padding:10px 12px;border-radius:var(--radius-lg);
+  background:var(--color-bg-subtle);
+  border:1px solid var(--color-border);
+  display:flex;flex-direction:column;gap:3px;
+  transition:border-color 0.15s;
+}
+.metric:hover{border-color:var(--color-border-strong)}
+.m-val{
+  font-family:var(--font-mono);font-weight:600;font-size:22px;
+  letter-spacing:-0.04em;line-height:1;
+}
+.m-val.blue{color:var(--color-chart-blue)}
+.m-val.green{color:var(--color-chart-green)}
+.m-val.amber{color:var(--color-chart-amber)}
+.m-val.red{color:var(--color-chart-red)}
+.m-val.purple{color:var(--color-chart-purple)}
+.m-val.cyan{color:var(--color-chart-cyan)}
+.m-lbl{font-size:10px;font-weight:500;color:var(--color-text-tertiary);letter-spacing:0.04em;text-transform:uppercase}
+
+/* ═══════ TABLE ═══════ */
+.tbl{font-size:12px;width:100%;border-collapse:collapse}
+.tbl th{
+  text-align:left;padding:5px 10px;
+  font-size:10px;font-weight:500;
+  color:var(--color-text-tertiary);
+  letter-spacing:0.04em;text-transform:uppercase;
+  background:var(--color-bg-subtle);
+  border-bottom:1px solid var(--color-border);
+  position:sticky;top:0;
+}
+.tbl td{
+  padding:6px 10px;
+  border-bottom:1px solid var(--color-border);
+  color:var(--color-text-secondary);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  max-width:200px;
+}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:var(--color-bg-subtle);color:var(--color-text)}
+.tbl .mono{font-family:var(--font-mono);font-size:11px}
+.tbl .clickable{cursor:pointer}
+.tbl .clickable:hover td{color:var(--color-accent)}
+.tbl-wrap{overflow-x:auto;overflow-y:auto;max-height:260px}
+
+/* ═══════ BADGE ═══════ */
+.badge{
+  display:inline-block;padding:1px 5px;border-radius:var(--radius-md);
+  font-size:10px;font-weight:500;letter-spacing:0.03em;
+}
+.badge-success{background:var(--color-success-subtle);color:var(--color-success);border:1px solid var(--color-success-border)}
+.badge-warning{background:var(--color-warning-subtle);color:var(--color-warning);border:1px solid var(--color-warning-border)}
+.badge-danger{background:var(--color-danger-subtle);color:var(--color-danger);border:1px solid var(--color-danger-border)}
+.badge-accent{background:var(--color-accent-subtle);color:var(--color-accent);border:1px solid var(--color-accent-border)}
+.badge-muted{background:var(--color-bg-muted);color:var(--color-text-tertiary);border:1px solid var(--color-border)}
+
+/* ═══════ CAPACITY BAR ═══════ */
+.cap-row{display:flex;flex-direction:column;gap:4px}
+.cap-header{display:flex;justify-content:space-between;align-items:baseline}
+.cap-name{font-size:11px;color:var(--color-text-secondary);display:flex;align-items:center;gap:6px}
+.cap-pct{font-family:var(--font-mono);font-size:11px;font-weight:500}
+.cap-track{height:5px;border-radius:3px;background:var(--color-bg-muted);overflow:hidden}
+.cap-fill{height:100%;border-radius:3px;transition:width 0.5s cubic-bezier(0.22,1,0.36,1)}
+.cap-fill.low{background:var(--color-success)}
+.cap-fill.med{background:var(--color-warning)}
+.cap-fill.high{background:var(--color-danger)}
+
+/* ═══════ PAGER ═══════ */
+.pager{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:4px 0;font-size:10px;color:var(--color-text-tertiary);
+}
+.pager-btns{display:flex;gap:3px}
+.pager-btn{
+  border:1px solid var(--color-border);background:var(--color-bg);
+  color:var(--color-text-secondary);
+  padding:2px 8px;border-radius:var(--radius-sm);
+  font-size:10px;font-weight:500;cursor:pointer;font-family:var(--font-sans);
+  transition:background 0.12s;
+}
+.pager-btn:hover:not(:disabled){background:var(--color-bg-subtle);border-color:var(--color-border-strong)}
+.pager-btn:disabled{opacity:0.3;cursor:default}
+
+/* ═══════ EMPTY ═══════ */
+.empty{text-align:center;padding:16px;font-size:11px;color:var(--color-text-tertiary)}
+.offline-banner{
+  text-align:center;padding:12px;
+  color:var(--color-danger);font-size:11px;font-weight:500;
+  background:var(--color-danger-subtle);
+  border:1px solid var(--color-danger-border);
+  border-radius:var(--radius-lg);
+}
+
+/* ═══════ DETAIL PANEL ═══════ */
+.detail-backdrop{
+  position:fixed;inset:0;z-index:199;
+  background:rgba(28,30,33,0.12);
+  opacity:0;pointer-events:none;
+  transition:opacity 0.2s;
+}
+.detail-backdrop.open{opacity:1;pointer-events:auto}
+.detail{
+  position:fixed;top:0;right:0;bottom:0;width:460px;
+  background:var(--color-bg);
+  border-left:1px solid var(--color-border);
+  box-shadow:-4px 0 24px rgba(0,0,0,0.06);
+  z-index:200;
+  transform:translateX(100%);
+  transition:transform 0.22s cubic-bezier(0.22,1,0.36,1);
+  display:flex;flex-direction:column;
+}
+.detail.open{transform:translateX(0)}
+.detail-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 16px;
+  border-bottom:1px solid var(--color-border);
+  background:var(--color-bg-subtle);
+  flex-shrink:0;
+}
+.detail-title{font-size:12px;font-weight:600;letter-spacing:-0.01em}
+.detail-close{
+  border:none;background:none;cursor:pointer;
+  font-size:16px;color:var(--color-text-tertiary);
+  padding:2px 6px;border-radius:var(--radius-sm);
+  font-family:var(--font-sans);
+}
+.detail-close:hover{background:var(--color-bg-muted);color:var(--color-text)}
+.detail-body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:14px}
+.detail-section{font-size:10px;font-weight:500;color:var(--color-text-tertiary);letter-spacing:0.04em;text-transform:uppercase;padding-bottom:3px;border-bottom:1px solid var(--color-border)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:12px}
+.kv-key{color:var(--color-text-tertiary);font-weight:500}
+.kv-val{color:var(--color-text);font-family:var(--font-mono);font-size:11px;overflow:hidden;text-overflow:ellipsis}
+
+/* ═══════ FOOTER ═══════ */
+.footer{
+  padding:6px 20px;
+  border-top:1px solid var(--color-border);
+  background:var(--color-bg);
+  font-size:10px;color:var(--color-text-tertiary);
+  display:flex;justify-content:space-between;
+  letter-spacing:0.02em;
+}
+
+/* ═══════ EVENT ITEM ═══════ */
+.evt{
+  display:flex;gap:10px;padding:5px 0;
+  border-bottom:1px solid var(--color-border);
+  font-size:11px;
+}
+.evt:last-child{border-bottom:none}
+.evt-time{font-family:var(--font-mono);color:var(--color-text-tertiary);white-space:nowrap;flex-shrink:0;font-size:10px;padding-top:1px}
+.evt-body{color:var(--color-text-secondary);line-height:1.4}
+.evt-sim{font-weight:500;color:var(--color-text)}
+.evt-op{font-family:var(--font-mono);font-size:10px;color:var(--color-accent)}
+
+/* ═══════ FAULT ROW ═══════ */
+.fault{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:6px 8px;border-radius:var(--radius-lg);
+  background:var(--color-warning-subtle);
+  border:1px solid var(--color-warning-border);
+  font-size:11px;
+}
+.fault-target{font-weight:500;color:var(--color-text)}
+.fault-detail{font-family:var(--font-mono);font-size:10px;color:var(--color-warning)}
+
+/* ═══════ DOMAIN STATE ═══════ */
+.state-1{color:var(--color-success);font-weight:500}
+.state-3{color:var(--color-warning);font-weight:500}
+.state-5{color:var(--color-text-tertiary)}
+
+@media(max-width:600px){
+  .detail{width:100%}
+  .main{padding:8px;gap:8px}
+  .topbar{padding:0 12px}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="logo">Cirrus<span class="logo-sub">-Sim</span></div>
+    <div class="tag">Aggregator</div>
+  </div>
+  <div class="topbar-right">
+    <div class="clock" id="clock">--:--:--</div>
+    <div class="pulse-ring"></div>
+  </div>
+</div>
+
+<div class="statusbar" id="statusBar"></div>
+
+<div class="main" id="main">
+  <!-- Overview -->
+  <div class="card card-overview" data-card="overview">
+    <div class="card-head"><div class="card-title">Overview</div><div class="card-badge" id="workerCount">-</div></div>
+    <div class="card-body" id="overviewBody"></div>
+  </div>
+  <!-- Hosts -->
+  <div class="card card-hosts" data-card="hosts">
+    <div class="card-head"><div class="card-title">Hosts</div><div class="card-badge" id="hostCount">0</div></div>
+    <div class="card-body" id="hostsBody"></div>
+  </div>
+  <!-- Storage -->
+  <div class="card card-storage" data-card="storage">
+    <div class="card-head"><div class="card-title">Storage</div></div>
+    <div class="card-body" id="storageBody"></div>
+  </div>
+  <!-- AWX -->
+  <div class="card card-awx" data-card="awx">
+    <div class="card-head"><div class="card-title">AWX Jobs</div></div>
+    <div class="card-body" id="awxBody"></div>
+  </div>
+  <!-- Postgres -->
+  <div class="card card-postgres" data-card="postgres">
+    <div class="card-head"><div class="card-title">PostgreSQL</div></div>
+    <div class="card-body" id="pgBody"></div>
+  </div>
+  <!-- Events -->
+  <div class="card card-events" data-card="events">
+    <div class="card-head"><div class="card-title">Events</div></div>
+    <div class="card-body" id="eventsBody"></div>
+  </div>
+  <!-- Faults -->
+  <div class="card card-faults" data-card="faults">
+    <div class="card-head"><div class="card-title">Fault Injection</div></div>
+    <div class="card-body" id="faultsBody"></div>
+  </div>
+</div>
+
+<div class="detail-backdrop" id="detailBackdrop"></div>
+<div class="detail" id="detailPanel">
+  <div class="detail-head">
+    <div class="detail-title" id="detailTitle"></div>
+    <button class="detail-close" id="detailClose">&times;</button>
+  </div>
+  <div class="detail-body" id="detailBody"></div>
+</div>
+
+<div class="footer">
+  <span id="footerVer">Cirrus-Sim Aggregator</span>
+  <span id="lastUpdate">Connecting…</span>
+</div>
+
+<script>
+// ── State ──
+let S = { overview:null, hosts:[], domains:[], storage:null, awx:null, pg:null, pgTables:[], events:null, faults:[] };
+let prevHash = {};
+const PAGE_SIZE = 10;
+let hostPage = 0;
+
+// ── Clock ──
+function tickClock(){document.getElementById('clock').textContent=new Date().toTimeString().slice(0,8)}
+setInterval(tickClock,1000);tickClock();
+
+// ── Fetch helper ──
+async function fj(url){const r=await fetch(url);if(!r.ok)throw new Error(`${r.status}`);return r.json()}
+
+// ── Data polling ──
+async function poll(){
+  const results = await Promise.allSettled([
+    fj('/sim/overview'),
+    fj('/sim/hosts'),
+    fj('/sim/domains'),
+    fj('/sim/storage/stats'),
+    fj('/sim/awx/stats'),
+    fj('/sim/postgres/stats'),
+    fj('/sim/postgres/tables'),
+    fj('/sim/events'),
+    fj('/sim/faults'),
+  ]);
+  const val = (i) => results[i].status==='fulfilled' ? results[i].value : null;
+  S.overview = val(0);
+  S.hosts = val(1) || [];
+  S.domains = val(2) || [];
+  S.storage = val(3);
+  S.awx = val(4);
+  S.pg = val(5);
+  S.pgTables = val(6) || [];
+  S.events = val(7);
+  S.faults = val(8) || [];
+  render();
+  document.getElementById('lastUpdate').textContent = 'Updated ' + new Date().toLocaleTimeString();
+}
+
+// ── Diff render helper ──
+function diffSet(el, html, key){
+  const h = hash(html);
+  if(prevHash[key]===h) return;
+  prevHash[key]=h;
+  el.innerHTML=html;
+}
+function hash(s){let h=0;for(let i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0}return h}
+
+// ── Status bar ──
+function renderStatus(){
+  const ov = S.overview;
+  const workers = ov ? ov.workers : 0;
+  const online = ov ? ov.online_hosts : 0;
+  const items = [
+    {label:'Workers',val:workers,ok:workers>0},
+    {label:'Hosts',val:`${online}/${ov?ov.total_hosts:0}`,ok:online>0},
+    {label:'Storage',val:S.storage?'UP':'—',ok:!!S.storage},
+    {label:'AWX',val:S.awx?'UP':'—',ok:!!S.awx},
+    {label:'Postgres',val:S.pg?'UP':'—',ok:!!S.pg},
+  ];
+  const html = items.map(i=>`<div class="worker-chip"><div class="dot ${i.ok?'up':i.ok===false?'down':'unknown'}"></div><span class="label">${i.label}</span><span style="font-family:var(--font-mono);font-size:10px">${i.val}</span></div>`).join('');
+  diffSet(document.getElementById('statusBar'),html,'status');
+}
+
+// ── Overview ──
+function renderOverview(){
+  const o = S.overview || {};
+  document.getElementById('workerCount').textContent = `${o.workers||0} workers`;
+  const memGB = ((o.total_memory_used_mb||0)/1024).toFixed(1);
+  const html = `<div class="metrics">
+    <div class="metric"><div class="m-val blue">${o.total_hosts||0}</div><div class="m-lbl">Hosts</div></div>
+    <div class="metric"><div class="m-val cyan">${o.total_domains||0}</div><div class="m-lbl">Domains</div></div>
+    <div class="metric"><div class="m-val green">${o.running_domains||0}</div><div class="m-lbl">Running</div></div>
+    <div class="metric"><div class="m-val amber">${o.total_vcpus_used||0}</div><div class="m-lbl">vCPUs Used</div></div>
+    <div class="metric"><div class="m-val purple">${memGB} GB</div><div class="m-lbl">Memory Used</div></div>
+    <div class="metric"><div class="m-val blue">${o.workers||0}</div><div class="m-lbl">Workers</div></div>
+  </div>`;
+  diffSet(document.getElementById('overviewBody'),html,'overview');
+}
+
+// ── Hosts ──
+function renderHosts(){
+  const hosts = S.hosts.slice().sort((a,b)=>(a.host_id||'').localeCompare(b.host_id||''));
+  document.getElementById('hostCount').textContent = hosts.length;
+  if(hosts.length===0){diffSet(document.getElementById('hostsBody'),'<div class="empty">No hosts registered</div>','hosts');return}
+  const totalPages = Math.ceil(hosts.length/PAGE_SIZE);
+  if(hostPage>=totalPages) hostPage=totalPages-1;
+  const start = hostPage*PAGE_SIZE;
+  const slice = hosts.slice(start,start+PAGE_SIZE);
+  let html = '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Host ID</th><th>vCPU</th><th>Memory</th><th>VMs</th><th>State</th></tr></thead><tbody>';
+  slice.forEach(h=>{
+    const vcpu=(h.cpu_sockets||0)*(h.cores_per_socket||0)*(h.threads_per_core||0);
+    const mem=((h.memory_mb||0)/1024).toFixed(0);
+    const st=h.state||'online';
+    html+=`<tr class="clickable" onclick="openHostDetail('${h.host_id}')">
+      <td class="mono">${h.host_id}</td>
+      <td>${h.used_vcpus||0} / ${vcpu}</td>
+      <td>${((h.used_memory_mb||0)/1024).toFixed(0)} / ${mem} GB</td>
+      <td>${h.domain_count||0}</td>
+      <td><span class="badge ${badgeCls(st)}">${st}</span></td>
+    </tr>`;
+  });
+  html+='</tbody></table></div>';
+  if(totalPages>1){
+    html+=`<div class="pager"><span>${start+1}–${Math.min(start+PAGE_SIZE,hosts.length)} / ${hosts.length}</span>
+      <div class="pager-btns">
+        <button class="pager-btn" onclick="hostPage=Math.max(0,hostPage-1);renderHosts()" ${hostPage===0?'disabled':''}>Prev</button>
+        <button class="pager-btn" onclick="hostPage++;renderHosts()" ${hostPage>=totalPages-1?'disabled':''}>Next</button>
+      </div></div>`;
+  }
+  document.getElementById('hostsBody').innerHTML=html;
+  prevHash['hosts']=0; // always re-render since pager state changes
+}
+
+// ── Storage ──
+function renderStorage(){
+  const d = S.storage;
+  if(!d){diffSet(document.getElementById('storageBody'),'<div class="empty">Offline</div>','storage');return}
+  let html=`<div class="metrics">
+    <div class="metric"><div class="m-val blue">${d.backend_count||0}</div><div class="m-lbl">Backends</div></div>
+    <div class="metric"><div class="m-val cyan">${d.volume_count||0}</div><div class="m-lbl">Volumes</div></div>
+    <div class="metric"><div class="m-val purple">${d.export_count||0}</div><div class="m-lbl">Exports</div></div>
+  </div>`;
+  const backends = d.backends || [];
+  if(backends.length>0){
+    html+='<div style="display:flex;flex-direction:column;gap:6px">';
+    backends.forEach(b=>{
+      const total=b.total_capacity_gb||1;
+      const alloc=b.allocated_capacity_gb||0;
+      const pct=Math.round((alloc/total)*100);
+      html+=`<div class="cap-row">
+        <div class="cap-header"><span class="cap-name">${b.backend_id} <span class="badge ${badgeCls(b.state)}">${b.state}</span></span>
+        <span class="cap-pct" style="color:var(--color-chart-${pctColor(pct)})">${pct}%</span></div>
+        <div class="cap-track"><div class="cap-fill ${pctCls(pct)}" style="width:${pct}%"></div></div>
+      </div>`;
+    });
+    html+='</div>';
+  }
+  diffSet(document.getElementById('storageBody'),html,'storage');
+}
+
+// ── AWX ──
+function renderAWX(){
+  const d = S.awx;
+  if(!d){diffSet(document.getElementById('awxBody'),'<div class="empty">Offline</div>','awx');return}
+  const total=(d.pending||0)+(d.running||0)+(d.successful||0)+(d.failed||0)+(d.canceled||0);
+  const html=`<div class="metrics">
+    <div class="metric"><div class="m-val blue">${total}</div><div class="m-lbl">Total</div></div>
+    <div class="metric"><div class="m-val cyan">${d.running||0}</div><div class="m-lbl">Running</div></div>
+    <div class="metric"><div class="m-val green">${d.successful||0}</div><div class="m-lbl">OK</div></div>
+    <div class="metric"><div class="m-val red">${d.failed||0}</div><div class="m-lbl">Failed</div></div>
+  </div>`;
+  diffSet(document.getElementById('awxBody'),html,'awx');
+}
+
+// ── Postgres ──
+function renderPG(){
+  const st = S.pg;
+  const tables = S.pgTables;
+  if(!st){diffSet(document.getElementById('pgBody'),'<div class="empty">Offline</div>','pg');return}
+  let html=`<div class="metrics">
+    <div class="metric"><div class="m-val blue">${st.table_count||0}</div><div class="m-lbl">Tables</div></div>
+    <div class="metric"><div class="m-val cyan">${st.db_size||'–'}</div><div class="m-lbl">Size</div></div>
+  </div>`;
+  if(tables.length>0){
+    html+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Table</th><th>Cols</th><th>Rows</th></tr></thead><tbody>';
+    tables.forEach(t=>{
+      html+=`<tr class="clickable" onclick="openPgTable('${t.name}')"><td class="mono">${t.name}</td><td>${t.column_count}</td><td>${t.row_count}</td></tr>`;
+    });
+    html+='</tbody></table></div>';
+  }
+  diffSet(document.getElementById('pgBody'),html,'pg');
+}
+
+// ── Events ──
+function renderEvents(){
+  const d = S.events;
+  const evts = d && d.events ? d.events : [];
+  if(evts.length===0){diffSet(document.getElementById('eventsBody'),'<div class="empty">No events</div>','events');return}
+  let html='';
+  evts.slice(0,8).forEach(e=>{
+    const t = e.timestamp ? new Date(e.timestamp).toLocaleTimeString() : '';
+    html+=`<div class="evt"><div class="evt-time">${t}</div><div class="evt-body"><span class="evt-sim">${e.simulator||''}</span> <span class="evt-op">${e.operation||''}</span></div></div>`;
+  });
+  diffSet(document.getElementById('eventsBody'),html,'events');
+}
+
+// ── Faults ──
+function renderFaults(){
+  const rules = S.faults || [];
+  if(rules.length===0){diffSet(document.getElementById('faultsBody'),'<div class="empty">No active fault rules</div>','faults');return}
+  let html='';
+  rules.forEach(r=>{
+    const rate = r.failure_rate!=null ? (r.failure_rate*100).toFixed(0)+'%' : '';
+    const lat = r.latency_ms ? r.latency_ms+'ms' : '';
+    html+=`<div class="fault"><span class="fault-target">${r.target||'*'} → ${r.operation||'*'}</span><span class="fault-detail">${rate} ${lat}</span></div>`;
+  });
+  diffSet(document.getElementById('faultsBody'),html,'faults');
+}
+
+// ── Render all ──
+function render(){
+  renderStatus();
+  renderOverview();
+  renderHosts();
+  renderStorage();
+  renderAWX();
+  renderPG();
+  renderEvents();
+  renderFaults();
+}
+
+// ── Helpers ──
+function badgeCls(s){
+  if(s==='active'||s==='online')return'badge-success';
+  if(s==='draining'||s==='maintenance')return'badge-warning';
+  if(s==='offline')return'badge-danger';
+  return'badge-muted';
+}
+function pctCls(p){return p<60?'low':p<85?'med':'high'}
+function pctColor(p){return p<60?'green':p<85?'amber':'red'}
+function domState(s){return s===1?'running':s===3?'paused':s===5?'shutoff':'unknown'}
+
+// ── Detail panel ──
+const dp = document.getElementById('detailPanel');
+const db = document.getElementById('detailBackdrop');
+const dt = document.getElementById('detailTitle');
+const dd = document.getElementById('detailBody');
+
+function showDetail(title,html){dt.textContent=title;dd.innerHTML=html;dp.classList.add('open');db.classList.add('open')}
+function closeDetail(){dp.classList.remove('open');db.classList.remove('open')}
+document.getElementById('detailClose').addEventListener('click',closeDetail);
+db.addEventListener('click',closeDetail);
+
+async function openHostDetail(hostId){
+  showDetail('Host: '+hostId,'<div class="empty">Loading…</div>');
+  const host = S.hosts.find(h=>h.host_id===hostId);
+  let domains = [];
+  try{domains=await fj('/sim/hosts/'+hostId+'/domains')}catch{}
+
+  const vcpu = host ? (host.cpu_sockets||0)*(host.cores_per_socket||0)*(host.threads_per_core||0) : 0;
+  let html = '<div class="detail-section">Configuration</div><div class="kv">';
+  if(host){
+    html+=`<span class="kv-key">Host ID</span><span class="kv-val">${host.host_id}</span>`;
+    html+=`<span class="kv-key">State</span><span class="kv-val"><span class="badge ${badgeCls(host.state||'online')}">${host.state||'online'}</span></span>`;
+    html+=`<span class="kv-key">CPU</span><span class="kv-val">${host.cpu_sockets||0}S × ${host.cores_per_socket||0}C × ${host.threads_per_core||0}T = ${vcpu} vCPUs</span>`;
+    html+=`<span class="kv-key">Memory</span><span class="kv-val">${((host.memory_mb||0)/1024).toFixed(0)} GB</span>`;
+    html+=`<span class="kv-key">Overcommit</span><span class="kv-val">CPU ${host.cpu_overcommit_ratio||1}× / Mem ${host.memory_overcommit_ratio||1}×</span>`;
+    html+=`<span class="kv-key">vCPUs Used</span><span class="kv-val">${host.used_vcpus||0} / ${Math.round(vcpu*(host.cpu_overcommit_ratio||1))}</span>`;
+    html+=`<span class="kv-key">Memory Used</span><span class="kv-val">${((host.used_memory_mb||0)/1024).toFixed(1)} / ${((host.memory_mb||0)/1024*(host.memory_overcommit_ratio||1)).toFixed(0)} GB</span>`;
+    html+=`<span class="kv-key">Worker</span><span class="kv-val">${host.worker_url||'—'}</span>`;
+  }
+  html+='</div>';
+
+  html+=`<div class="detail-section">Domains (${domains.length})</div>`;
+  if(domains.length>0){
+    html+='<table class="tbl"><thead><tr><th>Name</th><th>UUID</th><th>State</th><th>vCPU</th><th>Mem</th></tr></thead><tbody>';
+    domains.forEach(d=>{
+      const ds=domState(d.state);
+      html+=`<tr><td>${d.name}</td><td class="mono">${(d.uuid||'').slice(0,8)}…</td>
+        <td><span class="state-${d.state}">${ds}</span></td>
+        <td>${d.vcpus}</td><td>${((d.memory_kib||0)/1024).toFixed(0)} MB</td></tr>`;
+    });
+    html+='</tbody></table>';
+  } else {
+    html+='<div class="empty">No domains on this host</div>';
+  }
+  showDetail('Host: '+hostId,html);
+}
+
+async function openPgTable(name){
+  showDetail('Table: '+name,'<div class="empty">Loading…</div>');
+  try{
+    const [data,schema]=await Promise.all([fj(`/sim/postgres/tables/${name}?limit=50`),fj(`/sim/postgres/tables/${name}/schema`)]);
+    let html='<div class="detail-section">Schema</div>';
+    html+='<table class="tbl"><thead><tr><th>Column</th><th>Type</th><th>Nullable</th></tr></thead><tbody>';
+    (schema.columns||[]).forEach(c=>{html+=`<tr><td class="mono">${c.name}</td><td>${c.type}</td><td>${c.nullable}</td></tr>`});
+    html+='</tbody></table>';
+
+    const cols=data.columns||[];const rows=data.rows||[];
+    html+=`<div class="detail-section">Data (${data.total||0} rows)</div>`;
+    if(rows.length>0){
+      html+='<div style="overflow-x:auto"><table class="tbl"><thead><tr>'+cols.map(c=>`<th>${c}</th>`).join('')+'</tr></thead><tbody>';
+      rows.forEach(r=>{
+        html+='<tr>';
+        cols.forEach(c=>{
+          let v=r[c];
+          if(v===null||v===undefined)v='<span style="color:var(--color-text-tertiary)">NULL</span>';
+          else if(typeof v==='object')v=JSON.stringify(v);
+          else v=String(v);
+          if(v.length>50)v=v.substring(0,47)+'…';
+          html+=`<td class="mono">${v}</td>`;
+        });
+        html+='</tr>';
+      });
+      html+='</tbody></table></div>';
+      if((data.total||0)>rows.length)html+=`<div class="empty">Showing ${rows.length} of ${data.total}</div>`;
+    } else {
+      html+='<div class="empty">No rows</div>';
+    }
+    showDetail('Table: '+name,html);
+  }catch(e){
+    showDetail('Table: '+name,`<div class="offline-banner">Failed: ${e.message}</div>`);
+  }
+}
+
+// ── Init ──
+fj('/api/version').then(v=>{document.getElementById('footerVer').textContent='Cirrus-Sim Aggregator '+(v.version||'')}).catch(()=>{});
+poll();
+setInterval(poll,3000);
+</script>
+</body>
+</html>

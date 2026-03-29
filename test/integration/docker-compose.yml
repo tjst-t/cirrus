@@ -1,0 +1,130 @@
+# Cirrus Integration Test Environment
+#
+# Usage:
+#   docker-compose up -d
+#   docker-compose down
+#
+# Architecture:
+#   - controller + postgres + storage-sim + awx-sim: host network
+#   - worker-1/2/3: privileged containers with OVS + libvirtd-sim + namespace
+#   - aggregator: polls all workers for dashboard
+#   - fabric network: inter-worker Geneve tunnel communication
+
+services:
+  # ── PostgreSQL (embedded in cirrus-sim, runs on host) ──
+  # Started by cirrus-sim binary, not a separate container
+
+  # ── Controller ──
+  controller:
+    build:
+      context: ../..
+      dockerfile: test/integration/Dockerfile.controller
+    network_mode: host
+    environment:
+      - DB_DSN=postgresql://cirrus:cirrus@localhost:5432/cirrus?sslmode=disable
+      - API_PORT=${API_PORT:-8080}
+      - GRPC_PORT=${GRPC_PORT:-9090}
+    depends_on:
+      - storage-sim
+      - awx-sim
+
+  # ── Storage Simulator ──
+  storage-sim:
+    build:
+      context: ../..
+      dockerfile: test/integration/Dockerfile.sim
+    command: ["storage-sim", "--port", "8500"]
+    network_mode: host
+
+  # ── AWX Simulator ──
+  awx-sim:
+    build:
+      context: ../..
+      dockerfile: test/integration/Dockerfile.sim
+    command: ["awx-sim", "--port", "8300"]
+    network_mode: host
+
+  # ── Worker 1 ──
+  worker-1:
+    build:
+      context: ../..
+      dockerfile: test/integration/Dockerfile.worker
+    privileged: true
+    hostname: worker-1
+    environment:
+      - HOST_ID=host-worker-1
+      - LIBVIRT_PORT=16509
+      - LIBVIRTD_SIM_MGMT_PORT=8101
+      - CONTROLLER_ADDR=host.docker.internal:${GRPC_PORT:-9090}
+    networks:
+      fabric:
+        ipv4_address: 10.100.0.11
+    ports:
+      - "8101:8101"
+      - "16509:16509"
+
+  # ── Worker 2 ──
+  worker-2:
+    build:
+      context: ../..
+      dockerfile: test/integration/Dockerfile.worker
+    privileged: true
+    hostname: worker-2
+    environment:
+      - HOST_ID=host-worker-2
+      - LIBVIRT_PORT=16509
+      - LIBVIRTD_SIM_MGMT_PORT=8102
+      - CONTROLLER_ADDR=host.docker.internal:${GRPC_PORT:-9090}
+    networks:
+      fabric:
+        ipv4_address: 10.100.0.12
+    ports:
+      - "8102:8102"
+
+  # ── Worker 3 ──
+  worker-3:
+    build:
+      context: ../..
+      dockerfile: test/integration/Dockerfile.worker
+    privileged: true
+    hostname: worker-3
+    environment:
+      - HOST_ID=host-worker-3
+      - LIBVIRT_PORT=16509
+      - LIBVIRTD_SIM_MGMT_PORT=8103
+      - CONTROLLER_ADDR=host.docker.internal:${GRPC_PORT:-9090}
+    networks:
+      fabric:
+        ipv4_address: 10.100.0.13
+    ports:
+      - "8103:8103"
+
+  # ── Aggregator Dashboard ──
+  aggregator:
+    build:
+      context: ../..
+      dockerfile: test/integration/Dockerfile.sim
+    command:
+      - aggregator
+      - --port=8090
+      - --workers=http://10.100.0.11:8101,http://10.100.0.12:8102,http://10.100.0.13:8103
+      - --storage=http://host.docker.internal:8500
+      - --awx=http://host.docker.internal:8300
+      - --postgres=http://host.docker.internal:8600
+      - --common=http://host.docker.internal:8000
+    networks:
+      fabric:
+        ipv4_address: 10.100.0.20
+    ports:
+      - "8090:8090"
+    depends_on:
+      - worker-1
+      - worker-2
+      - worker-3
+
+networks:
+  fabric:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.100.0.0/24

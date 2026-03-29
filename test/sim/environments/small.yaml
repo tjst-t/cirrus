@@ -1,0 +1,44 @@
+environment:
+  name: "small-dev"
+
+  sites:
+    - name: "site-local"
+      rack_rows: 1
+      racks_per_row: 2
+      hosts_per_rack: 5
+      host_template: "standard-compute"
+
+  host_templates:
+    standard-compute:
+      cpu_model: "Intel Xeon Gold 6348"
+      cpu_sockets: 2
+      cores_per_socket: 28
+      threads_per_core: 2
+      memory_gb: 512
+      numa_nodes: 2
+      nics:
+        - name: "ens1f0"
+          speed_gbps: 25
+          sriov: true
+
+  storage_backends:
+    - name: "ceph-pool-ssd"
+      type: "ceph"
+      total_capacity_tb: 100
+      total_iops: 100000
+      capabilities: ["ssd", "snapshot", "clone", "live_migration"]
+      accessible_from: ["site-local"]
+
+  ovn_clusters:
+    - name: "ovn-local"
+      covers: ["site-local"]
+
+  preload:
+    vms_per_host:
+      min: 3
+      max: 8
+    volumes_per_vm:
+      min: 1
+      max: 2
+    networks_per_tenant: 1
+    tenants: 3
