@@ -8,15 +8,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     iputils-ping \
     dnsutils \
     curl \
+    bash \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy binaries
-COPY cirrus /usr/local/bin/cirrus
-COPY libvirtd-sim /usr/local/bin/libvirtd-sim
+# Copy binaries (built by make build build-sim)
+COPY bin/cirrus /usr/local/bin/cirrus
+COPY bin/libvirtd-sim /usr/local/bin/libvirtd-sim
 
 # Copy entrypoint
-COPY entrypoint.sh /entrypoint.sh
+COPY test/integration/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]

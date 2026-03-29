@@ -4,7 +4,8 @@ set -e
 echo "=== Worker starting: HOST_ID=${HOST_ID} ==="
 
 # Start OVS
-mkdir -p /var/run/openvswitch
+mkdir -p /var/run/openvswitch /var/log/openvswitch /etc/openvswitch
+ovsdb-tool create /etc/openvswitch/conf.db /usr/share/openvswitch/vswitch.ovsschema
 ovsdb-server --remote=punix:/var/run/openvswitch/db.sock \
   --remote=db:Open_vSwitch,Open_vSwitch,manager_options \
   --pidfile --detach --log-file=/var/log/openvswitch/ovsdb-server.log
@@ -32,10 +33,25 @@ libvirtd-sim \
 
 echo "libvirtd-sim started for host ${HOST_ID}"
 
-# Start cirrus worker
+# Wait for controller to be ready
+echo "Waiting for controller at ${CONTROLLER_ADDR}..."
+for i in $(seq 1 60); do
+  # Try gRPC health or just TCP connect
+  if bash -c "echo >/dev/tcp/${CONTROLLER_ADDR%%:*}/${CONTROLLER_ADDR##*:}" 2>/dev/null; then
+    echo "Controller is reachable"
+    break
+  fi
+  sleep 1
+done
+
+# Start cirrus worker (self-registration)
 cirrus worker \
-  --host-id="${HOST_ID}" \
-  --controller-addr="${CONTROLLER_ADDR}" \
+  --controller="${CONTROLLER_ADDR}" \
+  --registration-token="${REGISTRATION_TOKEN:-dev-registration-token}" \
+  --libvirt-uri="tcp://localhost:${LIBVIRT_PORT:-16509}" \
+  --network-domain="default-nd" \
+  --storage-domains="default-sd" \
+  --location="default-site" \
   &
 
 echo "cirrus worker started"

@@ -3,22 +3,22 @@
 ## 前提
 
 - [portman](https://github.com/tjst-t/port-manager) がインストール済みであること
+- Docker + docker-compose がインストール済みであること
+- Go がインストール済みであること（バイナリビルド用）
 
 シミュレータ（libvirtd-sim, storage-sim, awx-sim）はcirrusリポジトリに統合済み。外部リポジトリのクローンは不要。
 
 PostgreSQLの外部起動は不要。embedded PostgreSQLを使用する。
 
-`make serve` はレイヤー1/2（ビジネスロジック + OVSフロー変換）の開発用。レイヤー3（実OVS結合テスト）はdocker-composeを使用する。詳細は [testing.md](testing.md) を参照。
-
 ## 起動
 
 ```bash
-# controller + worker(10台) + cirrus-sim を一括起動
+# controller + worker(3台) + cirrus-sim を一括起動
 make serve
 
 # ログ確認
 make logs              # controller
-make logs-worker       # worker
+make logs-worker       # worker-1/2/3 (docker)
 make logs-sim          # cirrus-sim
 
 # 停止
@@ -27,69 +27,71 @@ make stop
 
 `make serve` は以下を自動で行う:
 
-1. 既存プロセスがあれば全て停止（PIDファイルで追跡）
-2. portman で全ポートを一括確保（sim + postgres + controller）
-3. 統合シミュレータを起動（embedded PostgreSQL含む。small環境: 10ホスト、1ストレージバックエンド）
-4. シミュレータの起動を待機（ヘルスチェック）
-5. cirrus controller を起動（シミュレータの各ポートとDB DSNを設定に注入）
-6. ホスト一覧を取得し、ホストごとにworkerプロセスを起動
-7. 全ホストを自動 activate（開発用）
+1. バイナリビルド（`bin/cirrus`, `bin/cirrus-sim`, `bin/libvirtd-sim`）
+2. 既存プロセス・コンテナを停止
+3. portman で全ポートを一括確保（sim + controller + worker）
+4. cirrus-sim をホスト上で起動（embedded PostgreSQL含む）
+5. controller をホスト上で起動
+6. worker×3 を docker-compose で起動（privileged コンテナ、OVS + libvirtd-sim）
+7. トポロジシード（storage-domain, network-domain, location, AZ）
+8. 全ホストを自動 activate（開発用）
+
+sim + controller はホスト直接実行（embedded-postgres のキャッシュ利用）。
+worker だけ docker コンテナ（OVS + network namespace が必要なため privileged）。
+
+## アーキテクチャ
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Host (ports assigned by portman)                   │
+│                                                     │
+│  ┌─────────────┐  ┌──────────────────────────────┐  │
+│  │ controller  │  │ sim (cirrus-sim)             │  │
+│  │ API + gRPC  │  │ PostgreSQL, common,          │  │
+│  └─────────────┘  │ aggregator, libvirt-sim,     │  │
+│                    │ awx-sim, storage-sim         │  │
+│                    └──────────────────────────────┘  │
+└─────────────────────────────────────────────────────┘
+
+┌─────────────────── fabric network (10.100.0.0/24) ──┐
+│  (host ports assigned by portman)                   │
+│                                                     │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐   │
+│  │ worker-1    │ │ worker-2    │ │ worker-3    │   │
+│  │ privileged  │ │ privileged  │ │ privileged  │   │
+│  │ OVS+br-int  │ │ OVS+br-int  │ │ OVS+br-int  │   │
+│  │ libvirtd-sim│ │ libvirtd-sim│ │ libvirtd-sim│   │
+│  │ cirrus agent│ │ cirrus agent│ │ cirrus agent│   │
+│  └─────────────┘ └─────────────┘ └─────────────┘   │
+└─────────────────────────────────────────────────────┘
+```
 
 ## ポート割り当て
 
-portmanが全ポートを1回のコマンドで一括割り当てし、1つのenvファイル（`/tmp/cirrus-dev/portman.env`）に出力する。
+全ポートは portman が自動割り当て。ハードコードされたポートは存在しない。
 
 | サービス | portman name | 用途 |
 |---|---|---|
 | sim common | `sim-common` | イベントログ、障害注入API |
-| sim dashboard | `sim-dashboard:expose` | シミュレータWebUI |
+| sim aggregator | `sim-aggregator:expose` | ダッシュボードWebUI |
 | sim libvirt | `sim-libvirt` | libvirt-sim管理API |
 | sim awx | `sim-awx` | awx-sim API |
 | sim storage | `sim-storage` | storage-sim API |
 | sim postgres | `sim-postgres` | embedded PostgreSQL |
-| sim postgres-mgmt | `sim-postgres-mgmt` | PostgreSQL管理API（テーブル閲覧等） |
-| sim libvirt hosts | `sim-libvirt-hosts` (range=20) | ホストごとのlibvirt RPCポート |
-| cirrus controller API | `api:expose` | REST API |
-| cirrus controller gRPC | `grpc` | worker→controller heartbeat通信 |
-
-全ポートがportman管理下にあり、ハードコードされたポートは存在しない。
-
-## 整合性の確保
-
-起動スクリプトは以下の順序で整合性を保証する:
-
-```
-1. portman で全ポート一括確保
-   └─ sim-* + sim-postgres + api + grpc を1つの env ファイルに出力
-
-2. 統合シミュレータ起動（embedded PostgreSQL 含む）
-   ├─ env ファイルからポート読み込み
-   ├─ embedded PostgreSQL を起動（データベース cirrus を自動作成）
-   ├─ 各シミュレータプロセス起動（libvirtd-sim, storage-sim, awx-sim）
-   └─ ヘルスチェックで起動待機
-
-3. cirrus controller 起動
-   ├─ env ファイルからポート読み込み
-   ├─ DB_DSN を SIM_POSTGRES_PORT から動的構築
-   ├─ マイグレーション実行
-   ├─ sim のポート情報を CLI フラグで注入
-   │   ├─ --storage-endpoint=http://localhost:$SIM_STORAGE_PORT
-   │   └─ --awx-endpoint=http://localhost:$SIM_AWX_PORT
-   └─ controller プロセス起動
-
-4. cirrus worker 起動（ホストごと）
-   ├─ GET /sim/hosts でホスト一覧取得
-   └─ 各ホストに対してworkerプロセスを起動
-       ├─ --registration-token で自動登録
-       ├─ --controller = localhost:$GRPC_PORT
-       └─ --libvirt-uri = tcp://localhost:{ホストのlibvirtポート}
-```
+| sim postgres-mgmt | `sim-postgres-mgmt` | PostgreSQL管理API |
+| worker-1 | `worker-1` | worker-1 libvirtd-sim管理API |
+| worker-2 | `worker-2` | worker-2 libvirtd-sim管理API |
+| worker-3 | `worker-3` | worker-3 libvirtd-sim管理API |
+| controller API | `api:expose` | REST API |
+| controller gRPC | `grpc` | worker→controller通信 |
 
 ## 環境変数 / Makefile変数
 
 | 変数 | デフォルト | 説明 |
 |---|---|---|
 | `CIRRUS_SIM_ENV` | `small` | シミュレータ環境（small/medium/large） |
+| `AUTH_TOKENS` | `dev-token=dev-admin` | 認証トークン |
+| `REGISTRATION_TOKEN` | `dev-registration-token` | worker登録トークン |
 
 ## トラブルシューティング
 
@@ -97,12 +99,18 @@ portmanが全ポートを1回のコマンドで一括割り当てし、1つのen
 # ポートリース確認
 portman list
 
-# 全プロセス強制停止
+# コンテナ状態確認
+sudo docker ps | grep cirrus
+
+# 全停止
 make stop
 
-# 状態リセット（PIDファイル、ログ削除）
+# 状態リセット（プロセス + コンテナ + PIDファイル削除）
 make clean-dev
 
 # DBリセット（cirrus-simが起動中であること）
 make reset-db
+
+# フルリセット（停止 → 再起動）
+make fresh
 ```
