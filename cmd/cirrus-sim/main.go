@@ -24,7 +24,6 @@ import (
 	libvirtsim "github.com/tjst-t/cirrus/test/sim/libvirt"
 	pgsim "github.com/tjst-t/cirrus/test/sim/postgres"
 	storagesim "github.com/tjst-t/cirrus/test/sim/storage"
-	"github.com/tjst-t/cirrus/test/sim/webui"
 )
 
 // version is set at build time via -ldflags.
@@ -42,7 +41,6 @@ func main() {
 	libvirtPort := flag.String("libvirt", envOrDefault("LIBVIRT_SIM_PORT", "8100"), "libvirt-sim management port")
 	awxPort := flag.String("awx", envOrDefault("AWX_SIM_PORT", "8300"), "awx-sim port")
 	storagePort := flag.String("storage", envOrDefault("STORAGE_SIM_PORT", "8500"), "storage-sim port")
-	dashboardPort := flag.String("dashboard", envOrDefault("DASHBOARD_PORT", "8080"), "dashboard web UI port")
 	aggregatorPort := flag.String("aggregator", envOrDefault("AGGREGATOR_PORT", "8090"), "aggregator dashboard port")
 	postgresPort := flag.String("postgres", envOrDefault("POSTGRES_PORT", "5432"), "embedded PostgreSQL port")
 	postgresMgmtPort := flag.String("postgres-mgmt", envOrDefault("POSTGRES_MGMT_PORT", "8600"), "PostgreSQL management API port")
@@ -54,19 +52,8 @@ func main() {
 		os.Exit(0)
 	}
 
-	webui.Version = version
-
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
-
-	// Build endpoint map for dashboard proxy
-	endpoints := webui.Endpoints{
-		"common":      fmt.Sprintf("http://localhost:%s", *commonPort),
-		"libvirt-sim": fmt.Sprintf("http://localhost:%s", *libvirtPort),
-		"awx-sim":     fmt.Sprintf("http://localhost:%s", *awxPort),
-		"storage-sim": fmt.Sprintf("http://localhost:%s", *storagePort),
-		"postgres":    fmt.Sprintf("http://localhost:%s", *postgresMgmtPort),
-	}
 
 	// Create simulator instances
 	pgSim := pgsim.New(*postgresPort, *postgresMgmtPort, logger.With("sim", "postgres"))
@@ -92,7 +79,6 @@ func main() {
 		{"libvirt-sim", libvirtSim},
 		{"awx-sim", awxsim.New(*awxPort, logger.With("sim", "awx-sim"))},
 		{"storage-sim", storageSim},
-		{"dashboard", webui.New(*dashboardPort, endpoints, logger.With("sim", "dashboard"))},
 		{"aggregator", aggregator.New(*aggregatorPort, aggEndpoints, logger.With("sim", "aggregator"))},
 	}
 
@@ -102,7 +88,6 @@ func main() {
 		"libvirt-sim", *libvirtPort,
 		"awx-sim", *awxPort,
 		"storage-sim", *storagePort,
-		"dashboard", *dashboardPort,
 		"aggregator", *aggregatorPort,
 	)
 
@@ -122,8 +107,7 @@ func main() {
 	fmt.Fprintf(os.Stderr, "\n")
 	fmt.Fprintf(os.Stderr, "  cirrus-sim %s is running\n", version)
 	fmt.Fprintf(os.Stderr, "  ─────────────────────────────────────────\n")
-	fmt.Fprintf(os.Stderr, "  Dashboard (legacy)       http://localhost:%s\n", *dashboardPort)
-	fmt.Fprintf(os.Stderr, "  Aggregator Dashboard     http://localhost:%s\n", *aggregatorPort)
+	fmt.Fprintf(os.Stderr, "  Dashboard                http://localhost:%s\n", *aggregatorPort)
 	fmt.Fprintf(os.Stderr, "  ─────────────────────────────────────────\n")
 	fmt.Fprintf(os.Stderr, "  postgres                 %s\n", pgSim.ConnectionURL())
 	fmt.Fprintf(os.Stderr, "  common (events/faults)   http://localhost:%s\n", *commonPort)

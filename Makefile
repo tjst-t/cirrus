@@ -133,7 +133,6 @@ _alloc-ports:
 	@echo "==> Allocating ports..."
 	@portman env \
 	  --name sim-common \
-	  --name sim-dashboard:expose \
 	  --name sim-aggregator:expose \
 	  --name sim-libvirt \
 	  --name sim-awx \
@@ -153,7 +152,6 @@ _start-sim:
 	  echo "==> Starting cirrus-sim (env: $(CIRRUS_SIM_ENV), log: $(LOG_SIM))"; \
 	  nohup ./bin/cirrus-sim \
 	    -common=$$SIM_COMMON_PORT \
-	    -dashboard=$$SIM_DASHBOARD_PORT \
 	    -aggregator=$$SIM_AGGREGATOR_PORT \
 	    -libvirt=$$SIM_LIBVIRT_PORT \
 	    -awx=$$SIM_AWX_PORT \
