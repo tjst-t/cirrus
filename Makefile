@@ -42,6 +42,10 @@ proto:
 	  --go_out=proto/agentpb --go_opt=module=github.com/tjst-t/cirrus/proto/agentpb \
 	  --go-grpc_out=proto/agentpb --go-grpc_opt=module=github.com/tjst-t/cirrus/proto/agentpb \
 	  proto/agent.proto
+	protoc -I proto \
+	  --go_out=proto/networkpb --go_opt=module=github.com/tjst-t/cirrus/proto/networkpb \
+	  --go-grpc_out=proto/networkpb --go-grpc_opt=module=github.com/tjst-t/cirrus/proto/networkpb \
+	  proto/network.proto
 
 # ── Test / Lint ──
 

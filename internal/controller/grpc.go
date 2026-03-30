@@ -11,8 +11,10 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/tjst-t/cirrus/internal/host"
+	"github.com/tjst-t/cirrus/internal/network"
 	"github.com/tjst-t/cirrus/internal/topology"
 	pb "github.com/tjst-t/cirrus/proto/agentpb"
+	networkpb "github.com/tjst-t/cirrus/proto/networkpb"
 )
 
 // GRPCServer implements the ControllerService that workers connect to.
@@ -24,8 +26,9 @@ type GRPCServer struct {
 	registrationToken string
 }
 
-// NewGRPCServer creates a new gRPC server with the ControllerService registered.
-func NewGRPCServer(logger *slog.Logger, hostSvc host.Service, topologySvc topology.Service, registrationToken string) *grpc.Server {
+// NewGRPCServer creates a new gRPC server with the ControllerService and
+// NetworkStateService registered.
+func NewGRPCServer(logger *slog.Logger, hostSvc host.Service, topologySvc topology.Service, networkStateSrv *network.GRPCStateServer, registrationToken string) *grpc.Server {
 	srv := grpc.NewServer()
 	pb.RegisterControllerServiceServer(srv, &GRPCServer{
 		hostSvc:           hostSvc,
@@ -33,6 +36,9 @@ func NewGRPCServer(logger *slog.Logger, hostSvc host.Service, topologySvc topolo
 		logger:            logger,
 		registrationToken: registrationToken,
 	})
+	if networkStateSrv != nil {
+		networkpb.RegisterNetworkStateServiceServer(srv, networkStateSrv)
+	}
 	return srv
 }
 

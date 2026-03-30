@@ -89,8 +89,8 @@ func startTestServer(t *testing.T, svc host.Service, regToken string) (pb.Contro
 		t.Fatalf("listen: %v", err)
 	}
 
-	srv := controller.NewGRPCServer(slog.Default(), svc, nil, regToken)
-	go srv.Serve(lis)
+	srv := controller.NewGRPCServer(slog.Default(), svc, nil, nil, regToken)
+	go func() { _ = srv.Serve(lis) }()
 
 	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {

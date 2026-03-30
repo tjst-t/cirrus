@@ -46,6 +46,7 @@ type Port struct {
 	NetworkID  uuid.UUID  `json:"network_id"`
 	GroupID    *uuid.UUID `json:"group_id,omitempty"`
 	VMID       *uuid.UUID `json:"vm_id,omitempty"`
+	VMName     string     `json:"vm_name,omitempty"`
 	MACAddress string     `json:"mac_address"`
 	IPAddress  string     `json:"ip_address"`
 	HostID     *uuid.UUID `json:"host_id,omitempty"`

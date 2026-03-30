@@ -319,9 +319,9 @@ func (s *Store) DeletePolicy(ctx context.Context, id uuid.UUID) error {
 func (s *Store) GetPort(ctx context.Context, id uuid.UUID) (*Port, error) {
 	var p Port
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, tenant_id, network_id, group_id, vm_id, mac_address::TEXT, host(ip_address), host_id, role, status, created_at
+		`SELECT id, tenant_id, network_id, group_id, vm_id, vm_name, mac_address::TEXT, host(ip_address), host_id, role, status, created_at
 		 FROM ports WHERE id = $1`, id,
-	).Scan(&p.ID, &p.TenantID, &p.NetworkID, &p.GroupID, &p.VMID, &p.MACAddress, &p.IPAddress, &p.HostID, &p.Role, &p.Status, &p.CreatedAt)
+	).Scan(&p.ID, &p.TenantID, &p.NetworkID, &p.GroupID, &p.VMID, &p.VMName, &p.MACAddress, &p.IPAddress, &p.HostID, &p.Role, &p.Status, &p.CreatedAt)
 	if err != nil {
 		return nil, wrapErr("network: get port", err)
 	}
@@ -330,7 +330,7 @@ func (s *Store) GetPort(ctx context.Context, id uuid.UUID) (*Port, error) {
 
 func (s *Store) ListPorts(ctx context.Context, networkID uuid.UUID) ([]Port, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, tenant_id, network_id, group_id, vm_id, mac_address::TEXT, host(ip_address), host_id, role, status, created_at
+		`SELECT id, tenant_id, network_id, group_id, vm_id, vm_name, mac_address::TEXT, host(ip_address), host_id, role, status, created_at
 		 FROM ports WHERE network_id = $1 ORDER BY created_at`, networkID)
 	if err != nil {
 		return nil, fmt.Errorf("network: list ports: %w", err)
@@ -340,7 +340,7 @@ func (s *Store) ListPorts(ctx context.Context, networkID uuid.UUID) ([]Port, err
 	var ports []Port
 	for rows.Next() {
 		var p Port
-		if err := rows.Scan(&p.ID, &p.TenantID, &p.NetworkID, &p.GroupID, &p.VMID, &p.MACAddress, &p.IPAddress, &p.HostID, &p.Role, &p.Status, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.TenantID, &p.NetworkID, &p.GroupID, &p.VMID, &p.VMName, &p.MACAddress, &p.IPAddress, &p.HostID, &p.Role, &p.Status, &p.CreatedAt); err != nil {
 			return nil, fmt.Errorf("network: list ports scan: %w", err)
 		}
 		ports = append(ports, p)

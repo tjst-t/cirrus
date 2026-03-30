@@ -142,8 +142,12 @@ func runController(cfg *config.ControllerConfig) error {
 		Handler: router,
 	}
 
+	// Network state controller
+	stateCtrl := network.NewStateController(pool, logger)
+	networkStateSrv := network.NewGRPCStateServer(stateCtrl, logger, cfg.RegistrationToken)
+
 	// gRPC
-	grpcSrv := controller.NewGRPCServer(logger, hostSvc, topologySvc, cfg.RegistrationToken)
+	grpcSrv := controller.NewGRPCServer(logger, hostSvc, topologySvc, networkStateSrv, cfg.RegistrationToken)
 	grpcLis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
 	if err != nil {
 		return fmt.Errorf("controller: grpc listen: %w", err)
@@ -231,12 +235,28 @@ func runWorker(cfg *config.WorkerConfig) error {
 
 	logger.Info("worker starting", "host_id", ag.HostID(), "controller", cfg.Controller)
 
-	// Run heartbeat loop (blocks until ctx cancelled)
 	interval := time.Duration(cfg.HeartbeatInterval) * time.Second
 	if interval <= 0 {
 		interval = 10 * time.Second
 	}
-	ag.RunHeartbeat(ctx, interval)
 
-	return nil
+	// Create network agent (uses shared gRPC connection)
+	netAgent := ag.CreateNetworkAgent(cfg.Controller, cfg.RegistrationToken, logger)
+
+	g, gCtx := errgroup.WithContext(ctx)
+
+	// Heartbeat loop
+	g.Go(func() error {
+		ag.RunHeartbeat(gCtx, interval)
+		return nil
+	})
+
+	// Network agent loop
+	if netAgent != nil {
+		g.Go(func() error {
+			return netAgent.Run(gCtx)
+		})
+	}
+
+	return g.Wait()
 }

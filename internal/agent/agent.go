@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/tjst-t/cirrus/internal/hypervisor"
+	netagent "github.com/tjst-t/cirrus/internal/network/agent"
 	pb "github.com/tjst-t/cirrus/proto/agentpb"
 )
 
@@ -154,6 +155,22 @@ func (a *Agent) collectResources(ctx context.Context) *pb.ResourceReport {
 // HostID returns the agent's host ID (assigned after registration).
 func (a *Agent) HostID() string {
 	return a.hostID
+}
+
+// CreateNetworkAgent creates a NetworkAgent that shares this agent's gRPC connection.
+// Returns nil if the host ID is not set (not registered).
+func (a *Agent) CreateNetworkAgent(controllerAddr, regToken string, logger *slog.Logger) *netagent.NetworkAgent {
+	if a.hostID == "" {
+		return nil
+	}
+	// The network agent currently uses a mock OVS client.
+	// The real OVS client will be wired in when docker-compose integration tests are set up.
+	return netagent.New(netagent.Config{
+		HostID:         a.hostID,
+		ControllerAddr: controllerAddr,
+		RegToken:       regToken,
+		Logger:         logger,
+	}, a.conn, nil)
 }
 
 // Close shuts down the agent's gRPC connection.

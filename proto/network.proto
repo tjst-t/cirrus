@@ -1,0 +1,93 @@
+syntax = "proto3";
+package cirrus.network.v1;
+option go_package = "github.com/tjst-t/cirrus/proto/networkpb";
+
+// Note: generate with:
+//   protoc -I proto --go_out=proto/networkpb --go_opt=module=github.com/tjst-t/cirrus/proto/networkpb \
+//     --go-grpc_out=proto/networkpb --go-grpc_opt=module=github.com/tjst-t/cirrus/proto/networkpb \
+//     proto/network.proto
+
+// NetworkStateService is called BY workers to receive network state updates.
+// The controller computes per-host state and streams it to each worker.
+service NetworkStateService {
+  // WatchHostNetworkState opens a server-streaming RPC.
+  // The first message is a full state snapshot (full=true).
+  // Subsequent messages are deltas (full=false) with additions and removals.
+  rpc WatchHostNetworkState(WatchHostNetworkStateRequest)
+      returns (stream HostNetworkStateUpdate);
+}
+
+message WatchHostNetworkStateRequest {
+  string host_id = 1;
+  string registration_token = 2;
+}
+
+// HostNetworkStateUpdate wraps either a full snapshot or a delta update.
+message HostNetworkStateUpdate {
+  // full=true: agent should replace all state with this snapshot.
+  // full=false: agent should apply additions in state and process removals.
+  bool full = 1;
+
+  // The state payload (full snapshot or additions for delta).
+  HostNetworkState state = 2;
+
+  // For delta updates: IDs/keys of removed items.
+  repeated string removed_port_ids = 3;
+  repeated string removed_policy_ids = 4;
+  repeated string removed_dns_names = 5;
+  repeated string removed_remote_port_ips = 6;
+
+  // Monotonically increasing version for ordering and staleness detection.
+  uint64 version = 7;
+}
+
+// HostNetworkState is the complete or partial network state for a single host.
+message HostNetworkState {
+  repeated PortState ports = 1;
+  repeated PolicyRule policies = 2;
+  repeated RemotePort remote_ports = 3;
+  repeated DnsRecord dns_records = 4;
+}
+
+// PortState describes a local VM port on this host.
+message PortState {
+  string port_id = 1;
+  string vm_id = 2;
+  string vm_name = 3;
+  string network_id = 4;
+  string network_name = 5;
+  string group_id = 6;
+  string group_name = 7;
+  string mac_address = 8;
+  string ip_address = 9;    // VM IP (the .1 in the /30 block)
+  string gateway_ip = 10;   // Gateway IP (the .2 in the /30 block)
+  int32 vni = 11;           // VXLAN Network Identifier for Geneve
+}
+
+// PolicyRule describes an allow/deny rule between two groups.
+message PolicyRule {
+  string policy_id = 1;
+  string network_id = 2;
+  string src_group_id = 3;
+  string dst_group_id = 4;
+  string protocol = 5;      // "tcp", "udp", "icmp", "any"
+  int32 dst_port = 6;       // 0 means any port
+  int32 priority = 7;
+  string action = 8;        // "allow" or "deny"
+}
+
+// RemotePort describes a VM port on another host that local VMs may communicate with.
+message RemotePort {
+  string network_id = 1;
+  string group_id = 2;
+  string ip_address = 3;
+  string host_ip = 4;       // Geneve tunnel endpoint (remote host address)
+  int32 vni = 5;
+}
+
+// DnsRecord describes a DNS record for a VM within a network.
+message DnsRecord {
+  string name = 1;           // e.g. "vm-1.api.my-app.internal"
+  string ip = 2;
+  string network_id = 3;
+}

@@ -1,0 +1,1 @@
+ALTER TABLE ports DROP COLUMN IF EXISTS vm_name;
