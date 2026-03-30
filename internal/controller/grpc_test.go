@@ -30,7 +30,7 @@ func newMockHostSvc() *mockHostSvc {
 	}
 }
 
-func (m *mockHostSvc) RegisterOrGet(_ context.Context, name, address, capability string) (*host.Host, bool, error) {
+func (m *mockHostSvc) RegisterOrGet(_ context.Context, name, address, fabricIP, capability string) (*host.Host, bool, error) {
 	if h, ok := m.hosts[name]; ok {
 		return h, false, nil
 	}
@@ -62,9 +62,6 @@ func (m *mockHostSvc) Heartbeat(_ context.Context, hostID string, _ host.Resourc
 }
 
 // Unused methods to satisfy host.Service interface
-func (m *mockHostSvc) Register(context.Context, *uuid.UUID, string, string) (*host.Host, error) {
-	return nil, nil
-}
 func (m *mockHostSvc) GetHost(context.Context, uuid.UUID) (*host.Host, error) { return nil, nil }
 func (m *mockHostSvc) ListHosts(context.Context) ([]host.Host, error)         { return nil, nil }
 func (m *mockHostSvc) ListHostsByState(context.Context, host.OperationalState) ([]host.Host, error) {

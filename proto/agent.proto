@@ -22,6 +22,7 @@ message RegisterHostRequest {
   reserved 5; // was network_domain (removed in Sprint 5N)
   repeated string storage_domains = 6; // storage domain names or IDs
   string location = 7;                // location name or ID
+  string fabric_ip = 8;              // IP for Geneve tunnel endpoints (overlay fabric)
 }
 
 message RegisterHostResponse {

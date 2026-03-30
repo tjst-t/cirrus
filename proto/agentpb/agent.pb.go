@@ -29,6 +29,7 @@ type RegisterHostRequest struct {
 	Capability        string                 `protobuf:"bytes,4,opt,name=capability,proto3" json:"capability,omitempty"`                               // JSON-encoded capability
 	StorageDomains    []string               `protobuf:"bytes,6,rep,name=storage_domains,json=storageDomains,proto3" json:"storage_domains,omitempty"` // storage domain names or IDs
 	Location          string                 `protobuf:"bytes,7,opt,name=location,proto3" json:"location,omitempty"`                                   // location name or ID
+	FabricIp          string                 `protobuf:"bytes,8,opt,name=fabric_ip,json=fabricIp,proto3" json:"fabric_ip,omitempty"`                   // IP for Geneve tunnel endpoints (overlay fabric)
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -101,6 +102,13 @@ func (x *RegisterHostRequest) GetStorageDomains() []string {
 func (x *RegisterHostRequest) GetLocation() string {
 	if x != nil {
 		return x.Location
+	}
+	return ""
+}
+
+func (x *RegisterHostRequest) GetFabricIp() string {
+	if x != nil {
+		return x.FabricIp
 	}
 	return ""
 }
@@ -401,7 +409,7 @@ var File_agent_proto protoreflect.FileDescriptor
 
 const file_agent_proto_rawDesc = "" +
 	"\n" +
-	"\vagent.proto\x12\x0fcirrus.agent.v1\"\xe5\x01\n" +
+	"\vagent.proto\x12\x0fcirrus.agent.v1\"\x82\x02\n" +
 	"\x13RegisterHostRequest\x12-\n" +
 	"\x12registration_token\x18\x01 \x01(\tR\x11registrationToken\x12\x1a\n" +
 	"\bhostname\x18\x02 \x01(\tR\bhostname\x12\x18\n" +
@@ -410,7 +418,8 @@ const file_agent_proto_rawDesc = "" +
 	"capability\x18\x04 \x01(\tR\n" +
 	"capability\x12'\n" +
 	"\x0fstorage_domains\x18\x06 \x03(\tR\x0estorageDomains\x12\x1a\n" +
-	"\blocation\x18\a \x01(\tR\blocationJ\x04\b\x05\x10\x06\"e\n" +
+	"\blocation\x18\a \x01(\tR\blocation\x12\x1b\n" +
+	"\tfabric_ip\x18\b \x01(\tR\bfabricIpJ\x04\b\x05\x10\x06\"e\n" +
 	"\x14RegisterHostResponse\x12\x17\n" +
 	"\ahost_id\x18\x01 \x01(\tR\x06hostId\x12\x1a\n" +
 	"\baccepted\x18\x02 \x01(\bR\baccepted\x12\x18\n" +

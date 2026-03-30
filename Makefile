@@ -1,5 +1,5 @@
 .PHONY: all build test lint serve stop logs logs-worker logs-sim clean-dev reset-db fresh proto \
-       test-unit test-mock test-integration build-sim
+       test-unit test-mock test-integration test-smoke build-sim
 
 # ── Configuration ──
 
@@ -57,10 +57,15 @@ test-unit:
 test-mock:
 	go test ./test/mock/...
 
+test-smoke:
+	@echo "==> Running network smoke tests (requires 'make serve')..."
+	@./test/smoke/network_smoke_test.sh
+
 test-integration:
 	@$(COMPOSE) build
 	@$(COMPOSE) up -d
-	@echo "Integration environment is up."
+	@echo "Integration environment is up. Running tests..."
+	go test -tags integration -v -timeout 5m ./test/integration/...
 
 lint:
 	golangci-lint run ./...

@@ -34,37 +34,7 @@ func wrapErr(msg string, err error) error {
 	return fmt.Errorf("%s: %w", msg, err)
 }
 
-func (s *Store) Register(ctx context.Context, id *uuid.UUID, name, address string) (*Host, error) {
-	var h Host
-	var err error
-	if id != nil {
-		err = s.pool.QueryRow(ctx,
-			`INSERT INTO hosts (id, name, address, operational_state)
-			 VALUES ($1, $2, $3, 'registering')
-			 RETURNING id, name, address, operational_state, capability, resource_physical,
-			           overcommit_ratios, resource_used, last_heartbeat, created_at, updated_at`,
-			*id, name, address,
-		).Scan(&h.ID, &h.Name, &h.Address, &h.OperationalState, &h.Capability,
-			&h.ResourcePhysical, &h.OvercommitRatios, &h.ResourceUsed,
-			&h.LastHeartbeat, &h.CreatedAt, &h.UpdatedAt)
-	} else {
-		err = s.pool.QueryRow(ctx,
-			`INSERT INTO hosts (name, address, operational_state)
-			 VALUES ($1, $2, 'registering')
-			 RETURNING id, name, address, operational_state, capability, resource_physical,
-			           overcommit_ratios, resource_used, last_heartbeat, created_at, updated_at`,
-			name, address,
-		).Scan(&h.ID, &h.Name, &h.Address, &h.OperationalState, &h.Capability,
-			&h.ResourcePhysical, &h.OvercommitRatios, &h.ResourceUsed,
-			&h.LastHeartbeat, &h.CreatedAt, &h.UpdatedAt)
-	}
-	if err != nil {
-		return nil, wrapErr("host: register", err)
-	}
-	return &h, nil
-}
-
-func (s *Store) RegisterOrGet(ctx context.Context, name, address, capability string) (*Host, bool, error) {
+func (s *Store) RegisterOrGet(ctx context.Context, name, address, fabricIP, capability string) (*Host, bool, error) {
 	var h Host
 	cap := []byte(capability)
 	if capability == "" {
@@ -73,10 +43,10 @@ func (s *Store) RegisterOrGet(ctx context.Context, name, address, capability str
 
 	// First, try to find an existing host with this name.
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, name, address, operational_state, capability, resource_physical,
+		`SELECT id, name, address, fabric_ip, operational_state, capability, resource_physical,
 		        overcommit_ratios, resource_used, last_heartbeat, created_at, updated_at
 		 FROM hosts WHERE name = $1`, name,
-	).Scan(&h.ID, &h.Name, &h.Address, &h.OperationalState, &h.Capability,
+	).Scan(&h.ID, &h.Name, &h.Address, &h.FabricIP, &h.OperationalState, &h.Capability,
 		&h.ResourcePhysical, &h.OvercommitRatios, &h.ResourceUsed,
 		&h.LastHeartbeat, &h.CreatedAt, &h.UpdatedAt)
 
@@ -86,26 +56,27 @@ func (s *Store) RegisterOrGet(ctx context.Context, name, address, capability str
 			return nil, false, fmt.Errorf("host: register_or_get: hostname %q already registered from different address (%s): %w",
 				name, h.Address, ErrConflict)
 		}
-		// Same host re-registering: update address/capability if still registering.
+		// Same host re-registering: update address/capability/fabric_ip if still registering.
 		if h.OperationalState == StateRegistering {
 			_, _ = s.pool.Exec(ctx,
-				`UPDATE hosts SET address = $1, capability = $2, updated_at = now() WHERE id = $3`,
-				address, cap, h.ID)
+				`UPDATE hosts SET address = $1, capability = $2, fabric_ip = $3, updated_at = now() WHERE id = $4`,
+				address, cap, fabricIP, h.ID)
 			h.Address = address
 			h.Capability = cap
+			h.FabricIP = fabricIP
 		}
 		return &h, false, nil
 	}
 
 	// Host does not exist: create new.
 	err = s.pool.QueryRow(ctx,
-		`INSERT INTO hosts (name, address, operational_state, capability)
-		 VALUES ($1, $2, 'registering', $3)
+		`INSERT INTO hosts (name, address, fabric_ip, operational_state, capability)
+		 VALUES ($1, $2, $3, 'registering', $4)
 		 ON CONFLICT (name) DO UPDATE SET updated_at = now()
-		 RETURNING id, name, address, operational_state, capability, resource_physical,
+		 RETURNING id, name, address, fabric_ip, operational_state, capability, resource_physical,
 		           overcommit_ratios, resource_used, last_heartbeat, created_at, updated_at`,
-		name, address, cap,
-	).Scan(&h.ID, &h.Name, &h.Address, &h.OperationalState, &h.Capability,
+		name, address, fabricIP, cap,
+	).Scan(&h.ID, &h.Name, &h.Address, &h.FabricIP, &h.OperationalState, &h.Capability,
 		&h.ResourcePhysical, &h.OvercommitRatios, &h.ResourceUsed,
 		&h.LastHeartbeat, &h.CreatedAt, &h.UpdatedAt)
 	if err != nil {
@@ -116,7 +87,7 @@ func (s *Store) RegisterOrGet(ctx context.Context, name, address, capability str
 
 func (s *Store) ListHostsByState(ctx context.Context, state OperationalState) ([]Host, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, name, address, operational_state, capability, resource_physical,
+		`SELECT id, name, address, fabric_ip, operational_state, capability, resource_physical,
 		        overcommit_ratios, resource_used, last_heartbeat, created_at, updated_at
 		 FROM hosts WHERE operational_state = $1 ORDER BY name`, state)
 	if err != nil {
@@ -127,7 +98,7 @@ func (s *Store) ListHostsByState(ctx context.Context, state OperationalState) ([
 	var hosts []Host
 	for rows.Next() {
 		var h Host
-		if err := rows.Scan(&h.ID, &h.Name, &h.Address, &h.OperationalState, &h.Capability,
+		if err := rows.Scan(&h.ID, &h.Name, &h.Address, &h.FabricIP, &h.OperationalState, &h.Capability,
 			&h.ResourcePhysical, &h.OvercommitRatios, &h.ResourceUsed,
 			&h.LastHeartbeat, &h.CreatedAt, &h.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("host: list by state scan: %w", err)
@@ -140,11 +111,11 @@ func (s *Store) ListHostsByState(ctx context.Context, state OperationalState) ([
 func (s *Store) GetHost(ctx context.Context, id uuid.UUID) (*Host, error) {
 	var h Host
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, name, address, operational_state, capability, resource_physical,
+		`SELECT id, name, address, fabric_ip, operational_state, capability, resource_physical,
 		        overcommit_ratios, resource_used, last_heartbeat, created_at, updated_at
 		 FROM hosts WHERE id = $1`,
 		id,
-	).Scan(&h.ID, &h.Name, &h.Address, &h.OperationalState, &h.Capability,
+	).Scan(&h.ID, &h.Name, &h.Address, &h.FabricIP, &h.OperationalState, &h.Capability,
 		&h.ResourcePhysical, &h.OvercommitRatios, &h.ResourceUsed,
 		&h.LastHeartbeat, &h.CreatedAt, &h.UpdatedAt)
 	if err != nil {
@@ -155,7 +126,7 @@ func (s *Store) GetHost(ctx context.Context, id uuid.UUID) (*Host, error) {
 
 func (s *Store) ListHosts(ctx context.Context) ([]Host, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, name, address, operational_state, capability, resource_physical,
+		`SELECT id, name, address, fabric_ip, operational_state, capability, resource_physical,
 		        overcommit_ratios, resource_used, last_heartbeat, created_at, updated_at
 		 FROM hosts ORDER BY name`)
 	if err != nil {
@@ -166,7 +137,7 @@ func (s *Store) ListHosts(ctx context.Context) ([]Host, error) {
 	var hosts []Host
 	for rows.Next() {
 		var h Host
-		if err := rows.Scan(&h.ID, &h.Name, &h.Address, &h.OperationalState, &h.Capability,
+		if err := rows.Scan(&h.ID, &h.Name, &h.Address, &h.FabricIP, &h.OperationalState, &h.Capability,
 			&h.ResourcePhysical, &h.OvercommitRatios, &h.ResourceUsed,
 			&h.LastHeartbeat, &h.CreatedAt, &h.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("host: list scan: %w", err)

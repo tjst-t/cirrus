@@ -28,6 +28,7 @@ type WorkerConfig struct {
 	LogLevel           string `yaml:"log_level"`           // debug, info, warn, error
 	StorageDomains     string `yaml:"storage_domains"`     // comma-separated storage domains to join
 	Location           string `yaml:"location"`            // location in the topology tree (name or ID)
+	FabricIP           string `yaml:"fabric_ip"`           // IP for Geneve tunnel endpoints (overlay fabric)
 }
 
 // ParseAuthTokens parses the auth-tokens flag value into a map of token→externalID.

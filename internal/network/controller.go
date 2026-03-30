@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -167,7 +166,7 @@ func (sc *StateController) getPolicies(ctx context.Context, networkIDs []uuid.UU
 func (sc *StateController) getRemotePorts(ctx context.Context, networkIDs []uuid.UUID, excludeHostID uuid.UUID) ([]*pb.RemotePort, error) {
 	rows, err := sc.pool.Query(ctx, `
 		SELECT p.network_id, COALESCE(p.group_id, '00000000-0000-0000-0000-000000000000'),
-		       host(p.ip_address), h.address, n.vni
+		       host(p.ip_address), h.fabric_ip, n.vni
 		FROM ports p
 		JOIN hosts h ON p.host_id = h.id
 		JOIN networks n ON p.network_id = n.id
@@ -253,3 +252,4 @@ func gatewayIPFromVM(vmIP string) string {
 	ip4[3] = (ip4[3] & 0xFC) | 0x02
 	return ip4.String()
 }
+

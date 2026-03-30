@@ -44,11 +44,16 @@ for i in $(seq 1 60); do
   sleep 1
 done
 
+# Detect container IP for Geneve tunnel fabric
+FABRIC_IP=$(hostname -i | awk '{print $1}')
+echo "Detected fabric IP: ${FABRIC_IP}"
+
 # Start cirrus worker (self-registration)
 cirrus worker \
   --controller="${CONTROLLER_ADDR}" \
   --registration-token="${REGISTRATION_TOKEN:-dev-registration-token}" \
   --libvirt-uri="tcp://localhost:${LIBVIRT_PORT:-16509}" \
+  --fabric-ip="${FABRIC_IP}" \
   --storage-domains="default-sd" \
   --location="default-site" \
   &

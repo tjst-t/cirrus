@@ -21,6 +21,7 @@ import (
 	"github.com/tjst-t/cirrus/internal/az"
 	"github.com/tjst-t/cirrus/internal/config"
 	"github.com/tjst-t/cirrus/internal/controller"
+	"github.com/tjst-t/cirrus/internal/controller/reconcile"
 	"github.com/tjst-t/cirrus/internal/host"
 	"github.com/tjst-t/cirrus/internal/hypervisor"
 	"github.com/tjst-t/cirrus/internal/identity"
@@ -82,6 +83,7 @@ func newWorkerCmd() *cobra.Command {
 	f.StringVar(&cfg.LogLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 	f.StringVar(&cfg.StorageDomains, "storage-domains", "", "Comma-separated storage domains to join")
 	f.StringVar(&cfg.Location, "location", "", "Location in the topology tree (name or ID)")
+	f.StringVar(&cfg.FabricIP, "fabric-ip", "", "IP for Geneve tunnel endpoints (auto-detected if empty)")
 	return cmd
 }
 
@@ -174,6 +176,12 @@ func runController(cfg *config.ControllerConfig) error {
 		return nil
 	})
 
+	// Network reconciler
+	netReconciler := reconcile.NewNetworkReconciler(stateCtrl, hostSvc, logger, 5*time.Minute)
+	g.Go(func() error {
+		return netReconciler.Run(gCtx)
+	})
+
 	g.Go(func() error {
 		<-gCtx.Done()
 		logger.Info("shutting down...")
@@ -228,7 +236,7 @@ func runWorker(cfg *config.WorkerConfig) error {
 				}
 			}
 		}
-		if err := ag.Register(ctx, cfg.RegistrationToken, cfg.LibvirtURI, topo); err != nil {
+		if err := ag.Register(ctx, cfg.RegistrationToken, cfg.LibvirtURI, cfg.FabricIP, topo); err != nil {
 			return fmt.Errorf("worker: registration failed: %w", err)
 		}
 	}

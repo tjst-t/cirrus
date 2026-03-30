@@ -33,6 +33,7 @@ type Host struct {
 	ID               uuid.UUID        `json:"id"`
 	Name             string           `json:"name"`
 	Address          string           `json:"address"`
+	FabricIP         string           `json:"fabric_ip,omitempty"`
 	OperationalState OperationalState `json:"operational_state"`
 	Capability       json.RawMessage  `json:"capability"`
 	ResourcePhysical json.RawMessage  `json:"resource_physical"`

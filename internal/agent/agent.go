@@ -48,7 +48,7 @@ type TopologyDeclaration struct {
 
 // Register performs self-registration with the controller using the given token.
 // On success, it stores the assigned host UUID for use in subsequent heartbeats.
-func (a *Agent) Register(ctx context.Context, token, libvirtURI string, topo *TopologyDeclaration) error {
+func (a *Agent) Register(ctx context.Context, token, libvirtURI, fabricIP string, topo *TopologyDeclaration) error {
 	// HOSTNAME_OVERRIDE allows multiple workers on the same machine (dev/sim)
 	hostname := os.Getenv("HOSTNAME_OVERRIDE")
 	if hostname == "" {
@@ -68,6 +68,7 @@ func (a *Agent) Register(ctx context.Context, token, libvirtURI string, topo *To
 		RegistrationToken: token,
 		Hostname:          hostname,
 		Address:           address,
+		FabricIp:          fabricIP,
 	}
 	if topo != nil {
 		req.StorageDomains = topo.StorageDomains
@@ -163,14 +164,20 @@ func (a *Agent) CreateNetworkAgent(controllerAddr, regToken string, logger *slog
 	if a.hostID == "" {
 		return nil
 	}
-	// The network agent currently uses a mock OVS client.
-	// The real OVS client will be wired in when docker-compose integration tests are set up.
+	// Use real OVS client if OVS is available, otherwise run in state-only mode
+	var ovsClient netagent.OVSClient
+	if netagent.IsOVSAvailable() {
+		ovsClient = netagent.NewExecOVSClient(netagent.BridgeName, logger)
+		logger.Info("OVS client connected", "bridge", netagent.BridgeName)
+	} else {
+		logger.Warn("OVS not available, running in state-only mode")
+	}
 	return netagent.New(netagent.Config{
 		HostID:         a.hostID,
 		ControllerAddr: controllerAddr,
 		RegToken:       regToken,
 		Logger:         logger,
-	}, a.conn, nil)
+	}, a.conn, ovsClient)
 }
 
 // Close shuts down the agent's gRPC connection.

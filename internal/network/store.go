@@ -314,7 +314,53 @@ func (s *Store) DeletePolicy(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// --- Ports (read-only) ---
+// --- Ports ---
+
+// CreatePort creates a port with auto-allocated IP and MAC.
+// This is an internal operation used by the VM lifecycle and integration tests.
+func (s *Store) CreatePort(ctx context.Context, spec PortSpec) (*Port, error) {
+	// Get network CIDR for IP allocation
+	net, err := s.GetNetwork(ctx, spec.NetworkID)
+	if err != nil {
+		return nil, fmt.Errorf("network: create port: get network: %w", err)
+	}
+
+	// Collect existing IPs for IPAM
+	existingPorts, err := s.ListPorts(ctx, spec.NetworkID)
+	if err != nil {
+		return nil, fmt.Errorf("network: create port: list ports: %w", err)
+	}
+	var existingIPs []string
+	for _, p := range existingPorts {
+		existingIPs = append(existingIPs, p.IPAddress)
+	}
+
+	// Allocate /30 block
+	vmIP, _, err := AllocateBlock(net.CIDR, existingIPs)
+	if err != nil {
+		return nil, fmt.Errorf("network: create port: allocate ip: %w", err)
+	}
+
+	// Generate MAC
+	mac, err := GenerateMAC()
+	if err != nil {
+		return nil, fmt.Errorf("network: create port: generate mac: %w", err)
+	}
+
+	var p Port
+	err = s.pool.QueryRow(ctx,
+		`INSERT INTO ports (network_id, group_id, tenant_id, host_id, mac_address, ip_address, vm_name, status, created_at)
+		 VALUES ($1, $2, $3, $4, $5::macaddr, $6::inet, $7, 'active', NOW())
+		 RETURNING id, tenant_id, network_id, group_id, vm_name, mac_address::TEXT, host(ip_address), host_id, role, status, created_at`,
+		spec.NetworkID, spec.GroupID, spec.TenantID, spec.HostID, mac, vmIP, spec.VMName,
+	).Scan(&p.ID, &p.TenantID, &p.NetworkID, &p.GroupID, &p.VMName, &p.MACAddress, &p.IPAddress, &p.HostID, &p.Role, &p.Status, &p.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("network: create port: %w", err)
+	}
+	return &p, nil
+}
+
+// --- Ports (read-only queries) ---
 
 func (s *Store) GetPort(ctx context.Context, id uuid.UUID) (*Port, error) {
 	var p Port

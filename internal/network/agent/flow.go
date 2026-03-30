@@ -175,16 +175,16 @@ func generateInputClassificationFlows(p PortInfo, ctx *FlowContext) []FlowEntry 
 
 func generateConntrackFlows(ctx *FlowContext) []FlowEntry {
 	return []FlowEntry{
-		// Established → skip to local output
-		{Table: TableConntrack, Priority: 100, Match: "ct_state=+est+trk", Actions: fmt.Sprintf("resubmit(,%d)", TableLocalOutput)},
+		// Established → skip to local output (ip required for ct_state match)
+		{Table: TableConntrack, Priority: 100, Match: "ip,ct_state=+est+trk", Actions: fmt.Sprintf("resubmit(,%d)", TableLocalOutput)},
 		// Related → skip to local output
-		{Table: TableConntrack, Priority: 100, Match: "ct_state=+rel+trk", Actions: fmt.Sprintf("resubmit(,%d)", TableLocalOutput)},
+		{Table: TableConntrack, Priority: 100, Match: "ip,ct_state=+rel+trk", Actions: fmt.Sprintf("resubmit(,%d)", TableLocalOutput)},
 		// Invalid → drop
-		{Table: TableConntrack, Priority: 100, Match: "ct_state=+inv+trk", Actions: "drop"},
+		{Table: TableConntrack, Priority: 100, Match: "ip,ct_state=+inv+trk", Actions: "drop"},
 		// Untracked → send to conntrack zone, then re-enter this table
-		{Table: TableConntrack, Priority: 50, Match: "ct_state=-trk", Actions: fmt.Sprintf("ct(table=%d)", TableConntrack)},
+		{Table: TableConntrack, Priority: 50, Match: "ip", Actions: fmt.Sprintf("ct(table=%d)", TableConntrack)},
 		// New connection → policy pipeline
-		{Table: TableConntrack, Priority: 10, Match: "ct_state=+new+trk", Actions: fmt.Sprintf("resubmit(,%d)", TableDstGroupResolution)},
+		{Table: TableConntrack, Priority: 10, Match: "ip,ct_state=+new+trk", Actions: fmt.Sprintf("resubmit(,%d)", TableDstGroupResolution)},
 	}
 }
 
