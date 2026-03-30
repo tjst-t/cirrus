@@ -50,6 +50,8 @@ func main() {
 	rootCmd.AddCommand(app.newTenantCmd())
 	rootCmd.AddCommand(app.newRoleCmd())
 	rootCmd.AddCommand(app.newNetworkCmd())
+	rootCmd.AddCommand(app.newGroupCmd())
+	rootCmd.AddCommand(app.newPolicyCmd())
 	rootCmd.AddCommand(app.newAdminCmd())
 
 	if err := rootCmd.Execute(); err != nil {
@@ -384,7 +386,7 @@ func (app *cli) newNetworkCmd() *cobra.Command {
 }
 
 func (app *cli) newNetworkCreateCmd() *cobra.Command {
-	var tenant, org string
+	var tenant, org, cidr string
 	cmd := &cobra.Command{
 		Use:   "create <name>",
 		Short: "Create a new network",
@@ -396,18 +398,19 @@ func (app *cli) newNetworkCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			n, err := c.CreateNetwork(ctx, tenantID, args[0])
+			n, err := c.CreateNetwork(ctx, tenantID, args[0], cidr)
 			if err != nil {
 				return err
 			}
 			return app.printTable(
-				[]string{"ID", "TENANT_ID", "NAME", "STATUS", "CREATED"},
+				[]string{"ID", "TENANT_ID", "NAME", "CIDR", "VNI", "STATUS", "CREATED"},
 				[][]string{networkRow(n)},
 			)
 		},
 	}
 	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) (required)")
 	cmd.Flags().StringVar(&org, "org", "", "Organization (ID or name) for tenant name resolution")
+	cmd.Flags().StringVar(&cidr, "cidr", "", "Network CIDR (auto-assigned if not specified)")
 	_ = cmd.MarkFlagRequired("tenant")
 	return cmd
 }
@@ -434,7 +437,7 @@ func (app *cli) newNetworkListCmd() *cobra.Command {
 				rows[i] = networkRow(&networks[i])
 			}
 			return app.printTable(
-				[]string{"ID", "TENANT_ID", "NAME", "STATUS", "CREATED"},
+				[]string{"ID", "TENANT_ID", "NAME", "CIDR", "VNI", "STATUS", "CREATED"},
 				rows,
 			)
 		},
@@ -467,7 +470,7 @@ func (app *cli) newNetworkShowCmd() *cobra.Command {
 				return err
 			}
 			return app.printTable(
-				[]string{"ID", "TENANT_ID", "NAME", "STATUS", "CREATED"},
+				[]string{"ID", "TENANT_ID", "NAME", "CIDR", "VNI", "STATUS", "CREATED"},
 				[][]string{networkRow(n)},
 			)
 		},
@@ -502,6 +505,323 @@ func (app *cli) newNetworkDeleteCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) for name resolution")
 	cmd.Flags().StringVar(&org, "org", "", "Organization (ID or name) for tenant name resolution")
+	return cmd
+}
+
+// --- Group commands ---
+
+func (app *cli) newGroupCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "group",
+		Aliases: []string{"grp"},
+		Short:   "Manage groups within a network",
+	}
+	cmd.AddCommand(app.newGroupCreateCmd())
+	cmd.AddCommand(app.newGroupListCmd())
+	cmd.AddCommand(app.newGroupShowCmd())
+	cmd.AddCommand(app.newGroupDeleteCmd())
+	return cmd
+}
+
+func (app *cli) newGroupCreateCmd() *cobra.Command {
+	var tenant, org, nw string
+	cmd := &cobra.Command{
+		Use:   "create <name>",
+		Short: "Create a new group",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			networkID, err := c.ResolveNetwork(ctx, nw, tenantID)
+			if err != nil {
+				return err
+			}
+			g, err := c.CreateGroup(ctx, tenantID, networkID, args[0])
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NETWORK_ID", "NAME"},
+				[][]string{groupRow(g)},
+			)
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization (ID or name) for tenant name resolution")
+	cmd.Flags().StringVar(&nw, "network", "", "Network (ID or name) (required)")
+	_ = cmd.MarkFlagRequired("tenant")
+	_ = cmd.MarkFlagRequired("network")
+	return cmd
+}
+
+func (app *cli) newGroupListCmd() *cobra.Command {
+	var tenant, org, nw string
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List groups in a network",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			networkID, err := c.ResolveNetwork(ctx, nw, tenantID)
+			if err != nil {
+				return err
+			}
+			groups, err := c.ListGroups(ctx, tenantID, networkID)
+			if err != nil {
+				return err
+			}
+			rows := make([][]string, len(groups))
+			for i := range groups {
+				rows[i] = groupRow(&groups[i])
+			}
+			return app.printTable(
+				[]string{"ID", "NETWORK_ID", "NAME"},
+				rows,
+			)
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization (ID or name) for tenant name resolution")
+	cmd.Flags().StringVar(&nw, "network", "", "Network (ID or name) (required)")
+	_ = cmd.MarkFlagRequired("tenant")
+	_ = cmd.MarkFlagRequired("network")
+	return cmd
+}
+
+func (app *cli) newGroupShowCmd() *cobra.Command {
+	var tenant, org, nw string
+	cmd := &cobra.Command{
+		Use:   "show <id-or-name>",
+		Short: "Show group details",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			networkID, err := c.ResolveNetwork(ctx, nw, tenantID)
+			if err != nil {
+				return err
+			}
+			groupID, err := c.ResolveGroup(ctx, args[0], tenantID, networkID)
+			if err != nil {
+				return err
+			}
+			g, err := c.GetGroup(ctx, networkID, groupID)
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NETWORK_ID", "NAME"},
+				[][]string{groupRow(g)},
+			)
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization (ID or name) for tenant name resolution")
+	cmd.Flags().StringVar(&nw, "network", "", "Network (ID or name) (required)")
+	_ = cmd.MarkFlagRequired("tenant")
+	_ = cmd.MarkFlagRequired("network")
+	return cmd
+}
+
+func (app *cli) newGroupDeleteCmd() *cobra.Command {
+	var tenant, org, nw string
+	cmd := &cobra.Command{
+		Use:   "delete <id-or-name>",
+		Short: "Delete a group",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			networkID, err := c.ResolveNetwork(ctx, nw, tenantID)
+			if err != nil {
+				return err
+			}
+			groupID, err := c.ResolveGroup(ctx, args[0], tenantID, networkID)
+			if err != nil {
+				return err
+			}
+			if err := c.DeleteGroup(ctx, networkID, groupID); err != nil {
+				return err
+			}
+			return app.printStatus("Deleted", "group", groupID.String())
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization (ID or name) for tenant name resolution")
+	cmd.Flags().StringVar(&nw, "network", "", "Network (ID or name) (required)")
+	_ = cmd.MarkFlagRequired("tenant")
+	_ = cmd.MarkFlagRequired("network")
+	return cmd
+}
+
+// --- Policy commands ---
+
+func (app *cli) newPolicyCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "policy",
+		Short: "Manage policies within a network",
+	}
+	cmd.AddCommand(app.newPolicyCreateCmd())
+	cmd.AddCommand(app.newPolicyListCmd())
+	cmd.AddCommand(app.newPolicyDeleteCmd())
+	return cmd
+}
+
+func (app *cli) newPolicyCreateCmd() *cobra.Command {
+	var tenant, org, nw, srcGroup, dstGroup, protocol, action string
+	var dstPort, priority int
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create a new policy",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			networkID, err := c.ResolveNetwork(ctx, nw, tenantID)
+			if err != nil {
+				return err
+			}
+			srcGroupID, err := c.ResolveGroup(ctx, srcGroup, tenantID, networkID)
+			if err != nil {
+				return err
+			}
+			dstGroupID, err := c.ResolveGroup(ctx, dstGroup, tenantID, networkID)
+			if err != nil {
+				return err
+			}
+			spec := network.PolicySpec{
+				SrcGroupID: srcGroupID,
+				DstGroupID: dstGroupID,
+				Protocol:   protocol,
+			}
+			if cmd.Flags().Changed("dst-port") {
+				spec.DstPort = &dstPort
+			}
+			if priority > 0 {
+				spec.Priority = priority
+			}
+			if action != "" {
+				spec.Action = action
+			}
+			p, err := c.CreatePolicy(ctx, tenantID, networkID, spec)
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "SRC_GROUP", "DST_GROUP", "PROTOCOL", "DST_PORT", "PRIORITY", "ACTION"},
+				[][]string{policyRow(p)},
+			)
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization (ID or name) for tenant name resolution")
+	cmd.Flags().StringVar(&nw, "network", "", "Network (ID or name) (required)")
+	cmd.Flags().StringVar(&srcGroup, "src-group", "", "Source group (ID or name) (required)")
+	cmd.Flags().StringVar(&dstGroup, "dst-group", "", "Destination group (ID or name) (required)")
+	cmd.Flags().StringVar(&protocol, "protocol", "", "Protocol (tcp, udp, icmp, any) (required)")
+	cmd.Flags().IntVar(&dstPort, "dst-port", 0, "Destination port")
+	cmd.Flags().IntVar(&priority, "priority", 0, "Priority (default: 1000)")
+	cmd.Flags().StringVar(&action, "action", "", "Action (default: allow)")
+	_ = cmd.MarkFlagRequired("tenant")
+	_ = cmd.MarkFlagRequired("network")
+	_ = cmd.MarkFlagRequired("src-group")
+	_ = cmd.MarkFlagRequired("dst-group")
+	_ = cmd.MarkFlagRequired("protocol")
+	return cmd
+}
+
+func (app *cli) newPolicyListCmd() *cobra.Command {
+	var tenant, org, nw string
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List policies in a network",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			networkID, err := c.ResolveNetwork(ctx, nw, tenantID)
+			if err != nil {
+				return err
+			}
+			policies, err := c.ListPolicies(ctx, tenantID, networkID)
+			if err != nil {
+				return err
+			}
+			rows := make([][]string, len(policies))
+			for i := range policies {
+				rows[i] = policyRow(&policies[i])
+			}
+			return app.printTable(
+				[]string{"ID", "SRC_GROUP", "DST_GROUP", "PROTOCOL", "DST_PORT", "PRIORITY", "ACTION"},
+				rows,
+			)
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization (ID or name) for tenant name resolution")
+	cmd.Flags().StringVar(&nw, "network", "", "Network (ID or name) (required)")
+	_ = cmd.MarkFlagRequired("tenant")
+	_ = cmd.MarkFlagRequired("network")
+	return cmd
+}
+
+func (app *cli) newPolicyDeleteCmd() *cobra.Command {
+	var tenant, org, nw string
+	cmd := &cobra.Command{
+		Use:   "delete <id>",
+		Short: "Delete a policy",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			networkID, err := c.ResolveNetwork(ctx, nw, tenantID)
+			if err != nil {
+				return err
+			}
+			policyID, err := uuid.Parse(args[0])
+			if err != nil {
+				return fmt.Errorf("policy ID must be a UUID: %w", err)
+			}
+			if err := c.DeletePolicy(ctx, networkID, policyID); err != nil {
+				return err
+			}
+			return app.printStatus("Deleted", "policy", policyID.String())
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization (ID or name) for tenant name resolution")
+	cmd.Flags().StringVar(&nw, "network", "", "Network (ID or name) (required)")
+	_ = cmd.MarkFlagRequired("tenant")
+	_ = cmd.MarkFlagRequired("network")
 	return cmd
 }
 
@@ -1326,7 +1646,19 @@ func (app *cli) newFaultDomainListCmd() *cobra.Command {
 // --- Row builders ---
 
 func networkRow(n *network.Network) []string {
-	return []string{n.ID.String(), n.TenantID.String(), n.Name, string(n.Status), n.CreatedAt.Format("2006-01-02 15:04:05")}
+	return []string{n.ID.String(), n.TenantID.String(), n.Name, n.CIDR, fmt.Sprintf("%d", n.VNI), string(n.Status), n.CreatedAt.Format("2006-01-02 15:04:05")}
+}
+
+func groupRow(g *network.Group) []string {
+	return []string{g.ID.String(), g.NetworkID.String(), g.Name}
+}
+
+func policyRow(p *network.Policy) []string {
+	dstPort := "-"
+	if p.DstPort != nil {
+		dstPort = fmt.Sprintf("%d", *p.DstPort)
+	}
+	return []string{p.ID.String(), p.SrcGroupID.String(), p.DstGroupID.String(), p.Protocol, dstPort, fmt.Sprintf("%d", p.Priority), p.Action}
 }
 
 func azRow(a *az.AvailabilityZone) []string {

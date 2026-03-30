@@ -36,6 +36,7 @@ func (h *networkHandlers) createNetwork(w http.ResponseWriter, r *http.Request) 
 
 	var req struct {
 		Name string `json:"name"`
+		CIDR string `json:"cidr,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -48,6 +49,7 @@ func (h *networkHandlers) createNetwork(w http.ResponseWriter, r *http.Request) 
 
 	n, err := h.svc.CreateNetwork(r.Context(), *tenantID, network.NetworkSpec{
 		Name: req.Name,
+		CIDR: req.CIDR,
 	})
 	if err != nil {
 		if errors.Is(err, network.ErrConflict) {
@@ -146,6 +148,290 @@ func (h *networkHandlers) deleteNetwork(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// --- Groups ---
+
+// networkFromURL retrieves the network from the URL parameter and authorizes the user.
+func (h *networkHandlers) networkFromURL(w http.ResponseWriter, r *http.Request) (*network.Network, bool) {
+	id, err := uuid.Parse(chi.URLParam(r, "network_id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid network ID"})
+		return nil, false
+	}
+	n, err := h.svc.GetNetwork(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, network.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "network not found"})
+			return nil, false
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get network"})
+		return nil, false
+	}
+	return n, true
+}
+
+func (h *networkHandlers) createGroup(w http.ResponseWriter, r *http.Request) {
+	user := UserFromContext(r.Context())
+
+	net, ok := h.networkFromURL(w, r)
+	if !ok {
+		return
+	}
+
+	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionCreateGroup, identity.Resource{TenantID: &net.TenantID}); err != nil || decision == identity.Deny {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	if err := validate.Name(req.Name); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	g, err := h.svc.CreateGroup(r.Context(), net.ID, network.GroupSpec{Name: req.Name})
+	if err != nil {
+		if errors.Is(err, network.ErrConflict) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "group with this name already exists in network"})
+			return
+		}
+		h.logger.Error("failed to create group", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create group"})
+		return
+	}
+	writeJSON(w, http.StatusCreated, g)
+}
+
+func (h *networkHandlers) listGroups(w http.ResponseWriter, r *http.Request) {
+	user := UserFromContext(r.Context())
+
+	net, ok := h.networkFromURL(w, r)
+	if !ok {
+		return
+	}
+
+	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionListGroups, identity.Resource{TenantID: &net.TenantID}); err != nil || decision == identity.Deny {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	groups, err := h.svc.ListGroups(r.Context(), net.ID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list groups"})
+		return
+	}
+	if groups == nil {
+		groups = []network.Group{}
+	}
+	writeJSON(w, http.StatusOK, groups)
+}
+
+func (h *networkHandlers) getGroup(w http.ResponseWriter, r *http.Request) {
+	user := UserFromContext(r.Context())
+
+	net, ok := h.networkFromURL(w, r)
+	if !ok {
+		return
+	}
+
+	groupID, err := uuid.Parse(chi.URLParam(r, "group_id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid group ID"})
+		return
+	}
+
+	g, err := h.svc.GetGroup(r.Context(), groupID)
+	if err != nil {
+		if errors.Is(err, network.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "group not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get group"})
+		return
+	}
+
+	if g.NetworkID != net.ID {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "group not found"})
+		return
+	}
+
+	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionGetGroup, identity.Resource{TenantID: &net.TenantID}); err != nil || decision == identity.Deny {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, g)
+}
+
+func (h *networkHandlers) deleteGroup(w http.ResponseWriter, r *http.Request) {
+	user := UserFromContext(r.Context())
+
+	net, ok := h.networkFromURL(w, r)
+	if !ok {
+		return
+	}
+
+	groupID, err := uuid.Parse(chi.URLParam(r, "group_id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid group ID"})
+		return
+	}
+
+	g, err := h.svc.GetGroup(r.Context(), groupID)
+	if err != nil {
+		if errors.Is(err, network.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "group not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get group"})
+		return
+	}
+
+	if g.NetworkID != net.ID {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "group not found"})
+		return
+	}
+
+	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionDeleteGroup, identity.Resource{TenantID: &net.TenantID}); err != nil || decision == identity.Deny {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	if err := h.svc.DeleteGroup(r.Context(), groupID); err != nil {
+		if errors.Is(err, network.ErrHasDependents) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete group"})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- Policies ---
+
+func (h *networkHandlers) createPolicy(w http.ResponseWriter, r *http.Request) {
+	user := UserFromContext(r.Context())
+
+	net, ok := h.networkFromURL(w, r)
+	if !ok {
+		return
+	}
+
+	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionCreatePolicy, identity.Resource{TenantID: &net.TenantID}); err != nil || decision == identity.Deny {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	var req network.PolicySpec
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	if req.SrcGroupID == uuid.Nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "src_group_id is required"})
+		return
+	}
+	if req.DstGroupID == uuid.Nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "dst_group_id is required"})
+		return
+	}
+	if req.Protocol == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "protocol is required"})
+		return
+	}
+
+	p, err := h.svc.CreatePolicy(r.Context(), net.ID, req)
+	if err != nil {
+		if errors.Is(err, network.ErrConflict) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "policy already exists"})
+			return
+		}
+		if errors.Is(err, network.ErrNotFound) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "group not found"})
+			return
+		}
+		if errors.Is(err, network.ErrInvalidState) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		h.logger.Error("failed to create policy", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create policy"})
+		return
+	}
+	writeJSON(w, http.StatusCreated, p)
+}
+
+func (h *networkHandlers) listPolicies(w http.ResponseWriter, r *http.Request) {
+	user := UserFromContext(r.Context())
+
+	net, ok := h.networkFromURL(w, r)
+	if !ok {
+		return
+	}
+
+	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionListPolicies, identity.Resource{TenantID: &net.TenantID}); err != nil || decision == identity.Deny {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	policies, err := h.svc.ListPolicies(r.Context(), net.ID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list policies"})
+		return
+	}
+	if policies == nil {
+		policies = []network.Policy{}
+	}
+	writeJSON(w, http.StatusOK, policies)
+}
+
+func (h *networkHandlers) deletePolicy(w http.ResponseWriter, r *http.Request) {
+	user := UserFromContext(r.Context())
+
+	net, ok := h.networkFromURL(w, r)
+	if !ok {
+		return
+	}
+
+	policyID, err := uuid.Parse(chi.URLParam(r, "policy_id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid policy ID"})
+		return
+	}
+
+	p, err := h.svc.GetPolicy(r.Context(), policyID)
+	if err != nil {
+		if errors.Is(err, network.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "policy not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get policy"})
+		return
+	}
+
+	if p.NetworkID != net.ID {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "policy not found"})
+		return
+	}
+
+	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionDeletePolicy, identity.Resource{TenantID: &net.TenantID}); err != nil || decision == identity.Deny {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	if err := h.svc.DeletePolicy(r.Context(), policyID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete policy"})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // --- Ports (read-only) ---
 
 func (h *networkHandlers) listPorts(w http.ResponseWriter, r *http.Request) {
@@ -188,6 +474,30 @@ func (h *networkHandlers) listPorts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ports, err := h.svc.ListPorts(r.Context(), networkID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list ports"})
+		return
+	}
+	if ports == nil {
+		ports = []network.Port{}
+	}
+	writeJSON(w, http.StatusOK, ports)
+}
+
+func (h *networkHandlers) listPortsNested(w http.ResponseWriter, r *http.Request) {
+	user := UserFromContext(r.Context())
+
+	net, ok := h.networkFromURL(w, r)
+	if !ok {
+		return
+	}
+
+	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionListPorts, identity.Resource{TenantID: &net.TenantID}); err != nil || decision == identity.Deny {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	ports, err := h.svc.ListPorts(r.Context(), net.ID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list ports"})
 		return

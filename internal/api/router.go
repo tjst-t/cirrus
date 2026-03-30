@@ -89,8 +89,21 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		nh := &networkHandlers{svc: networkSvc, authz: authz, logger: logger}
 		r.Post("/networks", nh.createNetwork)
 		r.Get("/networks", nh.listNetworks)
-		r.Get("/networks/{network_id}", nh.getNetwork)
-		r.Delete("/networks/{network_id}", nh.deleteNetwork)
+		r.Route("/networks/{network_id}", func(r chi.Router) {
+			r.Get("/", nh.getNetwork)
+			r.Delete("/", nh.deleteNetwork)
+
+			r.Post("/groups", nh.createGroup)
+			r.Get("/groups", nh.listGroups)
+			r.Get("/groups/{group_id}", nh.getGroup)
+			r.Delete("/groups/{group_id}", nh.deleteGroup)
+
+			r.Post("/policies", nh.createPolicy)
+			r.Get("/policies", nh.listPolicies)
+			r.Delete("/policies/{policy_id}", nh.deletePolicy)
+
+			r.Get("/ports", nh.listPortsNested)
+		})
 
 		r.Get("/ports", nh.listPorts)
 		r.Get("/ports/{port_id}", nh.getPort)

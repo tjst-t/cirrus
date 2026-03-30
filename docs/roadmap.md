@@ -401,42 +401,52 @@
 
 ---
 
-### Sprint 5N: ネットワーク再設計（VPCモデル）
+### Sprint 5N-a: ネットワーク再設計 — データモデル + Service + API/CLI ✅
 
-**ゴール**: OVNを廃止し、OVSデータプレーン + cirrus-agentによるVPCモデルネットワークに全面移行する。
+**ゴール**: Network/Group/PolicyをAPI・CLI経由でCRUDできる状態にする。
 
-#### S5N-1: ネットワークデータモデル移行
-- [ ] マイグレーション: networks テーブル改修（cidr CIDR追加、vni INTEGER UNIQUE追加、network_domain_id削除）
-- [ ] マイグレーション: subnets テーブル廃止
-- [ ] マイグレーション: groups テーブル新設（network_id FK、name、UNIQUE(network_id, name)）
-- [ ] マイグレーション: policies テーブル新設（network_id FK、src_group_id、dst_group_id、protocol、dst_port、priority、action）
-- [ ] マイグレーション: ports テーブル改修（subnet_id削除、group_id FK追加、host_id追加、role追加、UNIQUE(vm_id, role)）
-- [ ] マイグレーション: egresses テーブル新設
-- [ ] マイグレーション: ingresses テーブル新設
-- [ ] マイグレーション: gateway_nodes テーブル新設
-- [ ] マイグレーション: service_insertions テーブル新設
-- [ ] マイグレーション: load_balancers テーブル新設
-- [ ] マイグレーション: network_domains テーブル廃止、hosts.network_domain_id削除
-- [ ] マイグレーション: routers, router_interfaces, security_groups, security_group_rules, port_security_groups, floating_ips テーブル廃止
+#### S5Na-1: ネットワークデータモデル移行
+- [x] マイグレーション: networks テーブル改修（cidr CIDR追加、vni INTEGER UNIQUE追加）
+- [x] マイグレーション: groups テーブル新設（network_id FK、name、UNIQUE(network_id, name)）
+- [x] マイグレーション: policies テーブル新設（network_id FK、src_group_id、dst_group_id、protocol、dst_port、priority、action）
+- [x] マイグレーション: ports テーブル改修（group_id FK追加、host_id追加、role追加、UNIQUE(vm_id, role)）
+- [x] マイグレーション: egresses テーブル新設
+- [x] マイグレーション: ingresses テーブル新設
+- [x] マイグレーション: gateway_nodes テーブル新設
 
-#### S5N-2: IPAM（/30ブロック採番）
-- [ ] internal/network/ipam.go: NetworkのCIDRから/30ブロックを順番に払い出し
-- [ ] CIDRプール管理（デフォルト100.64.0.0/10、VPN/専用線用はユーザ指定）
-- [ ] 削除されたVMのIPは再利用しない（conntrackステート残存リスク回避）
-- [ ] MACアドレス生成（既存ロジック流用）
-- [ ] VNI自動採番（Network作成時にユニークVNI割当）
-- [ ] テスト: /30採番ロジック、CIDR枯渇、VNIユニーク性
+#### S5Na-2: IPAM（/30ブロック採番）
+- [x] internal/network/ipam.go: NetworkのCIDRから/30ブロックを順番に払い出し
+- [x] CIDRプール管理（デフォルト100.64.0.0/10、VPN/専用線用はユーザ指定）
+- [x] 削除されたVMのIPは再利用しない（conntrackステート残存リスク回避）
+- [x] MACアドレス生成（既存ロジック流用）
+- [x] VNI自動採番（Network作成時にユニークVNI割当）
+- [x] テスト: /30採番ロジック、CIDR枯渇、VNIユニーク性
 
-#### S5N-3: Network/Group/Policy Service
-- [ ] internal/network/model.go: Network, Group, Policy, Port 構造体
-- [ ] internal/network/service.go: Service インターフェース定義（CreateNetwork, CreateGroup, CreatePolicy, CreatePort等）
-- [ ] Network CRUD: DB + CIDR/VNI割当
-- [ ] Group CRUD: DB（フロー変更なし、同期レスポンス）
-- [ ] Policy CRUD: DB + HostNetworkState再計算
-- [ ] Port CRUD（内部API）: IP/MAC払い出し + Group割り当て
-- [ ] テスト: Network/Group/Policy のCRUDユニットテスト
+#### S5Na-3: Network/Group/Policy Service
+- [x] internal/network/model.go: Network, Group, Policy, Port 構造体
+- [x] internal/network/service.go: Service インターフェース定義（CreateNetwork, CreateGroup, CreatePolicy, CreatePort等）
+- [x] Network CRUD: DB + CIDR/VNI割当
+- [x] Group CRUD: DB（フロー変更なし、同期レスポンス）
+- [x] Policy CRUD: DB + HostNetworkState再計算
+- [x] Port CRUD（内部API）: IP/MAC払い出し + Group割り当て
+- [x] テスト: Network/Group/Policy のCRUDユニットテスト
 
-#### S5N-4: HostNetworkState計算・配信
+#### S5Na-4: API + CLI
+- [x] POST/GET/DELETE /api/v1/networks（テナント）: name, cidr(optional) 指定
+- [x] POST/GET/DELETE /api/v1/networks/{nid}/groups
+- [x] POST/GET/DELETE /api/v1/networks/{nid}/policies
+- [x] GET /api/v1/networks/{nid}/ports（テナント: 読み取りのみ）
+- [x] cirrusctl network/group/policy コマンド追加
+
+**デプロイ確認**: APIでNetwork作成→Group作成→Policy定義→CLI/APIで一覧・詳細・削除
+
+---
+
+### Sprint 5N-b: ネットワーク再設計 — HostNetworkState + エージェント
+
+**ゴール**: VMがネットワーク接続し、OVSフロー・DHCP・DNS・メタデータが動作する。
+
+#### S5Nb-1: HostNetworkState計算・配信
 - [ ] internal/network/controller.go: HostNetworkState計算ロジック
 - [ ] ホストごとに「自ホスト上のVM」＋「関連するリモートVM」＋「Policyルール」＋「DNSレコード」を集約
 - [ ] proto/network.proto: NetworkStateService（gRPC server streaming）
@@ -444,7 +454,7 @@
 - [ ] HostNetworkState proto message（PortState, PolicyRule, RemotePort, DnsRecord）
 - [ ] テスト: 状態計算のユニットテスト、差分計算テスト
 
-#### S5N-5: OVSエージェント
+#### S5Nb-2: OVSエージェント
 - [ ] internal/network/agent.go: OVS OpenFlowフロー管理
 - [ ] HostNetworkState → OpenFlowフロー変換ロジック
 - [ ] OpenFlowパイプライン実装（Table 0-7: 入力分類→conntrack→宛先GROUP_ID解決→Policy評価→宛先ホスト解決→Geneveカプセル化→ローカル出力→Egress処理）
@@ -453,13 +463,13 @@
 - [ ] conntrackベースのステートフル制御
 - [ ] テスト: レイヤー2（MockOVSClient）でフロー変換を検証
 
-#### S5N-6: DHCP応答
+#### S5Nb-3: DHCP応答
 - [ ] エージェント内DHCPサーバ
 - [ ] /30サブネット情報配布（IP、Mask、Gateway、DNS）
 - [ ] OVSフローでDHCP要求をエージェントに転送
 - [ ] テスト: DHCPリクエスト→レスポンス検証
 
-#### S5N-7: DNS
+#### S5Nb-4: DNS
 - [ ] エージェント内DNSサーバ（組み込み、CoreDNS等の外部依存なし）
 - [ ] レコード種類: VM個別（vm-1.api.my-app.internal）、Group全体（Aレコード複数返し）、逆引き
 - [ ] Network間隔離: 送信元IPからNetwork IDを解決し、そのNetworkのレコードだけを返す
@@ -467,36 +477,36 @@
 - [ ] DNSレコードはHostNetworkStateに含めて配信
 - [ ] テスト: レコード生成ロジック、Network隔離
 
-#### S5N-8: メタデータサービス
+#### S5Nb-5: メタデータサービス
 - [ ] エージェント内HTTPサーバ（169.254.169.254）
 - [ ] OVSフローで169.254.169.254宛をエージェントに転送
 - [ ] 送信元IPからVM識別→メタデータ返却（vm_id, network, group, interfaces, hostname等）
 - [ ] cloud-init統合: DHCP→ネットワーク確立→メタデータ取得→cloud-init完了
 - [ ] テスト: メタデータレスポンス生成
 
-#### S5N-9: API + CLI
-- [ ] POST/GET/DELETE /api/v1/networks（テナント）: name, cidr(optional) 指定
-- [ ] POST/GET/DELETE /api/v1/networks/{nid}/groups
-- [ ] POST/GET/DELETE /api/v1/networks/{nid}/policies
-- [ ] GET /api/v1/networks/{nid}/ports（テナント: 読み取りのみ）
-- [ ] cirrusctl network/group/policy コマンド追加
-- [ ] 旧 subnet/router/security-group/floating-ip コマンド廃止
+**技術選定**: OVS (OpenFlow 1.3), Geneve, gRPC server streaming
 
-#### S5N-10: Network Reconciler
+**デプロイ確認**: VM起動→OVSフロー設定→DHCP/DNS/メタデータ応答→namespace間通信
+
+---
+
+### Sprint 5N-c: ネットワーク再設計 — Reconciler + 結合テスト
+
+**ゴール**: ネットワーク状態の整合性チェックと全機能の結合テストが通る。
+
+#### S5Nc-1: Network Reconciler
 - [ ] internal/controller/reconcile/network.go: NetworkReconciler実装
 - [ ] 各ホストのOVSフロー状態 vs 期待されるHostNetworkStateを比較
 - [ ] 初期実装はログ出力のみ（DriftEvent基盤はSprint 8.5で移行）
 - [ ] 遷移中ステータスのリソースは除外
 
-#### S5N-11: 結合テスト（Sprint 5Sのテスト基盤を使用）
+#### S5Nc-2: 結合テスト（Sprint 5Sのテスト基盤を使用）
 - [ ] テストケース: VM(namespace)間のGeneveトンネル通信
 - [ ] テストケース: DHCP応答でIP/GW/DNS取得
 - [ ] テストケース: DNS応答とNetwork隔離
 - [ ] テストケース: Policy（conntrack）による通信許可/拒否
 - [ ] テストケース: メタデータサービスへのアクセス
 - [ ] テストケース: HostNetworkState差分配信でフロー更新
-
-**技術選定**: OVS (OpenFlow 1.3), Geneve, gRPC server streaming, network namespaces (テスト用)
 
 **デプロイ確認**: Network作成→Group作成→Policy定義→VM作成→namespace間通信→DNS/DHCP/メタデータ全動作
 
