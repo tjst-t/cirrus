@@ -66,7 +66,7 @@ func (s *GRPCServer) RegisterHost(ctx context.Context, req *pb.RegisterHostReque
 		return &pb.RegisterHostResponse{Accepted: false, Message: "invalid fabric_ip"}, nil
 	}
 
-	h, created, err := s.hostSvc.RegisterOrGet(ctx, req.Hostname, req.Address, fabricIP, req.Capability)
+	h, created, err := s.hostSvc.RegisterOrGet(ctx, req.Hostname, req.Address, req.WorkerGrpcAddr, fabricIP, req.Capability)
 	if err != nil {
 		s.logger.Error("registration failed", "hostname", req.Hostname, "error", err)
 		return &pb.RegisterHostResponse{Accepted: false, Message: "registration failed"}, nil

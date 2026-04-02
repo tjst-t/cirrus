@@ -11,6 +11,7 @@ import (
 
 	"github.com/tjst-t/cirrus/test/sim/libvirt/internal/rpc"
 	"github.com/tjst-t/cirrus/test/sim/libvirt/internal/state"
+	simxml "github.com/tjst-t/cirrus/test/sim/libvirt/internal/xml"
 )
 
 // Management handles the /sim/ REST API endpoints.
@@ -42,6 +43,13 @@ func (m *Management) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /sim/config/migration", m.handleGetMigrationConfig)
 	mux.HandleFunc("GET /sim/domains", m.handleListAllDomains)
 	mux.HandleFunc("GET /sim/hosts/{host_id}/domains", m.handleListHostDomains)
+
+	// Domain lifecycle management (used by LibvirtDriver for VM create/delete/start/stop)
+	mux.HandleFunc("POST /sim/hosts/{host_id}/domains", m.handleDefineDomain)
+	mux.HandleFunc("DELETE /sim/hosts/{host_id}/domains/{uuid}", m.handleUndefineDomain)
+	mux.HandleFunc("POST /sim/hosts/{host_id}/domains/{uuid}/start", m.handleStartDomain)
+	mux.HandleFunc("POST /sim/hosts/{host_id}/domains/{uuid}/stop", m.handleStopDomain)
+	mux.HandleFunc("POST /sim/hosts/{host_id}/domains/{uuid}/destroy", m.handleDestroyDomain)
 }
 
 // CreateHostRequest is the request body for POST /sim/hosts.
@@ -282,6 +290,92 @@ func (m *Management) handleListHostDomains(w http.ResponseWriter, r *http.Reques
 		})
 	}
 	m.writeJSON(w, http.StatusOK, domains)
+}
+
+// DefineDomainRequest is the request body for POST /sim/hosts/{host_id}/domains.
+type DefineDomainRequest struct {
+	XML string `json:"xml"` // libvirt domain XML
+}
+
+func (m *Management) handleDefineDomain(w http.ResponseWriter, r *http.Request) {
+	hostID := r.PathValue("host_id")
+	var req DefineDomainRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		m.writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.XML == "" {
+		m.writeError(w, http.StatusBadRequest, "xml is required")
+		return
+	}
+
+	parsed, err := simxml.ParseDomainXML(req.XML)
+	if err != nil {
+		m.writeError(w, http.StatusBadRequest, "invalid domain xml: "+err.Error())
+		return
+	}
+
+	d := state.NewDomainFromXML(parsed, req.XML)
+	if err := m.store.DefineDomain(hostID, d); err != nil {
+		m.writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	if err := m.store.StartDomain(hostID, d.UUIDString()); err != nil {
+		m.writeError(w, http.StatusInternalServerError, "start domain: "+err.Error())
+		return
+	}
+	dom, _ := m.store.GetDomain(hostID, d.UUIDString())
+	m.writeJSON(w, http.StatusCreated, DomainInfo{
+		Name:         dom.Name,
+		UUID:         dom.UUIDString(),
+		State:        int32(dom.State),
+		VCPUs:        dom.VCPUs,
+		MemoryKiB:    dom.MemoryKiB,
+		HostID:       hostID,
+		InterfaceIDs: dom.InterfaceIDs,
+	})
+}
+
+func (m *Management) handleUndefineDomain(w http.ResponseWriter, r *http.Request) {
+	hostID := r.PathValue("host_id")
+	domUUID := r.PathValue("uuid")
+	// Destroy first if running, then undefine.
+	_ = m.store.DestroyDomain(hostID, domUUID)
+	if err := m.store.UndefineDomain(hostID, domUUID); err != nil {
+		m.writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (m *Management) handleStartDomain(w http.ResponseWriter, r *http.Request) {
+	hostID := r.PathValue("host_id")
+	domUUID := r.PathValue("uuid")
+	if err := m.store.StartDomain(hostID, domUUID); err != nil {
+		m.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (m *Management) handleStopDomain(w http.ResponseWriter, r *http.Request) {
+	hostID := r.PathValue("host_id")
+	domUUID := r.PathValue("uuid")
+	if err := m.store.ShutdownDomain(hostID, domUUID); err != nil {
+		m.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (m *Management) handleDestroyDomain(w http.ResponseWriter, r *http.Request) {
+	hostID := r.PathValue("host_id")
+	domUUID := r.PathValue("uuid")
+	if err := m.store.DestroyDomain(hostID, domUUID); err != nil {
+		m.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (m *Management) writeJSON(w http.ResponseWriter, status int, v interface{}) {

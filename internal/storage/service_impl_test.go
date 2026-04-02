@@ -41,6 +41,9 @@ func (f *fakeStore) GetBackend(_ context.Context, id uuid.UUID) (*Backend, error
 	return nil, ErrBackendNotFound
 }
 func (f *fakeStore) ListBackends(_ context.Context) ([]Backend, error) { return f.backends, nil }
+func (f *fakeStore) ListBackendsReachableFromHost(_ context.Context, _ uuid.UUID) ([]Backend, error) {
+	return f.backends, nil
+}
 func (f *fakeStore) SetBackendState(_ context.Context, id uuid.UUID, state BackendState) error {
 	for i := range f.backends {
 		if f.backends[i].ID == id {

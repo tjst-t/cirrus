@@ -49,13 +49,17 @@ FABRIC_IP=$(hostname -i | awk '{print $1}')
 echo "Detected fabric IP: ${FABRIC_IP}"
 
 # Start cirrus worker (self-registration)
+WORKER_GRPC_PORT="${WORKER_GRPC_PORT:-9191}"
 cirrus worker \
   --controller="${CONTROLLER_ADDR}" \
   --registration-token="${REGISTRATION_TOKEN:-dev-registration-token}" \
   --libvirt-uri="tcp://localhost:${LIBVIRT_PORT:-16509}" \
+  --libvirt-sim-mgmt-addr="http://localhost:${LIBVIRTD_SIM_MGMT_PORT:-8100}" \
   --fabric-ip="${FABRIC_IP}" \
   --storage-domains="default-sd" \
   --location="default-site" \
+  --grpc-port="${WORKER_GRPC_PORT}" \
+  --worker-grpc-addr="${FABRIC_IP}:${WORKER_GRPC_PORT}" \
   &
 
 echo "cirrus worker started"

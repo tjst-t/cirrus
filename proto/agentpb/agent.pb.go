@@ -26,10 +26,11 @@ type RegisterHostRequest struct {
 	RegistrationToken string                 `protobuf:"bytes,1,opt,name=registration_token,json=registrationToken,proto3" json:"registration_token,omitempty"`
 	Hostname          string                 `protobuf:"bytes,2,opt,name=hostname,proto3" json:"hostname,omitempty"`
 	Address           string                 `protobuf:"bytes,3,opt,name=address,proto3" json:"address,omitempty"`
-	Capability        string                 `protobuf:"bytes,4,opt,name=capability,proto3" json:"capability,omitempty"`                               // JSON-encoded capability
-	StorageDomains    []string               `protobuf:"bytes,6,rep,name=storage_domains,json=storageDomains,proto3" json:"storage_domains,omitempty"` // storage domain names or IDs
-	Location          string                 `protobuf:"bytes,7,opt,name=location,proto3" json:"location,omitempty"`                                   // location name or ID
-	FabricIp          string                 `protobuf:"bytes,8,opt,name=fabric_ip,json=fabricIp,proto3" json:"fabric_ip,omitempty"`                   // IP for Geneve tunnel endpoints (overlay fabric)
+	Capability        string                 `protobuf:"bytes,4,opt,name=capability,proto3" json:"capability,omitempty"`                                 // JSON-encoded capability
+	StorageDomains    []string               `protobuf:"bytes,6,rep,name=storage_domains,json=storageDomains,proto3" json:"storage_domains,omitempty"`   // storage domain names or IDs
+	Location          string                 `protobuf:"bytes,7,opt,name=location,proto3" json:"location,omitempty"`                                     // location name or ID
+	FabricIp          string                 `protobuf:"bytes,8,opt,name=fabric_ip,json=fabricIp,proto3" json:"fabric_ip,omitempty"`                     // IP for Geneve tunnel endpoints (overlay fabric)
+	WorkerGrpcAddr    string                 `protobuf:"bytes,9,opt,name=worker_grpc_addr,json=workerGrpcAddr,proto3" json:"worker_grpc_addr,omitempty"` // address of this worker's WorkerService gRPC server (e.g. "host:9191")
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -109,6 +110,13 @@ func (x *RegisterHostRequest) GetLocation() string {
 func (x *RegisterHostRequest) GetFabricIp() string {
 	if x != nil {
 		return x.FabricIp
+	}
+	return ""
+}
+
+func (x *RegisterHostRequest) GetWorkerGrpcAddr() string {
+	if x != nil {
+		return x.WorkerGrpcAddr
 	}
 	return ""
 }
@@ -405,11 +413,450 @@ func (x *VMInfo) GetRamMb() int64 {
 	return 0
 }
 
+// DiskSpec describes a block device to attach to a VM.
+type DiskSpec struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DevicePath    string                 `protobuf:"bytes,1,opt,name=device_path,json=devicePath,proto3" json:"device_path,omitempty"`                                                 // host-side block device (e.g. /dev/sdb), filled in by worker after Attach
+	TargetDev     string                 `protobuf:"bytes,2,opt,name=target_dev,json=targetDev,proto3" json:"target_dev,omitempty"`                                                    // guest device name (e.g. "vda")
+	Protocol      string                 `protobuf:"bytes,3,opt,name=protocol,proto3" json:"protocol,omitempty"`                                                                       // storage protocol: "sim", "iscsi", "rbd"
+	Params        map[string]string      `protobuf:"bytes,4,rep,name=params,proto3" json:"params,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // protocol-specific parameters from ExportInfo
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiskSpec) Reset() {
+	*x = DiskSpec{}
+	mi := &file_agent_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiskSpec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiskSpec) ProtoMessage() {}
+
+func (x *DiskSpec) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiskSpec.ProtoReflect.Descriptor instead.
+func (*DiskSpec) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *DiskSpec) GetDevicePath() string {
+	if x != nil {
+		return x.DevicePath
+	}
+	return ""
+}
+
+func (x *DiskSpec) GetTargetDev() string {
+	if x != nil {
+		return x.TargetDev
+	}
+	return ""
+}
+
+func (x *DiskSpec) GetProtocol() string {
+	if x != nil {
+		return x.Protocol
+	}
+	return ""
+}
+
+func (x *DiskSpec) GetParams() map[string]string {
+	if x != nil {
+		return x.Params
+	}
+	return nil
+}
+
+// PortSpec describes a network interface to attach to a VM.
+type PortSpec struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PortId        string                 `protobuf:"bytes,1,opt,name=port_id,json=portId,proto3" json:"port_id,omitempty"`             // OVS interfaceid / Logical_Switch_Port name
+	MacAddress    string                 `protobuf:"bytes,2,opt,name=mac_address,json=macAddress,proto3" json:"mac_address,omitempty"` // guest MAC address
+	BridgeName    string                 `protobuf:"bytes,3,opt,name=bridge_name,json=bridgeName,proto3" json:"bridge_name,omitempty"` // OVS bridge name
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PortSpec) Reset() {
+	*x = PortSpec{}
+	mi := &file_agent_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PortSpec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PortSpec) ProtoMessage() {}
+
+func (x *PortSpec) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PortSpec.ProtoReflect.Descriptor instead.
+func (*PortSpec) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *PortSpec) GetPortId() string {
+	if x != nil {
+		return x.PortId
+	}
+	return ""
+}
+
+func (x *PortSpec) GetMacAddress() string {
+	if x != nil {
+		return x.MacAddress
+	}
+	return ""
+}
+
+func (x *PortSpec) GetBridgeName() string {
+	if x != nil {
+		return x.BridgeName
+	}
+	return ""
+}
+
+// CloudInitSpec contains cloud-init seed data for a VM.
+type CloudInitSpec struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Hostname      string                 `protobuf:"bytes,1,opt,name=hostname,proto3" json:"hostname,omitempty"`
+	UserData      string                 `protobuf:"bytes,2,opt,name=user_data,json=userData,proto3" json:"user_data,omitempty"`
+	MetaData      string                 `protobuf:"bytes,3,opt,name=meta_data,json=metaData,proto3" json:"meta_data,omitempty"`
+	NetworkConfig string                 `protobuf:"bytes,4,opt,name=network_config,json=networkConfig,proto3" json:"network_config,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CloudInitSpec) Reset() {
+	*x = CloudInitSpec{}
+	mi := &file_agent_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CloudInitSpec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CloudInitSpec) ProtoMessage() {}
+
+func (x *CloudInitSpec) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CloudInitSpec.ProtoReflect.Descriptor instead.
+func (*CloudInitSpec) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *CloudInitSpec) GetHostname() string {
+	if x != nil {
+		return x.Hostname
+	}
+	return ""
+}
+
+func (x *CloudInitSpec) GetUserData() string {
+	if x != nil {
+		return x.UserData
+	}
+	return ""
+}
+
+func (x *CloudInitSpec) GetMetaData() string {
+	if x != nil {
+		return x.MetaData
+	}
+	return ""
+}
+
+func (x *CloudInitSpec) GetNetworkConfig() string {
+	if x != nil {
+		return x.NetworkConfig
+	}
+	return ""
+}
+
+type CreateVMRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	VmId          string                 `protobuf:"bytes,1,opt,name=vm_id,json=vmId,proto3" json:"vm_id,omitempty"` // UUID assigned by the compute orchestrator
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`             // VM name
+	Vcpus         int32                  `protobuf:"varint,3,opt,name=vcpus,proto3" json:"vcpus,omitempty"`
+	RamMb         int64                  `protobuf:"varint,4,opt,name=ram_mb,json=ramMb,proto3" json:"ram_mb,omitempty"`
+	Disks         []*DiskSpec            `protobuf:"bytes,5,rep,name=disks,proto3" json:"disks,omitempty"`
+	Ports         []*PortSpec            `protobuf:"bytes,6,rep,name=ports,proto3" json:"ports,omitempty"`
+	CloudInit     *CloudInitSpec         `protobuf:"bytes,7,opt,name=cloud_init,json=cloudInit,proto3" json:"cloud_init,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateVMRequest) Reset() {
+	*x = CreateVMRequest{}
+	mi := &file_agent_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateVMRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateVMRequest) ProtoMessage() {}
+
+func (x *CreateVMRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateVMRequest.ProtoReflect.Descriptor instead.
+func (*CreateVMRequest) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *CreateVMRequest) GetVmId() string {
+	if x != nil {
+		return x.VmId
+	}
+	return ""
+}
+
+func (x *CreateVMRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CreateVMRequest) GetVcpus() int32 {
+	if x != nil {
+		return x.Vcpus
+	}
+	return 0
+}
+
+func (x *CreateVMRequest) GetRamMb() int64 {
+	if x != nil {
+		return x.RamMb
+	}
+	return 0
+}
+
+func (x *CreateVMRequest) GetDisks() []*DiskSpec {
+	if x != nil {
+		return x.Disks
+	}
+	return nil
+}
+
+func (x *CreateVMRequest) GetPorts() []*PortSpec {
+	if x != nil {
+		return x.Ports
+	}
+	return nil
+}
+
+func (x *CreateVMRequest) GetCloudInit() *CloudInitSpec {
+	if x != nil {
+		return x.CloudInit
+	}
+	return nil
+}
+
+type CreateVMResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	VmId          string                 `protobuf:"bytes,1,opt,name=vm_id,json=vmId,proto3" json:"vm_id,omitempty"`
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"` // "running" on success
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateVMResponse) Reset() {
+	*x = CreateVMResponse{}
+	mi := &file_agent_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateVMResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateVMResponse) ProtoMessage() {}
+
+func (x *CreateVMResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateVMResponse.ProtoReflect.Descriptor instead.
+func (*CreateVMResponse) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *CreateVMResponse) GetVmId() string {
+	if x != nil {
+		return x.VmId
+	}
+	return ""
+}
+
+func (x *CreateVMResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+type DeleteVMRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	VmId          string                 `protobuf:"bytes,1,opt,name=vm_id,json=vmId,proto3" json:"vm_id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Disks         []*DiskSpec            `protobuf:"bytes,3,rep,name=disks,proto3" json:"disks,omitempty"` // disks to detach
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteVMRequest) Reset() {
+	*x = DeleteVMRequest{}
+	mi := &file_agent_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteVMRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteVMRequest) ProtoMessage() {}
+
+func (x *DeleteVMRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteVMRequest.ProtoReflect.Descriptor instead.
+func (*DeleteVMRequest) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *DeleteVMRequest) GetVmId() string {
+	if x != nil {
+		return x.VmId
+	}
+	return ""
+}
+
+func (x *DeleteVMRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *DeleteVMRequest) GetDisks() []*DiskSpec {
+	if x != nil {
+		return x.Disks
+	}
+	return nil
+}
+
+type DeleteVMResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteVMResponse) Reset() {
+	*x = DeleteVMResponse{}
+	mi := &file_agent_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteVMResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteVMResponse) ProtoMessage() {}
+
+func (x *DeleteVMResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteVMResponse.ProtoReflect.Descriptor instead.
+func (*DeleteVMResponse) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{12}
+}
+
 var File_agent_proto protoreflect.FileDescriptor
 
 const file_agent_proto_rawDesc = "" +
 	"\n" +
-	"\vagent.proto\x12\x0fcirrus.agent.v1\"\x82\x02\n" +
+	"\vagent.proto\x12\x0fcirrus.agent.v1\"\xac\x02\n" +
 	"\x13RegisterHostRequest\x12-\n" +
 	"\x12registration_token\x18\x01 \x01(\tR\x11registrationToken\x12\x1a\n" +
 	"\bhostname\x18\x02 \x01(\tR\bhostname\x12\x18\n" +
@@ -419,7 +866,8 @@ const file_agent_proto_rawDesc = "" +
 	"capability\x12'\n" +
 	"\x0fstorage_domains\x18\x06 \x03(\tR\x0estorageDomains\x12\x1a\n" +
 	"\blocation\x18\a \x01(\tR\blocation\x12\x1b\n" +
-	"\tfabric_ip\x18\b \x01(\tR\bfabricIpJ\x04\b\x05\x10\x06\"e\n" +
+	"\tfabric_ip\x18\b \x01(\tR\bfabricIp\x12(\n" +
+	"\x10worker_grpc_addr\x18\t \x01(\tR\x0eworkerGrpcAddrJ\x04\b\x05\x10\x06\"e\n" +
 	"\x14RegisterHostResponse\x12\x17\n" +
 	"\ahost_id\x18\x01 \x01(\tR\x06hostId\x12\x1a\n" +
 	"\baccepted\x18\x02 \x01(\bR\baccepted\x12\x18\n" +
@@ -440,10 +888,51 @@ const file_agent_proto_rawDesc = "" +
 	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x14\n" +
 	"\x05vcpus\x18\x03 \x01(\x05R\x05vcpus\x12\x15\n" +
-	"\x06ram_mb\x18\x04 \x01(\x03R\x05ramMb2\xc4\x01\n" +
+	"\x06ram_mb\x18\x04 \x01(\x03R\x05ramMb\"\xe0\x01\n" +
+	"\bDiskSpec\x12\x1f\n" +
+	"\vdevice_path\x18\x01 \x01(\tR\n" +
+	"devicePath\x12\x1d\n" +
+	"\n" +
+	"target_dev\x18\x02 \x01(\tR\ttargetDev\x12\x1a\n" +
+	"\bprotocol\x18\x03 \x01(\tR\bprotocol\x12=\n" +
+	"\x06params\x18\x04 \x03(\v2%.cirrus.agent.v1.DiskSpec.ParamsEntryR\x06params\x1a9\n" +
+	"\vParamsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"e\n" +
+	"\bPortSpec\x12\x17\n" +
+	"\aport_id\x18\x01 \x01(\tR\x06portId\x12\x1f\n" +
+	"\vmac_address\x18\x02 \x01(\tR\n" +
+	"macAddress\x12\x1f\n" +
+	"\vbridge_name\x18\x03 \x01(\tR\n" +
+	"bridgeName\"\x8c\x01\n" +
+	"\rCloudInitSpec\x12\x1a\n" +
+	"\bhostname\x18\x01 \x01(\tR\bhostname\x12\x1b\n" +
+	"\tuser_data\x18\x02 \x01(\tR\buserData\x12\x1b\n" +
+	"\tmeta_data\x18\x03 \x01(\tR\bmetaData\x12%\n" +
+	"\x0enetwork_config\x18\x04 \x01(\tR\rnetworkConfig\"\x88\x02\n" +
+	"\x0fCreateVMRequest\x12\x13\n" +
+	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
+	"\x05vcpus\x18\x03 \x01(\x05R\x05vcpus\x12\x15\n" +
+	"\x06ram_mb\x18\x04 \x01(\x03R\x05ramMb\x12/\n" +
+	"\x05disks\x18\x05 \x03(\v2\x19.cirrus.agent.v1.DiskSpecR\x05disks\x12/\n" +
+	"\x05ports\x18\x06 \x03(\v2\x19.cirrus.agent.v1.PortSpecR\x05ports\x12=\n" +
+	"\n" +
+	"cloud_init\x18\a \x01(\v2\x1e.cirrus.agent.v1.CloudInitSpecR\tcloudInit\"?\n" +
+	"\x10CreateVMResponse\x12\x13\n" +
+	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\"k\n" +
+	"\x0fDeleteVMRequest\x12\x13\n" +
+	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12/\n" +
+	"\x05disks\x18\x03 \x03(\v2\x19.cirrus.agent.v1.DiskSpecR\x05disks\"\x12\n" +
+	"\x10DeleteVMResponse2\xc4\x01\n" +
 	"\x11ControllerService\x12[\n" +
 	"\fRegisterHost\x12$.cirrus.agent.v1.RegisterHostRequest\x1a%.cirrus.agent.v1.RegisterHostResponse\x12R\n" +
-	"\tHeartbeat\x12!.cirrus.agent.v1.HeartbeatRequest\x1a\".cirrus.agent.v1.HeartbeatResponseB(Z&github.com/tjst-t/cirrus/proto/agentpbb\x06proto3"
+	"\tHeartbeat\x12!.cirrus.agent.v1.HeartbeatRequest\x1a\".cirrus.agent.v1.HeartbeatResponse2\xb1\x01\n" +
+	"\rWorkerService\x12O\n" +
+	"\bCreateVM\x12 .cirrus.agent.v1.CreateVMRequest\x1a!.cirrus.agent.v1.CreateVMResponse\x12O\n" +
+	"\bDeleteVM\x12 .cirrus.agent.v1.DeleteVMRequest\x1a!.cirrus.agent.v1.DeleteVMResponseB(Z&github.com/tjst-t/cirrus/proto/agentpbb\x06proto3"
 
 var (
 	file_agent_proto_rawDescOnce sync.Once
@@ -457,7 +946,7 @@ func file_agent_proto_rawDescGZIP() []byte {
 	return file_agent_proto_rawDescData
 }
 
-var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_agent_proto_goTypes = []any{
 	(*RegisterHostRequest)(nil),  // 0: cirrus.agent.v1.RegisterHostRequest
 	(*RegisterHostResponse)(nil), // 1: cirrus.agent.v1.RegisterHostResponse
@@ -465,19 +954,36 @@ var file_agent_proto_goTypes = []any{
 	(*HeartbeatResponse)(nil),    // 3: cirrus.agent.v1.HeartbeatResponse
 	(*ResourceReport)(nil),       // 4: cirrus.agent.v1.ResourceReport
 	(*VMInfo)(nil),               // 5: cirrus.agent.v1.VMInfo
+	(*DiskSpec)(nil),             // 6: cirrus.agent.v1.DiskSpec
+	(*PortSpec)(nil),             // 7: cirrus.agent.v1.PortSpec
+	(*CloudInitSpec)(nil),        // 8: cirrus.agent.v1.CloudInitSpec
+	(*CreateVMRequest)(nil),      // 9: cirrus.agent.v1.CreateVMRequest
+	(*CreateVMResponse)(nil),     // 10: cirrus.agent.v1.CreateVMResponse
+	(*DeleteVMRequest)(nil),      // 11: cirrus.agent.v1.DeleteVMRequest
+	(*DeleteVMResponse)(nil),     // 12: cirrus.agent.v1.DeleteVMResponse
+	nil,                          // 13: cirrus.agent.v1.DiskSpec.ParamsEntry
 }
 var file_agent_proto_depIdxs = []int32{
-	4, // 0: cirrus.agent.v1.HeartbeatRequest.resources:type_name -> cirrus.agent.v1.ResourceReport
-	5, // 1: cirrus.agent.v1.ResourceReport.running_vms:type_name -> cirrus.agent.v1.VMInfo
-	0, // 2: cirrus.agent.v1.ControllerService.RegisterHost:input_type -> cirrus.agent.v1.RegisterHostRequest
-	2, // 3: cirrus.agent.v1.ControllerService.Heartbeat:input_type -> cirrus.agent.v1.HeartbeatRequest
-	1, // 4: cirrus.agent.v1.ControllerService.RegisterHost:output_type -> cirrus.agent.v1.RegisterHostResponse
-	3, // 5: cirrus.agent.v1.ControllerService.Heartbeat:output_type -> cirrus.agent.v1.HeartbeatResponse
-	4, // [4:6] is the sub-list for method output_type
-	2, // [2:4] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	4,  // 0: cirrus.agent.v1.HeartbeatRequest.resources:type_name -> cirrus.agent.v1.ResourceReport
+	5,  // 1: cirrus.agent.v1.ResourceReport.running_vms:type_name -> cirrus.agent.v1.VMInfo
+	13, // 2: cirrus.agent.v1.DiskSpec.params:type_name -> cirrus.agent.v1.DiskSpec.ParamsEntry
+	6,  // 3: cirrus.agent.v1.CreateVMRequest.disks:type_name -> cirrus.agent.v1.DiskSpec
+	7,  // 4: cirrus.agent.v1.CreateVMRequest.ports:type_name -> cirrus.agent.v1.PortSpec
+	8,  // 5: cirrus.agent.v1.CreateVMRequest.cloud_init:type_name -> cirrus.agent.v1.CloudInitSpec
+	6,  // 6: cirrus.agent.v1.DeleteVMRequest.disks:type_name -> cirrus.agent.v1.DiskSpec
+	0,  // 7: cirrus.agent.v1.ControllerService.RegisterHost:input_type -> cirrus.agent.v1.RegisterHostRequest
+	2,  // 8: cirrus.agent.v1.ControllerService.Heartbeat:input_type -> cirrus.agent.v1.HeartbeatRequest
+	9,  // 9: cirrus.agent.v1.WorkerService.CreateVM:input_type -> cirrus.agent.v1.CreateVMRequest
+	11, // 10: cirrus.agent.v1.WorkerService.DeleteVM:input_type -> cirrus.agent.v1.DeleteVMRequest
+	1,  // 11: cirrus.agent.v1.ControllerService.RegisterHost:output_type -> cirrus.agent.v1.RegisterHostResponse
+	3,  // 12: cirrus.agent.v1.ControllerService.Heartbeat:output_type -> cirrus.agent.v1.HeartbeatResponse
+	10, // 13: cirrus.agent.v1.WorkerService.CreateVM:output_type -> cirrus.agent.v1.CreateVMResponse
+	12, // 14: cirrus.agent.v1.WorkerService.DeleteVM:output_type -> cirrus.agent.v1.DeleteVMResponse
+	11, // [11:15] is the sub-list for method output_type
+	7,  // [7:11] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_agent_proto_init() }
@@ -491,9 +997,9 @@ func file_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_proto_rawDesc), len(file_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   14,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_agent_proto_goTypes,
 		DependencyIndexes: file_agent_proto_depIdxs,

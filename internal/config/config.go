@@ -16,19 +16,23 @@ type ControllerConfig struct {
 	AuthTokens        string `yaml:"auth_tokens"`        // comma-separated token=external_id pairs
 	RegistrationToken string `yaml:"registration_token"` // shared secret for worker self-registration
 	LogLevel          string `yaml:"log_level"`          // debug, info, warn, error
+	Debug             bool   `yaml:"debug"`              // include internal error details in API 500 responses
 }
 
 // WorkerConfig holds configuration for the worker process.
 type WorkerConfig struct {
-	Controller         string `yaml:"controller"`
-	HostID             string `yaml:"host_id"`
-	LibvirtURI         string `yaml:"libvirt_uri"`
-	RegistrationToken  string `yaml:"registration_token"`  // shared secret for self-registration
-	HeartbeatInterval  int    `yaml:"heartbeat_interval"`  // heartbeat interval in seconds
-	LogLevel           string `yaml:"log_level"`           // debug, info, warn, error
-	StorageDomains     string `yaml:"storage_domains"`     // comma-separated storage domains to join
-	Location           string `yaml:"location"`            // location in the topology tree (name or ID)
-	FabricIP           string `yaml:"fabric_ip"`           // IP for Geneve tunnel endpoints (overlay fabric)
+	Controller            string `yaml:"controller"`
+	HostID                string `yaml:"host_id"`
+	GRPCPort              int    `yaml:"grpc_port"`             // port for the worker-side WorkerService gRPC server
+	WorkerGRPCAddr        string `yaml:"worker_grpc_addr"`      // address advertised to controller for calling WorkerService (host:port)
+	LibvirtURI            string `yaml:"libvirt_uri"`
+	LibvirtSimMgmtAddr    string `yaml:"libvirt_sim_mgmt_addr"` // HTTP management API base URL for libvirtd-sim (e.g. http://localhost:8100)
+	RegistrationToken     string `yaml:"registration_token"`    // shared secret for self-registration
+	HeartbeatInterval     int    `yaml:"heartbeat_interval"`    // heartbeat interval in seconds
+	LogLevel              string `yaml:"log_level"`             // debug, info, warn, error
+	StorageDomains        string `yaml:"storage_domains"`       // comma-separated storage domains to join
+	Location              string `yaml:"location"`              // location in the topology tree (name or ID)
+	FabricIP              string `yaml:"fabric_ip"`             // IP for Geneve tunnel endpoints (overlay fabric)
 }
 
 // ParseAuthTokens parses the auth-tokens flag value into a map of token→externalID.

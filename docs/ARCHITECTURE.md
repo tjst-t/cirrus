@@ -17,8 +17,9 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 
 - **Responsibility**: libvirt VM 操作、ボリュームのホスト側アタッチ、OVS/OpenFlow 制御、DHCP/DNS/メタデータサービス
 - **Location**: `internal/agent/`, `internal/hypervisor/`, `internal/network/agent/`
-- **Key interfaces**: gRPC サーバ（Controller から指示受信）
+- **Key interfaces**: `WorkerService` gRPC サーバ（Controller から VM 作成・削除指示を受信）
 - **Depends on**: hypervisor, blockdev, netcontroller
+- **gRPC**: Controller → Worker 方向（`WorkerService.CreateVM` / `DeleteVM`）; Worker → Controller 方向（`ControllerService.Heartbeat`）
 
 ### Identity (`internal/identity`)
 
@@ -37,6 +38,28 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 - `internal/storage/driver/sim/` — テスト用シムドライバ
 - `internal/storage/driver/iscsi/` — iSCSI BackendDriver（cirrus-iscsi-server 経由）
 - `internal/storage/driver/rbd/` — Ceph RBD BackendDriver（cirrus-rbd-server 経由）
+
+### Compute (`internal/compute`)
+
+- VM ライフサイクル管理（作成・削除）
+- `Orchestrator`: 非同期 VM 作成パイプライン（Network.CreatePort → Storage.CreateVolume → Scheduler.Schedule → Storage.ExportVolume → WorkerService.CreateVM）
+- `Service` インターフェース: CreateVM/GetVM/ListVMs/DeleteVM
+- DB: `vms`, `vm_volumes` テーブル
+
+### Scheduler (`internal/scheduler`)
+
+- `Scheduler.Schedule(spec) → (host_id, backend_id)` でプレースメントを決定
+- AZ フィルタ → Flavor 充足フィルタ → リソース空き率スコアリング
+
+### Flavor (`internal/flavor`)
+
+- VM スペック（vCPU/RAM/Disk）のテンプレート管理
+- infra_admin が作成・削除、テナントが参照
+
+### BlockDev (`internal/blockdev`)
+
+- Worker 側: ExportInfo の protocol に応じてボリュームを OS ブロックデバイスとしてアタッチ/デタッチ
+- Protocol: `rbd` (rbd device map), `iscsi` (iscsiadm login), `sim` (no-op)
 
 ### Topology (`internal/topology`)
 
@@ -89,6 +112,23 @@ Controller → gRPC → Agent (internal/agent)
   → NetworkAgent (OVS) — OpenFlowフロー設定
 ```
 
+### VM 作成フロー (Compute Orchestrator)
+
+```
+POST /api/v1/vms
+  → compute.Orchestrator.CreateVM (DB に pending VM 挿入)
+  → goroutine で非同期実行:
+      1. flavor 解決
+      2. scheduler.Schedule → (host_id, backend_id)
+      3. network.CreatePort (OVN LSP 作成)
+      4. storage.CreateVolume + ExportVolume
+      5. WorkerClientPool.Get(host.worker_grpc_addr)
+      6. WorkerService.CreateVM gRPC
+           → blockdev.Attach (protocol 判定)
+           → hypervisor.DefineVM (cloud-init ISO + domain XML → libvirtd-sim)
+      7. VM status → running
+```
+
 ## Directory Structure
 
 ```
@@ -103,11 +143,16 @@ cirrus/
 │   ├── identity/     # 認証認可・マルチテナント
 │   ├── network/      # VPC・OVS制御
 │   ├── storage/      # ボリューム・バックエンド管理
+│   ├── compute/      # VM ライフサイクル (Orchestrator)
+│   ├── scheduler/    # VM プレースメント
+│   ├── flavor/       # VM スペックテンプレート
+│   ├── blockdev/     # Worker 側 ボリュームアタッチ
 │   ├── topology/     # トポロジー・AZ
 │   ├── host/         # ホスト管理
-│   ├── agent/        # Worker gRPC サーバ
-│   ├── hypervisor/   # libvirt
+│   ├── agent/        # Worker gRPC サーバ (WorkerService)
+│   ├── hypervisor/   # libvirt (DefineVM/StartVM 等)
 │   ├── netcontroller/# OVS OpenFlow
+│   ├── controller/   # Controller gRPC サーバ + WorkerClientPool
 │   ├── controller/reconcile/ # Reconciler ループ群
 │   ├── client/       # cirrusctl API クライアント
 │   └── state/        # DB・マイグレーション

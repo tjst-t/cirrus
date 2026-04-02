@@ -83,6 +83,21 @@ const (
 	ActionGetVolume    Action = "get_volume"
 	ActionDeleteVolume Action = "delete_volume"
 	ActionResizeVolume Action = "resize_volume"
+
+	// Flavor actions (infra_admin: create/delete; all authenticated: list/get)
+	ActionCreateFlavor Action = "create_flavor"
+	ActionListFlavors  Action = "list_flavors"
+	ActionGetFlavor    Action = "get_flavor"
+	ActionDeleteFlavor Action = "delete_flavor"
+
+	// VM actions (tenant-scoped)
+	ActionCreateVM Action = "create_vm"
+	ActionListVMs  Action = "list_vms"
+	ActionGetVM    Action = "get_vm"
+	ActionDeleteVM Action = "delete_vm"
+	ActionStartVM  Action = "start_vm"
+	ActionStopVM   Action = "stop_vm"
+	ActionRebootVM Action = "reboot_vm"
 )
 
 // Resource represents the target resource of an authorization check.
@@ -167,7 +182,9 @@ func (a *RBACAuthorizer) checkPermission(ra RoleAssignment, action Action, resou
 			ActionCreateGroup, ActionListGroups, ActionGetGroup, ActionDeleteGroup,
 			ActionCreatePolicy, ActionListPolicies, ActionGetPolicy, ActionDeletePolicy,
 			ActionListVolumeTypes, ActionGetVolumeType,
-			ActionCreateVolume, ActionListVolumes, ActionGetVolume, ActionDeleteVolume, ActionResizeVolume:
+			ActionCreateVolume, ActionListVolumes, ActionGetVolume, ActionDeleteVolume, ActionResizeVolume,
+			ActionListFlavors, ActionGetFlavor,
+			ActionCreateVM, ActionListVMs, ActionGetVM, ActionDeleteVM, ActionStartVM, ActionStopVM, ActionRebootVM:
 			return resource.TenantID != nil && *resource.TenantID == *ra.ScopeID
 		}
 
@@ -184,7 +201,9 @@ func (a *RBACAuthorizer) checkPermission(ra RoleAssignment, action Action, resou
 			ActionListGroups, ActionGetGroup,
 			ActionListPolicies, ActionGetPolicy,
 			ActionListVolumeTypes, ActionGetVolumeType,
-			ActionListVolumes, ActionGetVolume:
+			ActionListVolumes, ActionGetVolume,
+			ActionListFlavors, ActionGetFlavor,
+			ActionListVMs, ActionGetVM:
 			return resource.TenantID != nil && *resource.TenantID == *ra.ScopeID
 		}
 	}

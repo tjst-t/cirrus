@@ -19,9 +19,13 @@ import (
 	"github.com/tjst-t/cirrus/internal/agent"
 	"github.com/tjst-t/cirrus/internal/api"
 	"github.com/tjst-t/cirrus/internal/az"
+	"github.com/tjst-t/cirrus/internal/blockdev"
+	"github.com/tjst-t/cirrus/internal/compute"
 	"github.com/tjst-t/cirrus/internal/config"
 	"github.com/tjst-t/cirrus/internal/controller"
 	"github.com/tjst-t/cirrus/internal/controller/reconcile"
+	"github.com/tjst-t/cirrus/internal/scheduler"
+	"github.com/tjst-t/cirrus/internal/flavor"
 	"github.com/tjst-t/cirrus/internal/host"
 	"github.com/tjst-t/cirrus/internal/hypervisor"
 	"github.com/tjst-t/cirrus/internal/identity"
@@ -66,6 +70,7 @@ func newControllerCmd() *cobra.Command {
 	f.StringVar(&cfg.AuthTokens, "auth-tokens", "", "Static auth tokens (token1=externalid1,token2=externalid2)")
 	f.StringVar(&cfg.RegistrationToken, "registration-token", "", "Shared secret for worker self-registration")
 	f.StringVar(&cfg.LogLevel, "log-level", "info", "Log level (debug, info, warn, error)")
+	f.BoolVar(&cfg.Debug, "debug", false, "Include internal error details in API 500 responses (development only)")
 	return cmd
 }
 
@@ -81,7 +86,10 @@ func newWorkerCmd() *cobra.Command {
 	f := cmd.Flags()
 	f.StringVar(&cfg.Controller, "controller", "localhost:9090", "Controller gRPC address")
 	f.StringVar(&cfg.HostID, "host-id", "", "Host ID for this worker (deprecated: use --registration-token)")
+	f.IntVar(&cfg.GRPCPort, "grpc-port", 0, "Port for the worker-side WorkerService gRPC server (0 = disabled)")
+	f.StringVar(&cfg.WorkerGRPCAddr, "worker-grpc-addr", "", "Address (host:port) advertised to controller for WorkerService (auto-derived if empty)")
 	f.StringVar(&cfg.LibvirtURI, "libvirt-uri", "", "Libvirt connection URI (tcp://host:port)")
+	f.StringVar(&cfg.LibvirtSimMgmtAddr, "libvirt-sim-mgmt-addr", "", "libvirtd-sim HTTP management API base URL (e.g. http://localhost:8100)")
 	f.StringVar(&cfg.RegistrationToken, "registration-token", "", "Registration token for self-registration")
 	f.IntVar(&cfg.HeartbeatInterval, "heartbeat-interval", 10, "Heartbeat interval in seconds")
 	f.StringVar(&cfg.LogLevel, "log-level", "info", "Log level (debug, info, warn, error)")
@@ -156,8 +164,21 @@ func runController(cfg *config.ControllerConfig) error {
 	storageStore := storage.NewStore(pool)
 	storageSvc := storage.NewService(storageStore, storageDrivers, logger)
 
+	// Flavor service
+	flavorSvc := flavor.NewService(pool)
+
+	// Scheduler
+	sched := scheduler.New(hostSvc, storageSvc, topologySvc)
+
+	// Worker client pool (controller → worker gRPC)
+	workerPool := controller.NewWorkerClientPool()
+	defer workerPool.Close()
+
+	// Compute orchestrator
+	computeSvc := compute.NewOrchestrator(pool, flavorSvc, networkSvc, storageSvc, sched, workerPool, logger)
+
 	// HTTP API
-	router := api.NewRouter(pool, logger, authn, authz, identitySvc, hostSvc, topologySvc, networkSvc, azSvc, storageSvc)
+	router := api.NewRouter(pool, logger, authn, authz, identitySvc, hostSvc, topologySvc, networkSvc, azSvc, storageSvc, flavorSvc, computeSvc, cfg.Debug)
 	httpSrv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.APIPort),
 		Handler: router,
@@ -230,7 +251,7 @@ func runWorker(cfg *config.WorkerConfig) error {
 	// Hypervisor driver
 	var driver hypervisor.Driver
 	if cfg.LibvirtURI != "" {
-		driver = hypervisor.NewLibvirtDriver(cfg.LibvirtURI)
+		driver = hypervisor.NewLibvirtDriver(cfg.LibvirtURI, cfg.LibvirtSimMgmtAddr)
 		if err := driver.Connect(ctx); err != nil {
 			logger.Warn("libvirt connection check failed", "uri", cfg.LibvirtURI, "error", err)
 		} else {
@@ -261,9 +282,15 @@ func runWorker(cfg *config.WorkerConfig) error {
 				}
 			}
 		}
-		if err := ag.Register(ctx, cfg.RegistrationToken, cfg.LibvirtURI, cfg.FabricIP, topo); err != nil {
+		if err := ag.Register(ctx, cfg.RegistrationToken, cfg.LibvirtURI, cfg.FabricIP, cfg.WorkerGRPCAddr, topo); err != nil {
 			return fmt.Errorf("worker: registration failed: %w", err)
 		}
+	}
+
+	// Wire the resolved host ID into the libvirt driver so it can call
+	// host-scoped management API endpoints.
+	if libvirtDrv, ok := driver.(*hypervisor.LibvirtDriver); ok {
+		libvirtDrv.SetHostID(ag.HostID())
 	}
 
 	logger.Info("worker starting", "host_id", ag.HostID(), "controller", cfg.Controller)
@@ -288,6 +315,19 @@ func runWorker(cfg *config.WorkerConfig) error {
 	if netAgent != nil {
 		g.Go(func() error {
 			return netAgent.Run(gCtx)
+		})
+	}
+
+	// Worker gRPC server (WorkerService: called by controller to create/delete VMs)
+	if cfg.GRPCPort > 0 {
+		blockMgr := blockdev.New(logger)
+		workerSrv := agent.NewWorkerServer(driver, blockMgr, logger)
+		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
+		if err != nil {
+			return fmt.Errorf("worker: grpc listen: %w", err)
+		}
+		g.Go(func() error {
+			return agent.StartGRPCServer(gCtx, lis, workerSrv, logger)
 		})
 	}
 

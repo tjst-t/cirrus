@@ -13,6 +13,12 @@ service ControllerService {
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
 }
 
+// WorkerService is called BY the controller on workers to manage VMs.
+service WorkerService {
+  rpc CreateVM(CreateVMRequest) returns (CreateVMResponse);
+  rpc DeleteVM(DeleteVMRequest) returns (DeleteVMResponse);
+}
+
 message RegisterHostRequest {
   string registration_token = 1;
   string hostname = 2;
@@ -23,6 +29,7 @@ message RegisterHostRequest {
   repeated string storage_domains = 6; // storage domain names or IDs
   string location = 7;                // location name or ID
   string fabric_ip = 8;              // IP for Geneve tunnel endpoints (overlay fabric)
+  string worker_grpc_addr = 9;      // address of this worker's WorkerService gRPC server (e.g. "host:9191")
 }
 
 message RegisterHostResponse {
@@ -53,3 +60,49 @@ message VMInfo {
   int32 vcpus = 3;
   int64 ram_mb = 4;
 }
+
+// DiskSpec describes a block device to attach to a VM.
+message DiskSpec {
+  string device_path = 1;           // host-side block device (e.g. /dev/sdb), filled in by worker after Attach
+  string target_dev = 2;            // guest device name (e.g. "vda")
+  string protocol = 3;              // storage protocol: "sim", "iscsi", "rbd"
+  map<string, string> params = 4;   // protocol-specific parameters from ExportInfo
+}
+
+// PortSpec describes a network interface to attach to a VM.
+message PortSpec {
+  string port_id = 1;     // OVS interfaceid / Logical_Switch_Port name
+  string mac_address = 2; // guest MAC address
+  string bridge_name = 3; // OVS bridge name
+}
+
+// CloudInitSpec contains cloud-init seed data for a VM.
+message CloudInitSpec {
+  string hostname = 1;
+  string user_data = 2;
+  string meta_data = 3;
+  string network_config = 4;
+}
+
+message CreateVMRequest {
+  string vm_id = 1;       // UUID assigned by the compute orchestrator
+  string name = 2;        // VM name
+  int32 vcpus = 3;
+  int64 ram_mb = 4;
+  repeated DiskSpec disks = 5;
+  repeated PortSpec ports = 6;
+  CloudInitSpec cloud_init = 7;
+}
+
+message CreateVMResponse {
+  string vm_id = 1;
+  string status = 2; // "running" on success
+}
+
+message DeleteVMRequest {
+  string vm_id = 1;
+  string name = 2;
+  repeated DiskSpec disks = 3; // disks to detach
+}
+
+message DeleteVMResponse {}

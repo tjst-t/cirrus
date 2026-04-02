@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS vm_volumes;
+DROP TABLE IF EXISTS vms;

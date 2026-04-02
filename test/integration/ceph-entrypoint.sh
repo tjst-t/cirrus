@@ -3,7 +3,7 @@
 set -e
 
 # Launch the Ceph demo bootstrap in the background.
-/entrypoint.sh &
+/opt/ceph-container/bin/demo &
 CEPH_PID=$!
 
 echo "==> Waiting for Ceph cluster to be ready..."

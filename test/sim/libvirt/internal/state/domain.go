@@ -3,7 +3,33 @@ package state
 import (
 	"fmt"
 	"time"
+
+	simxml "github.com/tjst-t/cirrus/test/sim/libvirt/internal/xml"
 )
+
+// NewDomainFromXML creates a Domain in shutoff state from a parsed DomainXML.
+// The caller is responsible for calling DefineDomain on the store.
+func NewDomainFromXML(parsed *simxml.DomainXML, rawXML string) *Domain {
+	uuid, err := simxml.ParseUUID(parsed.UUID)
+	if err != nil {
+		// generate a deterministic UUID-like value from name bytes
+		var b [16]byte
+		for i, c := range []byte(parsed.Name) {
+			b[i%16] ^= c
+		}
+		uuid = b
+	}
+	return &Domain{
+		Name:         parsed.Name,
+		UUID:         uuid,
+		VCPUs:        parsed.VCPU,
+		MemoryKiB:    parsed.MemoryKiB(),
+		State:        DomainStateShutoff,
+		XML:          rawXML,
+		InterfaceIDs: parsed.InterfaceIDs(),
+		CreatedAt:    time.Now(),
+	}
+}
 
 // DomainState represents the libvirt domain state.
 type DomainState int32

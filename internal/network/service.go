@@ -27,6 +27,7 @@ type Service interface {
 	DeletePolicy(ctx context.Context, id uuid.UUID) error
 
 	// Ports (read-only for tenants; creation is internal via VM lifecycle)
+	CreatePort(ctx context.Context, spec PortSpec) (*Port, error)
 	GetPort(ctx context.Context, id uuid.UUID) (*Port, error)
 	ListPorts(ctx context.Context, networkID uuid.UUID) ([]Port, error)
 }

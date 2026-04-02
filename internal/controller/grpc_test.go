@@ -30,7 +30,7 @@ func newMockHostSvc() *mockHostSvc {
 	}
 }
 
-func (m *mockHostSvc) RegisterOrGet(_ context.Context, name, address, fabricIP, capability string) (*host.Host, bool, error) {
+func (m *mockHostSvc) RegisterOrGet(_ context.Context, name, address, workerGRPCAddr, fabricIP, capability string) (*host.Host, bool, error) {
 	if h, ok := m.hosts[name]; ok {
 		return h, false, nil
 	}

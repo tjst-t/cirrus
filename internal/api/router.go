@@ -7,6 +7,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tjst-t/cirrus/internal/az"
+	"github.com/tjst-t/cirrus/internal/compute"
+	"github.com/tjst-t/cirrus/internal/flavor"
 	"github.com/tjst-t/cirrus/internal/host"
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/network"
@@ -15,7 +17,8 @@ import (
 )
 
 // NewRouter creates the HTTP router with all middleware and routes.
-func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authenticator, authz identity.Authorizer, identitySvc identity.Service, hostSvc host.Service, topologySvc topology.Service, networkSvc network.Service, azSvc az.Service, storageSvc storage.Service) http.Handler {
+// debug controls whether internal error details are included in 500 responses.
+func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authenticator, authz identity.Authorizer, identitySvc identity.Service, hostSvc host.Service, topologySvc topology.Service, networkSvc network.Service, azSvc az.Service, storageSvc storage.Service, flavorSvc flavor.Service, computeSvc compute.Service, debug bool) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(RequestID)
@@ -127,6 +130,20 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		r.Get("/volumes/{volume_id}", sh.getVolume)
 		r.Delete("/volumes/{volume_id}", sh.deleteVolume)
 		r.Post("/volumes/{volume_id}/resize", sh.resizeVolume)
+
+		// Flavors (infra_admin: create/delete; all authenticated: list/get)
+		fh := &flavorHandlers{svc: flavorSvc, authz: authz}
+		r.Post("/admin/flavors", fh.createFlavor)
+		r.Delete("/admin/flavors/{flavor_id}", fh.deleteFlavor)
+		r.Get("/flavors", fh.listFlavors)
+		r.Get("/flavors/{flavor_id}", fh.getFlavor)
+
+		// VMs
+		vh := &vmHandlers{svc: computeSvc, authz: authz, debug: debug}
+		r.Post("/vms", vh.createVM)
+		r.Get("/vms", vh.listVMs)
+		r.Get("/vms/{vm_id}", vh.getVM)
+		r.Delete("/vms/{vm_id}", vh.deleteVM)
 	})
 
 	return r

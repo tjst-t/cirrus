@@ -47,8 +47,9 @@ type TopologyDeclaration struct {
 }
 
 // Register performs self-registration with the controller using the given token.
+// workerGRPCAddr is the address (host:port) at which the controller can reach this worker's WorkerService.
 // On success, it stores the assigned host UUID for use in subsequent heartbeats.
-func (a *Agent) Register(ctx context.Context, token, libvirtURI, fabricIP string, topo *TopologyDeclaration) error {
+func (a *Agent) Register(ctx context.Context, token, libvirtURI, fabricIP, workerGRPCAddr string, topo *TopologyDeclaration) error {
 	// HOSTNAME_OVERRIDE allows multiple workers on the same machine (dev/sim)
 	hostname := os.Getenv("HOSTNAME_OVERRIDE")
 	if hostname == "" {
@@ -69,6 +70,7 @@ func (a *Agent) Register(ctx context.Context, token, libvirtURI, fabricIP string
 		Hostname:          hostname,
 		Address:           address,
 		FabricIp:          fabricIP,
+		WorkerGrpcAddr:    workerGRPCAddr,
 	}
 	if topo != nil {
 		req.StorageDomains = topo.StorageDomains

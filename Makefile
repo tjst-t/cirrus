@@ -261,7 +261,23 @@ _seed-topology:
 	    -H "Content-Type: application/json" \
 	    -d "{\"storage_domain_id\":\"$$SD_ID\"}" \
 	    http://localhost:$$API_PORT/api/v1/admin/availability-zones/$$AZ_ID/storage-domains >/dev/null 2>&1 || true; \
-	  echo "    Topology seeded."'
+	  echo "    Topology seeded."; \
+	  curl -sf -X POST \
+	    -H "Authorization: Bearer $$TOKEN" \
+	    -H "Content-Type: application/json" \
+	    -d "{\"name\":\"m1.small\",\"vcpus\":1,\"ram_mb\":1024,\"disk_gb\":10}" \
+	    http://localhost:$$API_PORT/api/v1/admin/flavors >/dev/null 2>&1 || true; \
+	  curl -sf -X POST \
+	    -H "Authorization: Bearer $$TOKEN" \
+	    -H "Content-Type: application/json" \
+	    -d "{\"name\":\"m1.medium\",\"vcpus\":2,\"ram_mb\":4096,\"disk_gb\":20}" \
+	    http://localhost:$$API_PORT/api/v1/admin/flavors >/dev/null 2>&1 || true; \
+	  curl -sf -X POST \
+	    -H "Authorization: Bearer $$TOKEN" \
+	    -H "Content-Type: application/json" \
+	    -d "{\"name\":\"m1.large\",\"vcpus\":4,\"ram_mb\":8192,\"disk_gb\":40}" \
+	    http://localhost:$$API_PORT/api/v1/admin/flavors >/dev/null 2>&1 || true; \
+	  echo "    Default flavors seeded."'
 
 # ── Internal: activate hosts ──
 

@@ -11,8 +11,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
-	"github.com/tjst-t/cirrus/internal/client"
 	"github.com/tjst-t/cirrus/internal/az"
+	"github.com/tjst-t/cirrus/internal/client"
+	"github.com/tjst-t/cirrus/internal/compute"
+	"github.com/tjst-t/cirrus/internal/flavor"
 	"github.com/tjst-t/cirrus/internal/host"
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/network"
@@ -55,6 +57,8 @@ func main() {
 	rootCmd.AddCommand(app.newPolicyCmd())
 	rootCmd.AddCommand(app.newVolumeTypeCmd())
 	rootCmd.AddCommand(app.newVolumeCmd())
+	rootCmd.AddCommand(app.newFlavorCmd())
+	rootCmd.AddCommand(app.newVMCmd())
 	rootCmd.AddCommand(app.newAdminCmd())
 
 	if err := rootCmd.Execute(); err != nil {
@@ -843,6 +847,7 @@ func (app *cli) newAdminCmd() *cobra.Command {
 	cmd.AddCommand(app.newAdminAZCmd())
 	cmd.AddCommand(app.newAdminStorageBackendCmd())
 	cmd.AddCommand(app.newAdminVolumeTypeCmd())
+	cmd.AddCommand(app.newAdminFlavorCmd())
 	return cmd
 }
 
@@ -2065,6 +2070,136 @@ func (app *cli) newVolumeTypeShowCmd() *cobra.Command {
 	}
 }
 
+// --- Flavor commands ---
+
+func (app *cli) newAdminFlavorCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "flavor",
+		Short: "Manage VM flavors (admin)",
+	}
+	cmd.AddCommand(app.newAdminFlavorCreateCmd())
+	cmd.AddCommand(app.newAdminFlavorDeleteCmd())
+	return cmd
+}
+
+func (app *cli) newAdminFlavorCreateCmd() *cobra.Command {
+	var vcpus int
+	var ramMB, diskGB int64
+	var isPublic bool
+	cmd := &cobra.Command{
+		Use:   "create <name>",
+		Short: "Create a new VM flavor",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			f, err := app.newClient().CreateFlavor(ctx, client.CreateFlavorRequest{
+				Name:   args[0],
+				VCPUs:  vcpus,
+				RAMMB:  ramMB,
+				DiskGB: diskGB,
+				IsPublic: func() *bool { v := isPublic; return &v }(),
+			})
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NAME", "VCPUS", "RAM_MB", "DISK_GB", "PUBLIC"},
+				[][]string{flavorRow(f)},
+			)
+		},
+	}
+	cmd.Flags().IntVar(&vcpus, "vcpus", 1, "Number of vCPUs")
+	cmd.Flags().Int64Var(&ramMB, "ram-mb", 1024, "RAM in MB")
+	cmd.Flags().Int64Var(&diskGB, "disk-gb", 0, "Disk size in GB")
+	cmd.Flags().BoolVar(&isPublic, "public", true, "Make flavor public")
+	return cmd
+}
+
+func (app *cli) newAdminFlavorDeleteCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete <id-or-name>",
+		Short: "Delete a flavor",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			id, err := c.ResolveFlavor(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			return c.DeleteFlavor(ctx, id)
+		},
+	}
+}
+
+func (app *cli) newFlavorCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "flavor",
+		Short: "List and show VM flavors",
+	}
+	cmd.AddCommand(app.newFlavorListCmd())
+	cmd.AddCommand(app.newFlavorShowCmd())
+	return cmd
+}
+
+func (app *cli) newFlavorListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List available flavors",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			flavors, err := app.newClient().ListFlavors(ctx)
+			if err != nil {
+				return err
+			}
+			rows := make([][]string, len(flavors))
+			for i := range flavors {
+				rows[i] = flavorRow(&flavors[i])
+			}
+			return app.printTable([]string{"ID", "NAME", "VCPUS", "RAM_MB", "DISK_GB", "PUBLIC"}, rows)
+		},
+	}
+}
+
+func (app *cli) newFlavorShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show <id-or-name>",
+		Short: "Show flavor details",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			id, err := c.ResolveFlavor(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			f, err := c.GetFlavor(ctx, id)
+			if err != nil {
+				return err
+			}
+			return app.printDetail(f,
+				"ID", f.ID.String(),
+				"Name", f.Name,
+				"VCPUs", fmt.Sprintf("%d", f.VCPUs),
+				"RAM_MB", fmt.Sprintf("%d", f.RAMMB),
+				"Disk_GB", fmt.Sprintf("%d", f.DiskGB),
+				"Public", fmt.Sprintf("%v", f.IsPublic),
+			)
+		},
+	}
+}
+
+func flavorRow(f *flavor.Flavor) []string {
+	return []string{
+		f.ID.String(),
+		f.Name,
+		fmt.Sprintf("%d", f.VCPUs),
+		fmt.Sprintf("%d", f.RAMMB),
+		fmt.Sprintf("%d", f.DiskGB),
+		fmt.Sprintf("%v", f.IsPublic),
+	}
+}
+
 // --- Volume commands (tenant-scoped) ---
 
 func (app *cli) newVolumeCmd() *cobra.Command {
@@ -2278,5 +2413,162 @@ func (app *cli) newVolumeResizeCmd() *cobra.Command {
 	cmd.Flags().Int64Var(&newSizeGB, "size", 0, "New size in GB (required, must be larger than current)")
 	_ = cmd.MarkFlagRequired("tenant")
 	_ = cmd.MarkFlagRequired("size")
+	return cmd
+}
+
+// --- VM commands (tenant-scoped) ---
+
+func (app *cli) newVMCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "vm",
+		Short: "Manage virtual machines",
+	}
+	cmd.AddCommand(app.newVMCreateCmd())
+	cmd.AddCommand(app.newVMListCmd())
+	cmd.AddCommand(app.newVMShowCmd())
+	cmd.AddCommand(app.newVMDeleteCmd())
+	return cmd
+}
+
+func vmRow(v *compute.VM) []string {
+	flavorID := ""
+	if v.FlavorID != nil {
+		flavorID = v.FlavorID.String()
+	}
+	hostID := ""
+	if v.HostID != nil {
+		hostID = v.HostID.String()
+	}
+	return []string{v.ID.String(), v.Name, string(v.Status), flavorID, hostID}
+}
+
+func (app *cli) newVMCreateCmd() *cobra.Command {
+	var tenant, org, flavorArg, azArg, networkArg, vtArg string
+	cmd := &cobra.Command{
+		Use:   "create NAME",
+		Short: "Create a new virtual machine",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			flvID, err := c.ResolveFlavor(ctx, flavorArg)
+			if err != nil {
+				return fmt.Errorf("resolve flavor: %w", err)
+			}
+			req := client.CreateVMRequest{
+				Name:      args[0],
+				FlavorID:  flvID.String(),
+				AZID:      azArg,
+				NetworkID: networkArg,
+			}
+			if vtArg != "" {
+				req.VolumeTypeID = &vtArg
+			}
+			vm, err := c.CreateVM(ctx, tenantID, req)
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NAME", "STATUS", "FLAVOR_ID", "HOST_ID"},
+				[][]string{vmRow(vm)},
+			)
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant name or ID (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization name or ID")
+	cmd.Flags().StringVar(&flavorArg, "flavor", "", "Flavor name or ID (required)")
+	cmd.Flags().StringVar(&azArg, "az", "", "Availability zone name or ID")
+	cmd.Flags().StringVar(&networkArg, "network", "", "Network name or ID")
+	cmd.Flags().StringVar(&vtArg, "volume-type", "", "Volume type name or ID")
+	_ = cmd.MarkFlagRequired("tenant")
+	_ = cmd.MarkFlagRequired("flavor")
+	return cmd
+}
+
+func (app *cli) newVMListCmd() *cobra.Command {
+	var tenant, org string
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List virtual machines",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			vms, err := c.ListVMs(ctx, tenantID)
+			if err != nil {
+				return err
+			}
+			rows := make([][]string, len(vms))
+			for i := range vms {
+				rows[i] = vmRow(&vms[i])
+			}
+			return app.printTable([]string{"ID", "NAME", "STATUS", "FLAVOR_ID", "HOST_ID"}, rows)
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant name or ID (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization name or ID")
+	_ = cmd.MarkFlagRequired("tenant")
+	return cmd
+}
+
+func (app *cli) newVMShowCmd() *cobra.Command {
+	var tenant, org string
+	cmd := &cobra.Command{
+		Use:   "show VM",
+		Short: "Show virtual machine details",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			vm, err := c.ResolveVM(ctx, tenantID, args[0])
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NAME", "STATUS", "FLAVOR_ID", "HOST_ID"},
+				[][]string{vmRow(vm)},
+			)
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant name or ID (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization name or ID")
+	_ = cmd.MarkFlagRequired("tenant")
+	return cmd
+}
+
+func (app *cli) newVMDeleteCmd() *cobra.Command {
+	var tenant, org string
+	cmd := &cobra.Command{
+		Use:   "delete VM",
+		Short: "Delete a virtual machine",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			vm, err := c.ResolveVM(ctx, tenantID, args[0])
+			if err != nil {
+				return err
+			}
+			return c.DeleteVM(ctx, tenantID, vm.ID)
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant name or ID (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization name or ID")
+	_ = cmd.MarkFlagRequired("tenant")
 	return cmd
 }

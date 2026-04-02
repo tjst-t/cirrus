@@ -38,7 +38,7 @@ func (h *hostHandlers) createHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created, isNew, err := h.svc.RegisterOrGet(r.Context(), req.Name, req.Address, "", "")
+	created, isNew, err := h.svc.RegisterOrGet(r.Context(), req.Name, req.Address, "", "", "")
 	if err != nil {
 		if errors.Is(err, host.ErrConflict) {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "host with this name already exists"})

@@ -23,6 +23,7 @@ type storageStore interface {
 	ListBackends(ctx context.Context) ([]Backend, error)
 	SetBackendState(ctx context.Context, id uuid.UUID, state BackendState) error
 	ListActiveBackendsForAZ(ctx context.Context, azID uuid.UUID) ([]Backend, error)
+	ListBackendsReachableFromHost(ctx context.Context, hostID uuid.UUID) ([]Backend, error)
 
 	InsertVolumeType(ctx context.Context, vt VolumeType) (*VolumeType, error)
 	GetVolumeType(ctx context.Context, id uuid.UUID) (*VolumeType, error)
@@ -390,6 +391,14 @@ func (s *serviceImpl) UnexportVolume(ctx context.Context, volumeID uuid.UUID) er
 
 func (s *serviceImpl) ListVolumesOnBackend(ctx context.Context, backendID uuid.UUID) ([]Volume, error) {
 	return s.store.ListVolumesByBackend(ctx, backendID)
+}
+
+func (s *serviceImpl) ListBackendsForAZ(ctx context.Context, azID uuid.UUID) ([]Backend, error) {
+	return s.store.ListActiveBackendsForAZ(ctx, azID)
+}
+
+func (s *serviceImpl) ListBackendsReachableFromHost(ctx context.Context, hostID uuid.UUID) ([]Backend, error) {
+	return s.store.ListBackendsReachableFromHost(ctx, hostID)
 }
 
 // --- helpers ---

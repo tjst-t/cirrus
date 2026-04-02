@@ -32,4 +32,10 @@ type Service interface {
 
 	// ListVolumesOnBackend returns all volumes on a backend (for Reconciler)
 	ListVolumesOnBackend(ctx context.Context, backendID uuid.UUID) ([]Volume, error)
+
+	// ListBackendsForAZ returns active backends in the given AZ (for Scheduler)
+	ListBackendsForAZ(ctx context.Context, azID uuid.UUID) ([]Backend, error)
+
+	// ListBackendsReachableFromHost returns active backends reachable from a host (for Scheduler)
+	ListBackendsReachableFromHost(ctx context.Context, hostID uuid.UUID) ([]Backend, error)
 }

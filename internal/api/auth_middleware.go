@@ -78,3 +78,14 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
 }
+
+// writeInternalError writes a 500 response. In debug mode the actual error
+// message is included; otherwise a generic message is returned to avoid
+// leaking internal details to API clients.
+func writeInternalError(w http.ResponseWriter, err error, debug bool) {
+	msg := "internal server error"
+	if debug {
+		msg = err.Error()
+	}
+	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": msg})
+}
