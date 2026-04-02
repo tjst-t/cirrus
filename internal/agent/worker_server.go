@@ -101,15 +101,10 @@ func (s *WorkerServer) CreateVM(ctx context.Context, req *pb.CreateVMRequest) (*
 func (s *WorkerServer) DeleteVM(ctx context.Context, req *pb.DeleteVMRequest) (*pb.DeleteVMResponse, error) {
 	s.logger.Info("DeleteVM called", "vm_id", req.VmId, "name", req.Name)
 
-	// Destroy (force-off) then undefine; ignore errors if already gone.
 	if err := s.driver.DestroyVM(ctx, req.Name); err != nil {
 		s.logger.Warn("DestroyVM failed (may already be stopped)", "name", req.Name, "error", err)
 	}
-	if err := s.driver.UndefineVM(ctx, req.Name); err != nil {
-		s.logger.Warn("UndefineVM failed (may already be undefined)", "name", req.Name, "error", err)
-	}
 
-	// Detach disks
 	for _, d := range req.Disks {
 		info := &storage.ExportInfo{Protocol: d.Protocol, Params: d.Params}
 		if err := s.blockMgr.Detach(ctx, info); err != nil {
@@ -117,7 +112,61 @@ func (s *WorkerServer) DeleteVM(ctx context.Context, req *pb.DeleteVMRequest) (*
 		}
 	}
 
+	if err := s.driver.UndefineVM(ctx, req.Name); err != nil {
+		s.logger.Warn("UndefineVM failed (may already be undefined)", "name", req.Name, "error", err)
+	}
+
 	return &pb.DeleteVMResponse{}, nil
+}
+
+// StartVM starts a shutoff VM.
+func (s *WorkerServer) StartVM(ctx context.Context, req *pb.StartVMRequest) (*pb.StartVMResponse, error) {
+	s.logger.Info("StartVM called", "vm_id", req.VmId, "name", req.Name)
+	if err := s.driver.StartVM(ctx, req.Name); err != nil {
+		return nil, fmt.Errorf("StartVM: %w", err)
+	}
+	return &pb.StartVMResponse{}, nil
+}
+
+// StopVM gracefully shuts down a running VM.
+func (s *WorkerServer) StopVM(ctx context.Context, req *pb.StopVMRequest) (*pb.StopVMResponse, error) {
+	s.logger.Info("StopVM called", "vm_id", req.VmId, "name", req.Name)
+	if err := s.driver.StopVM(ctx, req.Name); err != nil {
+		return nil, fmt.Errorf("StopVM: %w", err)
+	}
+	return &pb.StopVMResponse{}, nil
+}
+
+// ForceStopVM forcefully powers off a running VM.
+func (s *WorkerServer) ForceStopVM(ctx context.Context, req *pb.ForceStopVMRequest) (*pb.ForceStopVMResponse, error) {
+	s.logger.Info("ForceStopVM called", "vm_id", req.VmId, "name", req.Name)
+	if err := s.driver.DestroyVM(ctx, req.Name); err != nil {
+		return nil, fmt.Errorf("ForceStopVM: %w", err)
+	}
+	return &pb.ForceStopVMResponse{}, nil
+}
+
+// RebootVM reboots a running VM.
+func (s *WorkerServer) RebootVM(ctx context.Context, req *pb.RebootVMRequest) (*pb.RebootVMResponse, error) {
+	s.logger.Info("RebootVM called", "vm_id", req.VmId, "name", req.Name)
+	if err := s.driver.RebootVM(ctx, req.Name); err != nil {
+		return nil, fmt.Errorf("RebootVM: %w", err)
+	}
+	return &pb.RebootVMResponse{}, nil
+}
+
+// GetVMState returns the current state of a VM.
+func (s *WorkerServer) GetVMState(ctx context.Context, req *pb.GetVMStateRequest) (*pb.GetVMStateResponse, error) {
+	vms, err := s.driver.ListVMs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("GetVMState: list vms: %w", err)
+	}
+	for _, vm := range vms {
+		if vm.Name == req.Name {
+			return &pb.GetVMStateResponse{State: string(vm.State)}, nil
+		}
+	}
+	return &pb.GetVMStateResponse{State: "unknown"}, nil
 }
 
 // StartGRPCServer starts a gRPC server for WorkerService on the given listener.

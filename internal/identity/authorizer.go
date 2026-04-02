@@ -91,13 +91,15 @@ const (
 	ActionDeleteFlavor Action = "delete_flavor"
 
 	// VM actions (tenant-scoped)
-	ActionCreateVM Action = "create_vm"
-	ActionListVMs  Action = "list_vms"
-	ActionGetVM    Action = "get_vm"
-	ActionDeleteVM Action = "delete_vm"
-	ActionStartVM  Action = "start_vm"
-	ActionStopVM   Action = "stop_vm"
-	ActionRebootVM Action = "reboot_vm"
+	ActionCreateVM    Action = "create_vm"
+	ActionListVMs     Action = "list_vms"
+	ActionGetVM       Action = "get_vm"
+	ActionDeleteVM    Action = "delete_vm"
+	ActionStartVM     Action = "start_vm"
+	ActionStopVM      Action = "stop_vm"
+	ActionForceStopVM Action = "force_stop_vm"
+	ActionRebootVM    Action = "reboot_vm"
+	ActionRepairVM    Action = "repair_vm" // admin only
 )
 
 // Resource represents the target resource of an authorization check.
@@ -184,7 +186,8 @@ func (a *RBACAuthorizer) checkPermission(ra RoleAssignment, action Action, resou
 			ActionListVolumeTypes, ActionGetVolumeType,
 			ActionCreateVolume, ActionListVolumes, ActionGetVolume, ActionDeleteVolume, ActionResizeVolume,
 			ActionListFlavors, ActionGetFlavor,
-			ActionCreateVM, ActionListVMs, ActionGetVM, ActionDeleteVM, ActionStartVM, ActionStopVM, ActionRebootVM:
+			ActionCreateVM, ActionListVMs, ActionGetVM, ActionDeleteVM,
+			ActionStartVM, ActionStopVM, ActionForceStopVM, ActionRebootVM:
 			return resource.TenantID != nil && *resource.TenantID == *ra.ScopeID
 		}
 

@@ -852,6 +852,454 @@ func (*DeleteVMResponse) Descriptor() ([]byte, []int) {
 	return file_agent_proto_rawDescGZIP(), []int{12}
 }
 
+type StartVMRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	VmId          string                 `protobuf:"bytes,1,opt,name=vm_id,json=vmId,proto3" json:"vm_id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StartVMRequest) Reset() {
+	*x = StartVMRequest{}
+	mi := &file_agent_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StartVMRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StartVMRequest) ProtoMessage() {}
+
+func (x *StartVMRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StartVMRequest.ProtoReflect.Descriptor instead.
+func (*StartVMRequest) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *StartVMRequest) GetVmId() string {
+	if x != nil {
+		return x.VmId
+	}
+	return ""
+}
+
+func (x *StartVMRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type StartVMResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StartVMResponse) Reset() {
+	*x = StartVMResponse{}
+	mi := &file_agent_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StartVMResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StartVMResponse) ProtoMessage() {}
+
+func (x *StartVMResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StartVMResponse.ProtoReflect.Descriptor instead.
+func (*StartVMResponse) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{14}
+}
+
+type StopVMRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	VmId          string                 `protobuf:"bytes,1,opt,name=vm_id,json=vmId,proto3" json:"vm_id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StopVMRequest) Reset() {
+	*x = StopVMRequest{}
+	mi := &file_agent_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StopVMRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StopVMRequest) ProtoMessage() {}
+
+func (x *StopVMRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StopVMRequest.ProtoReflect.Descriptor instead.
+func (*StopVMRequest) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *StopVMRequest) GetVmId() string {
+	if x != nil {
+		return x.VmId
+	}
+	return ""
+}
+
+func (x *StopVMRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type StopVMResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StopVMResponse) Reset() {
+	*x = StopVMResponse{}
+	mi := &file_agent_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StopVMResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StopVMResponse) ProtoMessage() {}
+
+func (x *StopVMResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StopVMResponse.ProtoReflect.Descriptor instead.
+func (*StopVMResponse) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{16}
+}
+
+type ForceStopVMRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	VmId          string                 `protobuf:"bytes,1,opt,name=vm_id,json=vmId,proto3" json:"vm_id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ForceStopVMRequest) Reset() {
+	*x = ForceStopVMRequest{}
+	mi := &file_agent_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ForceStopVMRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ForceStopVMRequest) ProtoMessage() {}
+
+func (x *ForceStopVMRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ForceStopVMRequest.ProtoReflect.Descriptor instead.
+func (*ForceStopVMRequest) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ForceStopVMRequest) GetVmId() string {
+	if x != nil {
+		return x.VmId
+	}
+	return ""
+}
+
+func (x *ForceStopVMRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type ForceStopVMResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ForceStopVMResponse) Reset() {
+	*x = ForceStopVMResponse{}
+	mi := &file_agent_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ForceStopVMResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ForceStopVMResponse) ProtoMessage() {}
+
+func (x *ForceStopVMResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ForceStopVMResponse.ProtoReflect.Descriptor instead.
+func (*ForceStopVMResponse) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{18}
+}
+
+type RebootVMRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	VmId          string                 `protobuf:"bytes,1,opt,name=vm_id,json=vmId,proto3" json:"vm_id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RebootVMRequest) Reset() {
+	*x = RebootVMRequest{}
+	mi := &file_agent_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RebootVMRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RebootVMRequest) ProtoMessage() {}
+
+func (x *RebootVMRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RebootVMRequest.ProtoReflect.Descriptor instead.
+func (*RebootVMRequest) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *RebootVMRequest) GetVmId() string {
+	if x != nil {
+		return x.VmId
+	}
+	return ""
+}
+
+func (x *RebootVMRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type RebootVMResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RebootVMResponse) Reset() {
+	*x = RebootVMResponse{}
+	mi := &file_agent_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RebootVMResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RebootVMResponse) ProtoMessage() {}
+
+func (x *RebootVMResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RebootVMResponse.ProtoReflect.Descriptor instead.
+func (*RebootVMResponse) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{20}
+}
+
+type GetVMStateRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	VmId          string                 `protobuf:"bytes,1,opt,name=vm_id,json=vmId,proto3" json:"vm_id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetVMStateRequest) Reset() {
+	*x = GetVMStateRequest{}
+	mi := &file_agent_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetVMStateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetVMStateRequest) ProtoMessage() {}
+
+func (x *GetVMStateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetVMStateRequest.ProtoReflect.Descriptor instead.
+func (*GetVMStateRequest) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *GetVMStateRequest) GetVmId() string {
+	if x != nil {
+		return x.VmId
+	}
+	return ""
+}
+
+func (x *GetVMStateRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type GetVMStateResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	State         string                 `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"` // "running", "shutoff", "paused", etc.
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetVMStateResponse) Reset() {
+	*x = GetVMStateResponse{}
+	mi := &file_agent_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetVMStateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetVMStateResponse) ProtoMessage() {}
+
+func (x *GetVMStateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetVMStateResponse.ProtoReflect.Descriptor instead.
+func (*GetVMStateResponse) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *GetVMStateResponse) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
 var File_agent_proto protoreflect.FileDescriptor
 
 const file_agent_proto_rawDesc = "" +
@@ -926,13 +1374,40 @@ const file_agent_proto_rawDesc = "" +
 	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12/\n" +
 	"\x05disks\x18\x03 \x03(\v2\x19.cirrus.agent.v1.DiskSpecR\x05disks\"\x12\n" +
-	"\x10DeleteVMResponse2\xc4\x01\n" +
+	"\x10DeleteVMResponse\"9\n" +
+	"\x0eStartVMRequest\x12\x13\n" +
+	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\"\x11\n" +
+	"\x0fStartVMResponse\"8\n" +
+	"\rStopVMRequest\x12\x13\n" +
+	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\"\x10\n" +
+	"\x0eStopVMResponse\"=\n" +
+	"\x12ForceStopVMRequest\x12\x13\n" +
+	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\"\x15\n" +
+	"\x13ForceStopVMResponse\":\n" +
+	"\x0fRebootVMRequest\x12\x13\n" +
+	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\"\x12\n" +
+	"\x10RebootVMResponse\"<\n" +
+	"\x11GetVMStateRequest\x12\x13\n" +
+	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\"*\n" +
+	"\x12GetVMStateResponse\x12\x14\n" +
+	"\x05state\x18\x01 \x01(\tR\x05state2\xc4\x01\n" +
 	"\x11ControllerService\x12[\n" +
 	"\fRegisterHost\x12$.cirrus.agent.v1.RegisterHostRequest\x1a%.cirrus.agent.v1.RegisterHostResponse\x12R\n" +
-	"\tHeartbeat\x12!.cirrus.agent.v1.HeartbeatRequest\x1a\".cirrus.agent.v1.HeartbeatResponse2\xb1\x01\n" +
+	"\tHeartbeat\x12!.cirrus.agent.v1.HeartbeatRequest\x1a\".cirrus.agent.v1.HeartbeatResponse2\xcc\x04\n" +
 	"\rWorkerService\x12O\n" +
 	"\bCreateVM\x12 .cirrus.agent.v1.CreateVMRequest\x1a!.cirrus.agent.v1.CreateVMResponse\x12O\n" +
-	"\bDeleteVM\x12 .cirrus.agent.v1.DeleteVMRequest\x1a!.cirrus.agent.v1.DeleteVMResponseB(Z&github.com/tjst-t/cirrus/proto/agentpbb\x06proto3"
+	"\bDeleteVM\x12 .cirrus.agent.v1.DeleteVMRequest\x1a!.cirrus.agent.v1.DeleteVMResponse\x12L\n" +
+	"\aStartVM\x12\x1f.cirrus.agent.v1.StartVMRequest\x1a .cirrus.agent.v1.StartVMResponse\x12I\n" +
+	"\x06StopVM\x12\x1e.cirrus.agent.v1.StopVMRequest\x1a\x1f.cirrus.agent.v1.StopVMResponse\x12X\n" +
+	"\vForceStopVM\x12#.cirrus.agent.v1.ForceStopVMRequest\x1a$.cirrus.agent.v1.ForceStopVMResponse\x12O\n" +
+	"\bRebootVM\x12 .cirrus.agent.v1.RebootVMRequest\x1a!.cirrus.agent.v1.RebootVMResponse\x12U\n" +
+	"\n" +
+	"GetVMState\x12\".cirrus.agent.v1.GetVMStateRequest\x1a#.cirrus.agent.v1.GetVMStateResponseB(Z&github.com/tjst-t/cirrus/proto/agentpbb\x06proto3"
 
 var (
 	file_agent_proto_rawDescOnce sync.Once
@@ -946,7 +1421,7 @@ func file_agent_proto_rawDescGZIP() []byte {
 	return file_agent_proto_rawDescData
 }
 
-var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_agent_proto_goTypes = []any{
 	(*RegisterHostRequest)(nil),  // 0: cirrus.agent.v1.RegisterHostRequest
 	(*RegisterHostResponse)(nil), // 1: cirrus.agent.v1.RegisterHostResponse
@@ -961,12 +1436,22 @@ var file_agent_proto_goTypes = []any{
 	(*CreateVMResponse)(nil),     // 10: cirrus.agent.v1.CreateVMResponse
 	(*DeleteVMRequest)(nil),      // 11: cirrus.agent.v1.DeleteVMRequest
 	(*DeleteVMResponse)(nil),     // 12: cirrus.agent.v1.DeleteVMResponse
-	nil,                          // 13: cirrus.agent.v1.DiskSpec.ParamsEntry
+	(*StartVMRequest)(nil),       // 13: cirrus.agent.v1.StartVMRequest
+	(*StartVMResponse)(nil),      // 14: cirrus.agent.v1.StartVMResponse
+	(*StopVMRequest)(nil),        // 15: cirrus.agent.v1.StopVMRequest
+	(*StopVMResponse)(nil),       // 16: cirrus.agent.v1.StopVMResponse
+	(*ForceStopVMRequest)(nil),   // 17: cirrus.agent.v1.ForceStopVMRequest
+	(*ForceStopVMResponse)(nil),  // 18: cirrus.agent.v1.ForceStopVMResponse
+	(*RebootVMRequest)(nil),      // 19: cirrus.agent.v1.RebootVMRequest
+	(*RebootVMResponse)(nil),     // 20: cirrus.agent.v1.RebootVMResponse
+	(*GetVMStateRequest)(nil),    // 21: cirrus.agent.v1.GetVMStateRequest
+	(*GetVMStateResponse)(nil),   // 22: cirrus.agent.v1.GetVMStateResponse
+	nil,                          // 23: cirrus.agent.v1.DiskSpec.ParamsEntry
 }
 var file_agent_proto_depIdxs = []int32{
 	4,  // 0: cirrus.agent.v1.HeartbeatRequest.resources:type_name -> cirrus.agent.v1.ResourceReport
 	5,  // 1: cirrus.agent.v1.ResourceReport.running_vms:type_name -> cirrus.agent.v1.VMInfo
-	13, // 2: cirrus.agent.v1.DiskSpec.params:type_name -> cirrus.agent.v1.DiskSpec.ParamsEntry
+	23, // 2: cirrus.agent.v1.DiskSpec.params:type_name -> cirrus.agent.v1.DiskSpec.ParamsEntry
 	6,  // 3: cirrus.agent.v1.CreateVMRequest.disks:type_name -> cirrus.agent.v1.DiskSpec
 	7,  // 4: cirrus.agent.v1.CreateVMRequest.ports:type_name -> cirrus.agent.v1.PortSpec
 	8,  // 5: cirrus.agent.v1.CreateVMRequest.cloud_init:type_name -> cirrus.agent.v1.CloudInitSpec
@@ -975,12 +1460,22 @@ var file_agent_proto_depIdxs = []int32{
 	2,  // 8: cirrus.agent.v1.ControllerService.Heartbeat:input_type -> cirrus.agent.v1.HeartbeatRequest
 	9,  // 9: cirrus.agent.v1.WorkerService.CreateVM:input_type -> cirrus.agent.v1.CreateVMRequest
 	11, // 10: cirrus.agent.v1.WorkerService.DeleteVM:input_type -> cirrus.agent.v1.DeleteVMRequest
-	1,  // 11: cirrus.agent.v1.ControllerService.RegisterHost:output_type -> cirrus.agent.v1.RegisterHostResponse
-	3,  // 12: cirrus.agent.v1.ControllerService.Heartbeat:output_type -> cirrus.agent.v1.HeartbeatResponse
-	10, // 13: cirrus.agent.v1.WorkerService.CreateVM:output_type -> cirrus.agent.v1.CreateVMResponse
-	12, // 14: cirrus.agent.v1.WorkerService.DeleteVM:output_type -> cirrus.agent.v1.DeleteVMResponse
-	11, // [11:15] is the sub-list for method output_type
-	7,  // [7:11] is the sub-list for method input_type
+	13, // 11: cirrus.agent.v1.WorkerService.StartVM:input_type -> cirrus.agent.v1.StartVMRequest
+	15, // 12: cirrus.agent.v1.WorkerService.StopVM:input_type -> cirrus.agent.v1.StopVMRequest
+	17, // 13: cirrus.agent.v1.WorkerService.ForceStopVM:input_type -> cirrus.agent.v1.ForceStopVMRequest
+	19, // 14: cirrus.agent.v1.WorkerService.RebootVM:input_type -> cirrus.agent.v1.RebootVMRequest
+	21, // 15: cirrus.agent.v1.WorkerService.GetVMState:input_type -> cirrus.agent.v1.GetVMStateRequest
+	1,  // 16: cirrus.agent.v1.ControllerService.RegisterHost:output_type -> cirrus.agent.v1.RegisterHostResponse
+	3,  // 17: cirrus.agent.v1.ControllerService.Heartbeat:output_type -> cirrus.agent.v1.HeartbeatResponse
+	10, // 18: cirrus.agent.v1.WorkerService.CreateVM:output_type -> cirrus.agent.v1.CreateVMResponse
+	12, // 19: cirrus.agent.v1.WorkerService.DeleteVM:output_type -> cirrus.agent.v1.DeleteVMResponse
+	14, // 20: cirrus.agent.v1.WorkerService.StartVM:output_type -> cirrus.agent.v1.StartVMResponse
+	16, // 21: cirrus.agent.v1.WorkerService.StopVM:output_type -> cirrus.agent.v1.StopVMResponse
+	18, // 22: cirrus.agent.v1.WorkerService.ForceStopVM:output_type -> cirrus.agent.v1.ForceStopVMResponse
+	20, // 23: cirrus.agent.v1.WorkerService.RebootVM:output_type -> cirrus.agent.v1.RebootVMResponse
+	22, // 24: cirrus.agent.v1.WorkerService.GetVMState:output_type -> cirrus.agent.v1.GetVMStateResponse
+	16, // [16:25] is the sub-list for method output_type
+	7,  // [7:16] is the sub-list for method input_type
 	7,  // [7:7] is the sub-list for extension type_name
 	7,  // [7:7] is the sub-list for extension extendee
 	0,  // [0:7] is the sub-list for field type_name
@@ -997,7 +1492,7 @@ func file_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_proto_rawDesc), len(file_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

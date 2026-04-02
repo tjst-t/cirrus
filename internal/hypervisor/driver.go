@@ -91,6 +91,9 @@ type Driver interface {
 	// StopVM requests a graceful shutdown of a running VM.
 	StopVM(ctx context.Context, name string) error
 
+	// RebootVM gracefully reboots a running VM.
+	RebootVM(ctx context.Context, name string) error
+
 	// DestroyVM forcefully powers off a running VM.
 	DestroyVM(ctx context.Context, name string) error
 

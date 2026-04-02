@@ -19,5 +19,21 @@ type Service interface {
 	ListVMs(ctx context.Context, tenantID uuid.UUID) ([]VM, error)
 
 	// DeleteVM enqueues an async VM deletion job.
+	// Allowed only when status is stopped or error.
 	DeleteVM(ctx context.Context, tenantID, vmID uuid.UUID) error
+
+	// StartVM starts a stopped VM.
+	StartVM(ctx context.Context, tenantID, vmID uuid.UUID) error
+
+	// StopVM gracefully shuts down a running VM.
+	StopVM(ctx context.Context, tenantID, vmID uuid.UUID) error
+
+	// ForceStopVM forcefully powers off a running VM.
+	ForceStopVM(ctx context.Context, tenantID, vmID uuid.UUID) error
+
+	// RebootVM reboots a running VM.
+	RebootVM(ctx context.Context, tenantID, vmID uuid.UUID) error
+
+	// RepairVM transitions a VM from error to stopped (admin only).
+	RepairVM(ctx context.Context, vmID uuid.UUID) error
 }

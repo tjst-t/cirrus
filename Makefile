@@ -277,7 +277,19 @@ _seed-topology:
 	    -H "Content-Type: application/json" \
 	    -d "{\"name\":\"m1.large\",\"vcpus\":4,\"ram_mb\":8192,\"disk_gb\":40}" \
 	    http://localhost:$$API_PORT/api/v1/admin/flavors >/dev/null 2>&1 || true; \
-	  echo "    Default flavors seeded."'
+	  echo "    Default flavors seeded."; \
+	  SD_ID=$$(curl -sf -H "Authorization: Bearer $$TOKEN" http://localhost:$$API_PORT/api/v1/storage-domains | jq -r ".[0].id"); \
+	  curl -sf -X POST \
+	    -H "Authorization: Bearer $$TOKEN" \
+	    -H "Content-Type: application/json" \
+	    -d "{\"name\":\"sim-backend\",\"driver\":\"sim\",\"endpoint\":\"sim://local\",\"storage_domain_id\":\"$$SD_ID\",\"capacity_gb\":1000}" \
+	    http://localhost:$$API_PORT/api/v1/admin/storage-backends >/dev/null 2>&1 || true; \
+	  curl -sf -X POST \
+	    -H "Authorization: Bearer $$TOKEN" \
+	    -H "Content-Type: application/json" \
+	    -d "{\"name\":\"default\",\"description\":\"Default sim volume type\",\"required_capabilities\":[],\"is_public\":true}" \
+	    http://localhost:$$API_PORT/api/v1/admin/volume-types >/dev/null 2>&1 || true; \
+	  echo "    Default storage backend and volume type seeded."'
 
 # ── Internal: activate hosts ──
 
@@ -291,6 +303,7 @@ _activate-hosts:
 	  HOSTS=$$(curl -sf -H "Authorization: Bearer $$TOKEN" \
 	    "http://localhost:$$API_PORT/api/v1/hosts?state=registering"); \
 	  HOST_COUNT=$$(echo "$$HOSTS" | jq length 2>/dev/null || echo 0); \
+	  SD_ID=$$(curl -sf -H "Authorization: Bearer $$TOKEN" http://localhost:$$API_PORT/api/v1/storage-domains | jq -r ".[0].id"); \
 	  for i in $$(seq 0 $$((HOST_COUNT - 1))); do \
 	    HOST_UUID=$$(echo "$$HOSTS" | jq -r ".[$${i}].id"); \
 	    curl -sf -X POST \
@@ -298,8 +311,13 @@ _activate-hosts:
 	      -H "Content-Type: application/json" \
 	      -d "{\"action\":\"activate\"}" \
 	      http://localhost:$$API_PORT/api/v1/hosts/$$HOST_UUID/actions >/dev/null 2>&1 || true; \
+	    curl -sf -X POST \
+	      -H "Authorization: Bearer $$TOKEN" \
+	      -H "Content-Type: application/json" \
+	      -d "{\"storage_domain_id\":\"$$SD_ID\"}" \
+	      http://localhost:$$API_PORT/api/v1/hosts/$$HOST_UUID/storage-domains >/dev/null 2>&1 || true; \
 	  done; \
-	  echo "    Activated $$HOST_COUNT hosts"'
+	  echo "    Activated $$HOST_COUNT hosts and associated with default-sd"'
 
 # ── Logs ──
 

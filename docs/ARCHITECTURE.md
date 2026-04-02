@@ -19,7 +19,7 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 - **Location**: `internal/agent/`, `internal/hypervisor/`, `internal/network/agent/`
 - **Key interfaces**: `WorkerService` gRPC サーバ（Controller から VM 作成・削除指示を受信）
 - **Depends on**: hypervisor, blockdev, netcontroller
-- **gRPC**: Controller → Worker 方向（`WorkerService.CreateVM` / `DeleteVM`）; Worker → Controller 方向（`ControllerService.Heartbeat`）
+- **gRPC**: Controller → Worker 方向（`WorkerService.CreateVM` / `DeleteVM` / `StartVM` / `StopVM` / `ForceStopVM` / `RebootVM` / `GetVMState`）; Worker → Controller 方向（`ControllerService.Heartbeat`）
 
 ### Identity (`internal/identity`)
 
@@ -41,9 +41,12 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 
 ### Compute (`internal/compute`)
 
-- VM ライフサイクル管理（作成・削除）
+- VM ライフサイクル管理（作成・起動・停止・強制停止・再起動・削除）
 - `Orchestrator`: 非同期 VM 作成パイプライン（Network.CreatePort → Storage.CreateVolume → Scheduler.Schedule → Storage.ExportVolume → WorkerService.CreateVM）
-- `Service` インターフェース: CreateVM/GetVM/ListVMs/DeleteVM
+- `Service` インターフェース: CreateVM/GetVM/ListVMs/DeleteVM/StartVM/StopVM/ForceStopVM/RebootVM/RepairVM
+- VM ステータス状態機械: `pending` → `building` → `running` ↔ `stopped`; いずれも `error` へ; `stopped`/`error` → `deleting`
+- 操作ガード: 遷移中状態 (`building`/`deleting`/`pending`) での全操作は 409; `running` 中の delete は 409
+- 管理者修復 API: `error` → `stopped` 強制遷移（`RepairVM`）
 - DB: `vms`, `vm_volumes` テーブル
 
 ### Scheduler (`internal/scheduler`)
@@ -127,6 +130,32 @@ POST /api/v1/vms
            → blockdev.Attach (protocol 判定)
            → hypervisor.DefineVM (cloud-init ISO + domain XML → libvirtd-sim)
       7. VM status → running
+```
+
+### VM 削除フロー (teardownVM)
+
+```
+DELETE /api/v1/vms/{id}  (stopped/error のみ許可)
+  → status → deleting
+  → goroutine で非同期実行:
+      1. WorkerService.DeleteVM gRPC
+           → hypervisor.DestroyVM (強制停止)
+           → blockdev.Detach (ディスクデタッチ、domain 定義が残っている間に実行)
+           → hypervisor.UndefineVM (domain 定義削除)
+      2. network.DeletePort
+      3. storage.UnexportVolume + DeleteVolume
+      4. DB レコード削除
+```
+
+### VM 操作フロー (start/stop/force-stop/reboot)
+
+```
+POST /api/v1/vms/{id}/actions  {"action": "start"|"stop"|"force-stop"|"reboot"}
+  → 状態ガード確認 (IsTransitional → 409, Can* → 409)
+  → resolveWorker: host record → WorkerClientPool.Get
+  → WorkerService.{Start|Stop|ForceStop|Reboot}VM gRPC
+       → hypervisor.{StartVM|ShutdownVM(ACPI)|DestroyVM|RebootVM}
+  → VM status 更新
 ```
 
 ## Directory Structure

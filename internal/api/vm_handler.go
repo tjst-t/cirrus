@@ -138,6 +138,104 @@ func (h *vmHandlers) getVM(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, vm)
 }
 
+type vmActionRequest struct {
+	Action string `json:"action"` // "start", "stop", "force-stop", "reboot"
+}
+
+func (h *vmHandlers) vmAction(w http.ResponseWriter, r *http.Request) {
+	user := UserFromContext(r.Context())
+	tenantIDPtr := TenantIDFromContext(r.Context())
+	if tenantIDPtr == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "X-Tenant-ID header required"})
+		return
+	}
+	tenantID := *tenantIDPtr
+
+	vmID, err := uuid.Parse(r.PathValue("vm_id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid vm_id"})
+		return
+	}
+
+	var req vmActionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	res := identity.Resource{TenantID: &tenantID}
+	var action identity.Action
+	switch req.Action {
+	case "start":
+		action = identity.ActionStartVM
+	case "stop":
+		action = identity.ActionStopVM
+	case "force-stop":
+		action = identity.ActionForceStopVM
+	case "reboot":
+		action = identity.ActionRebootVM
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown action: " + req.Action})
+		return
+	}
+
+	if decision, err := h.authz.Authorize(r.Context(), user, action, res); err != nil || decision == identity.Deny {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	var opErr error
+	switch req.Action {
+	case "start":
+		opErr = h.svc.StartVM(r.Context(), tenantID, vmID)
+	case "stop":
+		opErr = h.svc.StopVM(r.Context(), tenantID, vmID)
+	case "force-stop":
+		opErr = h.svc.ForceStopVM(r.Context(), tenantID, vmID)
+	case "reboot":
+		opErr = h.svc.RebootVM(r.Context(), tenantID, vmID)
+	}
+
+	if opErr != nil {
+		if errors.Is(opErr, compute.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "vm not found"})
+			return
+		}
+		if errors.Is(opErr, compute.ErrConflict) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "operation not allowed in current vm state"})
+			return
+		}
+		writeInternalError(w, opErr, h.debug)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *vmHandlers) repairVM(w http.ResponseWriter, r *http.Request) {
+	user := UserFromContext(r.Context())
+	res := identity.Resource{}
+	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionRepairVM, res); err != nil || decision == identity.Deny {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	vmID, err := uuid.Parse(r.PathValue("vm_id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid vm_id"})
+		return
+	}
+
+	if err := h.svc.RepairVM(r.Context(), vmID); err != nil {
+		if errors.Is(err, compute.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "vm not found"})
+			return
+		}
+		writeInternalError(w, err, h.debug)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *vmHandlers) deleteVM(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	tenantIDPtr := TenantIDFromContext(r.Context())

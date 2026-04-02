@@ -87,11 +87,12 @@ type GroupSpec struct {
 
 // PortSpec is the input for creating a port internally (VM lifecycle / tests).
 type PortSpec struct {
-	TenantID  uuid.UUID `json:"tenant_id"`
-	NetworkID uuid.UUID `json:"network_id"`
-	GroupID   uuid.UUID `json:"group_id"`
-	HostID    uuid.UUID `json:"host_id"`
-	VMName    string    `json:"vm_name"`
+	TenantID  uuid.UUID  `json:"tenant_id"`
+	NetworkID uuid.UUID  `json:"network_id"`
+	GroupID   uuid.UUID  `json:"group_id"`
+	HostID    uuid.UUID  `json:"host_id"`
+	VMID      *uuid.UUID `json:"vm_id,omitempty"`
+	VMName    string     `json:"vm_name"`
 }
 
 // PolicySpec is the input for creating a new policy.

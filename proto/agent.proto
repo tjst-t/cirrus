@@ -17,6 +17,11 @@ service ControllerService {
 service WorkerService {
   rpc CreateVM(CreateVMRequest) returns (CreateVMResponse);
   rpc DeleteVM(DeleteVMRequest) returns (DeleteVMResponse);
+  rpc StartVM(StartVMRequest) returns (StartVMResponse);
+  rpc StopVM(StopVMRequest) returns (StopVMResponse);
+  rpc ForceStopVM(ForceStopVMRequest) returns (ForceStopVMResponse);
+  rpc RebootVM(RebootVMRequest) returns (RebootVMResponse);
+  rpc GetVMState(GetVMStateRequest) returns (GetVMStateResponse);
 }
 
 message RegisterHostRequest {
@@ -106,3 +111,35 @@ message DeleteVMRequest {
 }
 
 message DeleteVMResponse {}
+
+message StartVMRequest {
+  string vm_id = 1;
+  string name = 2;
+}
+message StartVMResponse {}
+
+message StopVMRequest {
+  string vm_id = 1;
+  string name = 2;
+}
+message StopVMResponse {}
+
+message ForceStopVMRequest {
+  string vm_id = 1;
+  string name = 2;
+}
+message ForceStopVMResponse {}
+
+message RebootVMRequest {
+  string vm_id = 1;
+  string name = 2;
+}
+message RebootVMResponse {}
+
+message GetVMStateRequest {
+  string vm_id = 1;
+  string name = 2;
+}
+message GetVMStateResponse {
+  string state = 1; // "running", "shutoff", "paused", etc.
+}

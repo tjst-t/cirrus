@@ -29,5 +29,7 @@ type Service interface {
 	// Ports (read-only for tenants; creation is internal via VM lifecycle)
 	CreatePort(ctx context.Context, spec PortSpec) (*Port, error)
 	GetPort(ctx context.Context, id uuid.UUID) (*Port, error)
+	GetPortByVMID(ctx context.Context, vmID uuid.UUID) (*Port, error)
 	ListPorts(ctx context.Context, networkID uuid.UUID) ([]Port, error)
+	DeletePort(ctx context.Context, id uuid.UUID) error
 }

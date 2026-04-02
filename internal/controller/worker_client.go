@@ -36,6 +36,26 @@ func (c *WorkerClient) DeleteVM(ctx context.Context, req *pb.DeleteVMRequest) (*
 	return c.client.DeleteVM(ctx, req)
 }
 
+// StartVM calls StartVM on the worker.
+func (c *WorkerClient) StartVM(ctx context.Context, req *pb.StartVMRequest) (*pb.StartVMResponse, error) {
+	return c.client.StartVM(ctx, req)
+}
+
+// StopVM calls StopVM on the worker.
+func (c *WorkerClient) StopVM(ctx context.Context, req *pb.StopVMRequest) (*pb.StopVMResponse, error) {
+	return c.client.StopVM(ctx, req)
+}
+
+// ForceStopVM calls ForceStopVM on the worker.
+func (c *WorkerClient) ForceStopVM(ctx context.Context, req *pb.ForceStopVMRequest) (*pb.ForceStopVMResponse, error) {
+	return c.client.ForceStopVM(ctx, req)
+}
+
+// RebootVM calls RebootVM on the worker.
+func (c *WorkerClient) RebootVM(ctx context.Context, req *pb.RebootVMRequest) (*pb.RebootVMResponse, error) {
+	return c.client.RebootVM(ctx, req)
+}
+
 // Close closes the gRPC connection.
 func (c *WorkerClient) Close() error {
 	return c.conn.Close()

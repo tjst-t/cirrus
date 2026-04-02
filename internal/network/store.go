@@ -349,18 +349,18 @@ func (s *Store) CreatePort(ctx context.Context, spec PortSpec) (*Port, error) {
 
 	var p Port
 	err = s.pool.QueryRow(ctx,
-		`INSERT INTO ports (network_id, group_id, tenant_id, host_id, mac_address, ip_address, vm_name, status, created_at)
-		 VALUES ($1, $2, $3, $4, $5::macaddr, $6::inet, $7, 'active', NOW())
-		 RETURNING id, tenant_id, network_id, group_id, vm_name, mac_address::TEXT, host(ip_address), host_id, role, status, created_at`,
-		spec.NetworkID, spec.GroupID, spec.TenantID, spec.HostID, mac, vmIP, spec.VMName,
-	).Scan(&p.ID, &p.TenantID, &p.NetworkID, &p.GroupID, &p.VMName, &p.MACAddress, &p.IPAddress, &p.HostID, &p.Role, &p.Status, &p.CreatedAt)
+		`INSERT INTO ports (network_id, group_id, tenant_id, host_id, vm_id, mac_address, ip_address, vm_name, status, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6::macaddr, $7::inet, $8, 'active', NOW())
+		 RETURNING id, tenant_id, network_id, group_id, vm_id, vm_name, mac_address::TEXT, host(ip_address), host_id, role, status, created_at`,
+		spec.NetworkID, spec.GroupID, spec.TenantID, spec.HostID, spec.VMID, mac, vmIP, spec.VMName,
+	).Scan(&p.ID, &p.TenantID, &p.NetworkID, &p.GroupID, &p.VMID, &p.VMName, &p.MACAddress, &p.IPAddress, &p.HostID, &p.Role, &p.Status, &p.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("network: create port: %w", err)
 	}
 	return &p, nil
 }
 
-// --- Ports (read-only queries) ---
+// --- Ports ---
 
 func (s *Store) GetPort(ctx context.Context, id uuid.UUID) (*Port, error) {
 	var p Port
@@ -392,4 +392,21 @@ func (s *Store) ListPorts(ctx context.Context, networkID uuid.UUID) ([]Port, err
 		ports = append(ports, p)
 	}
 	return ports, rows.Err()
+}
+
+func (s *Store) GetPortByVMID(ctx context.Context, vmID uuid.UUID) (*Port, error) {
+	var p Port
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, tenant_id, network_id, group_id, vm_id, vm_name, mac_address::TEXT, host(ip_address), host_id, role, status, created_at
+		 FROM ports WHERE vm_id = $1 LIMIT 1`, vmID,
+	).Scan(&p.ID, &p.TenantID, &p.NetworkID, &p.GroupID, &p.VMID, &p.VMName, &p.MACAddress, &p.IPAddress, &p.HostID, &p.Role, &p.Status, &p.CreatedAt)
+	if err != nil {
+		return nil, wrapErr("network: get port by vm_id", err)
+	}
+	return &p, nil
+}
+
+func (s *Store) DeletePort(ctx context.Context, id uuid.UUID) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM ports WHERE id = $1`, id)
+	return err
 }

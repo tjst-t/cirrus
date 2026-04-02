@@ -848,6 +848,36 @@ func (app *cli) newAdminCmd() *cobra.Command {
 	cmd.AddCommand(app.newAdminStorageBackendCmd())
 	cmd.AddCommand(app.newAdminVolumeTypeCmd())
 	cmd.AddCommand(app.newAdminFlavorCmd())
+	cmd.AddCommand(app.newAdminVMCmd())
+	return cmd
+}
+
+// --- Admin: VM commands ---
+
+func (app *cli) newAdminVMCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "vm",
+		Short: "Manage virtual machines (admin)",
+	}
+	cmd.AddCommand(app.newAdminVMRepairCmd())
+	return cmd
+}
+
+func (app *cli) newAdminVMRepairCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "repair VM",
+		Short: "Repair a VM in error state (transition error → stopped)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			vmID, err := uuid.Parse(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid vm UUID: %w", err)
+			}
+			return c.RepairVM(ctx, vmID)
+		},
+	}
 	return cmd
 }
 
@@ -2427,6 +2457,10 @@ func (app *cli) newVMCmd() *cobra.Command {
 	cmd.AddCommand(app.newVMListCmd())
 	cmd.AddCommand(app.newVMShowCmd())
 	cmd.AddCommand(app.newVMDeleteCmd())
+	cmd.AddCommand(app.newVMStartCmd())
+	cmd.AddCommand(app.newVMStopCmd())
+	cmd.AddCommand(app.newVMForceStopCmd())
+	cmd.AddCommand(app.newVMRebootCmd())
 	return cmd
 }
 
@@ -2571,4 +2605,48 @@ func (app *cli) newVMDeleteCmd() *cobra.Command {
 	cmd.Flags().StringVar(&org, "org", "", "Organization name or ID")
 	_ = cmd.MarkFlagRequired("tenant")
 	return cmd
+}
+
+func newVMActionCmdHelper(use, short, action string) func(app *cli) *cobra.Command {
+	return func(app *cli) *cobra.Command {
+		var tenant, org string
+		cmd := &cobra.Command{
+			Use:   use + " VM",
+			Short: short,
+			Args:  cobra.ExactArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				ctx := app.cmdContext()
+				c := app.newClient()
+				tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+				if err != nil {
+					return err
+				}
+				vm, err := c.ResolveVM(ctx, tenantID, args[0])
+				if err != nil {
+					return err
+				}
+				return c.VMAction(ctx, tenantID, vm.ID, action)
+			},
+		}
+		cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant name or ID (required)")
+		cmd.Flags().StringVar(&org, "org", "", "Organization name or ID")
+		_ = cmd.MarkFlagRequired("tenant")
+		return cmd
+	}
+}
+
+func (app *cli) newVMStartCmd() *cobra.Command {
+	return newVMActionCmdHelper("start", "Start a stopped virtual machine", "start")(app)
+}
+
+func (app *cli) newVMStopCmd() *cobra.Command {
+	return newVMActionCmdHelper("stop", "Gracefully stop a running virtual machine", "stop")(app)
+}
+
+func (app *cli) newVMForceStopCmd() *cobra.Command {
+	return newVMActionCmdHelper("force-stop", "Forcefully power off a virtual machine", "force-stop")(app)
+}
+
+func (app *cli) newVMRebootCmd() *cobra.Command {
+	return newVMActionCmdHelper("reboot", "Reboot a running virtual machine", "reboot")(app)
 }

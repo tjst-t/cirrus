@@ -97,6 +97,43 @@ func (o *Orchestrator) deleteVMRecord(ctx context.Context, vmID uuid.UUID) error
 	return err
 }
 
+// listVMVolumeIDs returns the volume UUIDs attached to a VM.
+func (o *Orchestrator) listVMVolumeIDs(ctx context.Context, vmID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := o.pool.Query(ctx,
+		`SELECT volume_id FROM vm_volumes WHERE vm_id = $1 ORDER BY device`, vmID)
+	if err != nil {
+		return nil, fmt.Errorf("compute: list vm volumes: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("compute: list vm volumes scan: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// getVMByID looks up a VM by ID without tenant scoping (admin/internal use).
+func (o *Orchestrator) getVMByID(ctx context.Context, vmID uuid.UUID) (*VM, error) {
+	var vm VM
+	err := o.pool.QueryRow(ctx,
+		`SELECT id, tenant_id, name, flavor_id, az_id, network_id, host_id, status, error_message, created_at, updated_at
+		 FROM vms WHERE id = $1`, vmID,
+	).Scan(&vm.ID, &vm.TenantID, &vm.Name, &vm.FlavorID, &vm.AZID, &vm.NetworkID, &vm.HostID,
+		&vm.Status, &vm.ErrorMessage, &vm.CreatedAt, &vm.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("compute: get vm by id: %w", err)
+	}
+	return &vm, nil
+}
+
 // getHostByID looks up a host by its UUID.
 func (o *Orchestrator) getHostByID(ctx context.Context, hostID uuid.UUID) (*host.Host, error) {
 	var h host.Host

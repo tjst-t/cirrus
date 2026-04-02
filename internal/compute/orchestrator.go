@@ -2,6 +2,7 @@ package compute
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -96,10 +97,17 @@ func (o *Orchestrator) ListVMs(ctx context.Context, tenantID uuid.UUID) ([]VM, e
 }
 
 // DeleteVM marks the VM as "deleting" and launches an async cleanup goroutine.
+// Only allowed when status is stopped or error.
 func (o *Orchestrator) DeleteVM(ctx context.Context, tenantID, vmID uuid.UUID) error {
 	vm, err := o.getVM(ctx, tenantID, vmID)
 	if err != nil {
 		return err
+	}
+	if vm.IsTransitional() {
+		return ErrConflict
+	}
+	if !vm.CanDelete() {
+		return ErrConflict
 	}
 	if err := o.setVMStatus(ctx, vmID, VMStatusDeleting, ""); err != nil {
 		return fmt.Errorf("compute: delete vm: %w", err)
@@ -117,6 +125,129 @@ func (o *Orchestrator) DeleteVM(ctx context.Context, tenantID, vmID uuid.UUID) e
 	}()
 
 	return nil
+}
+
+// StartVM starts a stopped VM.
+func (o *Orchestrator) StartVM(ctx context.Context, tenantID, vmID uuid.UUID) error {
+	vm, err := o.getVM(ctx, tenantID, vmID)
+	if err != nil {
+		return err
+	}
+	if vm.IsTransitional() {
+		return ErrConflict
+	}
+	if !vm.CanStart() {
+		return ErrConflict
+	}
+
+	workerClient, vmName, err := o.resolveWorker(ctx, vm)
+	if err != nil {
+		return err
+	}
+	if _, err := workerClient.StartVM(ctx, &pb.StartVMRequest{VmId: vmID.String(), Name: vmName}); err != nil {
+		return fmt.Errorf("compute: start vm: %w", err)
+	}
+	return o.setVMStatus(ctx, vmID, VMStatusRunning, "")
+}
+
+// StopVM gracefully shuts down a running VM.
+func (o *Orchestrator) StopVM(ctx context.Context, tenantID, vmID uuid.UUID) error {
+	vm, err := o.getVM(ctx, tenantID, vmID)
+	if err != nil {
+		return err
+	}
+	if vm.IsTransitional() {
+		return ErrConflict
+	}
+	if !vm.CanStop() {
+		return ErrConflict
+	}
+
+	workerClient, vmName, err := o.resolveWorker(ctx, vm)
+	if err != nil {
+		return err
+	}
+	if _, err := workerClient.StopVM(ctx, &pb.StopVMRequest{VmId: vmID.String(), Name: vmName}); err != nil {
+		return fmt.Errorf("compute: stop vm: %w", err)
+	}
+	return o.setVMStatus(ctx, vmID, VMStatusStopped, "")
+}
+
+// ForceStopVM forcefully powers off a running VM.
+func (o *Orchestrator) ForceStopVM(ctx context.Context, tenantID, vmID uuid.UUID) error {
+	vm, err := o.getVM(ctx, tenantID, vmID)
+	if err != nil {
+		return err
+	}
+	if vm.IsTransitional() {
+		return ErrConflict
+	}
+	if !vm.CanStop() {
+		return ErrConflict
+	}
+
+	workerClient, vmName, err := o.resolveWorker(ctx, vm)
+	if err != nil {
+		return err
+	}
+	if _, err := workerClient.ForceStopVM(ctx, &pb.ForceStopVMRequest{VmId: vmID.String(), Name: vmName}); err != nil {
+		return fmt.Errorf("compute: force-stop vm: %w", err)
+	}
+	return o.setVMStatus(ctx, vmID, VMStatusStopped, "")
+}
+
+// RebootVM reboots a running VM.
+func (o *Orchestrator) RebootVM(ctx context.Context, tenantID, vmID uuid.UUID) error {
+	vm, err := o.getVM(ctx, tenantID, vmID)
+	if err != nil {
+		return err
+	}
+	if vm.IsTransitional() {
+		return ErrConflict
+	}
+	if !vm.CanReboot() {
+		return ErrConflict
+	}
+
+	workerClient, vmName, err := o.resolveWorker(ctx, vm)
+	if err != nil {
+		return err
+	}
+	if _, err := workerClient.RebootVM(ctx, &pb.RebootVMRequest{VmId: vmID.String(), Name: vmName}); err != nil {
+		return fmt.Errorf("compute: reboot vm: %w", err)
+	}
+	return o.setVMStatus(ctx, vmID, VMStatusRunning, "")
+}
+
+// RepairVM transitions a VM from error to stopped (admin use only).
+func (o *Orchestrator) RepairVM(ctx context.Context, vmID uuid.UUID) error {
+	vm, err := o.getVMByID(ctx, vmID)
+	if err != nil {
+		return err
+	}
+	if vm.Status != VMStatusError {
+		return fmt.Errorf("compute: repair vm: vm is not in error state (current: %s)", vm.Status)
+	}
+	return o.setVMStatus(ctx, vmID, VMStatusStopped, "")
+}
+
+// resolveWorker returns the worker client and VM name for a VM.
+func (o *Orchestrator) resolveWorker(ctx context.Context, vm *VM) (*controller.WorkerClient, string, error) {
+	if vm.HostID == nil {
+		return nil, "", fmt.Errorf("compute: vm has no assigned host")
+	}
+	h, err := o.getHostByID(ctx, *vm.HostID)
+	if err != nil {
+		return nil, "", fmt.Errorf("compute: get host: %w", err)
+	}
+	if h.WorkerGRPCAddr == "" {
+		return nil, "", fmt.Errorf("compute: host has no worker_grpc_addr")
+	}
+	workerClient, err := o.workers.Get(h.WorkerGRPCAddr)
+	if err != nil {
+		return nil, "", fmt.Errorf("compute: get worker client: %w", err)
+	}
+	return workerClient, fmt.Sprintf("vm-%s", vm.ID.String()[:8]), nil
 }
 
 // buildVM orchestrates the full VM creation pipeline.
@@ -161,6 +292,7 @@ func (o *Orchestrator) buildVM(ctx context.Context, vmID uuid.UUID, spec CreateV
 			TenantID:  spec.TenantID,
 			NetworkID: spec.NetworkID,
 			HostID:    hostID,
+			VMID:      &vmID,
 			VMName:    vmName,
 		})
 		if err != nil {
@@ -241,27 +373,62 @@ func (o *Orchestrator) buildVM(ctx context.Context, vmID uuid.UUID, spec CreateV
 }
 
 // teardownVM stops and deletes a VM on the worker, then cleans up volumes and ports.
+// Order: worker.DeleteVM (DestroyVM→BlockDev.Detach→UndefineVM) →
+//        Network.DeletePort → Storage.UnexportVolume → Storage.DeleteVolume → DB delete
 func (o *Orchestrator) teardownVM(ctx context.Context, vm *VM) error {
-	if vm.HostID == nil {
-		return nil // never scheduled; nothing to tear down
-	}
+	vmName := fmt.Sprintf("vm-%s", vm.ID.String()[:8])
 
-	host, err := o.getHostByID(ctx, *vm.HostID)
+	volumeIDs, err := o.listVMVolumeIDs(ctx, vm.ID)
 	if err != nil {
-		return fmt.Errorf("get host: %w", err)
+		o.logger.Warn("teardownVM: list vm volumes failed", "vm_id", vm.ID, "error", err)
 	}
 
-	if host.WorkerGRPCAddr != "" {
-		workerClient, err := o.workers.Get(host.WorkerGRPCAddr)
+	if vm.HostID != nil {
+		h, err := o.getHostByID(ctx, *vm.HostID)
 		if err != nil {
-			return fmt.Errorf("get worker client: %w", err)
+			o.logger.Warn("teardownVM: get host failed", "vm_id", vm.ID, "error", err)
+		} else if h.WorkerGRPCAddr != "" {
+			workerClient, err := o.workers.Get(h.WorkerGRPCAddr)
+			if err != nil {
+				o.logger.Warn("teardownVM: get worker client failed", "vm_id", vm.ID, "error", err)
+			} else {
+				req := &pb.DeleteVMRequest{VmId: vm.ID.String(), Name: vmName}
+				for _, vid := range volumeIDs {
+					vol, err := o.storageSvc.GetVolume(ctx, vm.TenantID, vid)
+					if err != nil {
+						o.logger.Warn("teardownVM: get volume failed", "volume_id", vid, "error", err)
+						continue
+					}
+					if vol.ExportInfo != nil {
+						var info storage.ExportInfo
+						if err := json.Unmarshal(vol.ExportInfo, &info); err == nil {
+							req.Disks = append(req.Disks, &pb.DiskSpec{
+								Protocol: info.Protocol,
+								Params:   info.Params,
+							})
+						}
+					}
+				}
+				if _, err := workerClient.DeleteVM(ctx, req); err != nil {
+					o.logger.Warn("worker DeleteVM failed", "vm_id", vm.ID, "error", err)
+				}
+			}
 		}
-		vmName := fmt.Sprintf("vm-%s", vm.ID.String()[:8])
-		if _, err := workerClient.DeleteVM(ctx, &pb.DeleteVMRequest{
-			VmId: vm.ID.String(),
-			Name: vmName,
-		}); err != nil {
-			o.logger.Warn("worker DeleteVM failed", "vm_id", vm.ID, "error", err)
+	}
+
+	port, err := o.networkSvc.GetPortByVMID(ctx, vm.ID)
+	if err == nil {
+		if err := o.networkSvc.DeletePort(ctx, port.ID); err != nil {
+			o.logger.Warn("teardownVM: delete port failed", "vm_id", vm.ID, "error", err)
+		}
+	}
+
+	for _, vid := range volumeIDs {
+		if err := o.storageSvc.UnexportVolume(ctx, vid); err != nil {
+			o.logger.Warn("teardownVM: unexport volume failed", "volume_id", vid, "error", err)
+		}
+		if err := o.storageSvc.DeleteVolume(ctx, vm.TenantID, vid); err != nil {
+			o.logger.Warn("teardownVM: delete volume failed", "volume_id", vid, "error", err)
 		}
 	}
 

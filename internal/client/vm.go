@@ -50,6 +50,25 @@ func (c *Client) DeleteVM(ctx context.Context, tenantID, vmID uuid.UUID) error {
 	return nil
 }
 
+func (c *Client) VMAction(ctx context.Context, tenantID, vmID uuid.UUID, action string) error {
+	body := map[string]string{"action": action}
+	resp, err := c.doWithTenant(ctx, "POST", fmt.Sprintf("/api/v1/vms/%s/actions", vmID), body, tenantID)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
+func (c *Client) RepairVM(ctx context.Context, vmID uuid.UUID) error {
+	resp, err := c.do(ctx, "POST", fmt.Sprintf("/api/v1/admin/vms/%s/repair", vmID), nil)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
 // ResolveVM resolves a VM by UUID or name within a tenant.
 func (c *Client) ResolveVM(ctx context.Context, tenantID uuid.UUID, nameOrID string) (*compute.VM, error) {
 	if id, err := uuid.Parse(nameOrID); err == nil {

@@ -144,6 +144,8 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		r.Get("/vms", vh.listVMs)
 		r.Get("/vms/{vm_id}", vh.getVM)
 		r.Delete("/vms/{vm_id}", vh.deleteVM)
+		r.Post("/vms/{vm_id}/actions", vh.vmAction)
+		r.Post("/admin/vms/{vm_id}/repair", vh.repairVM)
 	})
 
 	return r

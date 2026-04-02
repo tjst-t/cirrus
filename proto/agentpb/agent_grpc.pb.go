@@ -163,8 +163,13 @@ var ControllerService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	WorkerService_CreateVM_FullMethodName = "/cirrus.agent.v1.WorkerService/CreateVM"
-	WorkerService_DeleteVM_FullMethodName = "/cirrus.agent.v1.WorkerService/DeleteVM"
+	WorkerService_CreateVM_FullMethodName    = "/cirrus.agent.v1.WorkerService/CreateVM"
+	WorkerService_DeleteVM_FullMethodName    = "/cirrus.agent.v1.WorkerService/DeleteVM"
+	WorkerService_StartVM_FullMethodName     = "/cirrus.agent.v1.WorkerService/StartVM"
+	WorkerService_StopVM_FullMethodName      = "/cirrus.agent.v1.WorkerService/StopVM"
+	WorkerService_ForceStopVM_FullMethodName = "/cirrus.agent.v1.WorkerService/ForceStopVM"
+	WorkerService_RebootVM_FullMethodName    = "/cirrus.agent.v1.WorkerService/RebootVM"
+	WorkerService_GetVMState_FullMethodName  = "/cirrus.agent.v1.WorkerService/GetVMState"
 )
 
 // WorkerServiceClient is the client API for WorkerService service.
@@ -175,6 +180,11 @@ const (
 type WorkerServiceClient interface {
 	CreateVM(ctx context.Context, in *CreateVMRequest, opts ...grpc.CallOption) (*CreateVMResponse, error)
 	DeleteVM(ctx context.Context, in *DeleteVMRequest, opts ...grpc.CallOption) (*DeleteVMResponse, error)
+	StartVM(ctx context.Context, in *StartVMRequest, opts ...grpc.CallOption) (*StartVMResponse, error)
+	StopVM(ctx context.Context, in *StopVMRequest, opts ...grpc.CallOption) (*StopVMResponse, error)
+	ForceStopVM(ctx context.Context, in *ForceStopVMRequest, opts ...grpc.CallOption) (*ForceStopVMResponse, error)
+	RebootVM(ctx context.Context, in *RebootVMRequest, opts ...grpc.CallOption) (*RebootVMResponse, error)
+	GetVMState(ctx context.Context, in *GetVMStateRequest, opts ...grpc.CallOption) (*GetVMStateResponse, error)
 }
 
 type workerServiceClient struct {
@@ -205,6 +215,56 @@ func (c *workerServiceClient) DeleteVM(ctx context.Context, in *DeleteVMRequest,
 	return out, nil
 }
 
+func (c *workerServiceClient) StartVM(ctx context.Context, in *StartVMRequest, opts ...grpc.CallOption) (*StartVMResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StartVMResponse)
+	err := c.cc.Invoke(ctx, WorkerService_StartVM_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workerServiceClient) StopVM(ctx context.Context, in *StopVMRequest, opts ...grpc.CallOption) (*StopVMResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StopVMResponse)
+	err := c.cc.Invoke(ctx, WorkerService_StopVM_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workerServiceClient) ForceStopVM(ctx context.Context, in *ForceStopVMRequest, opts ...grpc.CallOption) (*ForceStopVMResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ForceStopVMResponse)
+	err := c.cc.Invoke(ctx, WorkerService_ForceStopVM_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workerServiceClient) RebootVM(ctx context.Context, in *RebootVMRequest, opts ...grpc.CallOption) (*RebootVMResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RebootVMResponse)
+	err := c.cc.Invoke(ctx, WorkerService_RebootVM_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workerServiceClient) GetVMState(ctx context.Context, in *GetVMStateRequest, opts ...grpc.CallOption) (*GetVMStateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetVMStateResponse)
+	err := c.cc.Invoke(ctx, WorkerService_GetVMState_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // WorkerServiceServer is the server API for WorkerService service.
 // All implementations must embed UnimplementedWorkerServiceServer
 // for forward compatibility.
@@ -213,6 +273,11 @@ func (c *workerServiceClient) DeleteVM(ctx context.Context, in *DeleteVMRequest,
 type WorkerServiceServer interface {
 	CreateVM(context.Context, *CreateVMRequest) (*CreateVMResponse, error)
 	DeleteVM(context.Context, *DeleteVMRequest) (*DeleteVMResponse, error)
+	StartVM(context.Context, *StartVMRequest) (*StartVMResponse, error)
+	StopVM(context.Context, *StopVMRequest) (*StopVMResponse, error)
+	ForceStopVM(context.Context, *ForceStopVMRequest) (*ForceStopVMResponse, error)
+	RebootVM(context.Context, *RebootVMRequest) (*RebootVMResponse, error)
+	GetVMState(context.Context, *GetVMStateRequest) (*GetVMStateResponse, error)
 	mustEmbedUnimplementedWorkerServiceServer()
 }
 
@@ -228,6 +293,21 @@ func (UnimplementedWorkerServiceServer) CreateVM(context.Context, *CreateVMReque
 }
 func (UnimplementedWorkerServiceServer) DeleteVM(context.Context, *DeleteVMRequest) (*DeleteVMResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteVM not implemented")
+}
+func (UnimplementedWorkerServiceServer) StartVM(context.Context, *StartVMRequest) (*StartVMResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method StartVM not implemented")
+}
+func (UnimplementedWorkerServiceServer) StopVM(context.Context, *StopVMRequest) (*StopVMResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method StopVM not implemented")
+}
+func (UnimplementedWorkerServiceServer) ForceStopVM(context.Context, *ForceStopVMRequest) (*ForceStopVMResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ForceStopVM not implemented")
+}
+func (UnimplementedWorkerServiceServer) RebootVM(context.Context, *RebootVMRequest) (*RebootVMResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RebootVM not implemented")
+}
+func (UnimplementedWorkerServiceServer) GetVMState(context.Context, *GetVMStateRequest) (*GetVMStateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetVMState not implemented")
 }
 func (UnimplementedWorkerServiceServer) mustEmbedUnimplementedWorkerServiceServer() {}
 func (UnimplementedWorkerServiceServer) testEmbeddedByValue()                       {}
@@ -286,6 +366,96 @@ func _WorkerService_DeleteVM_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WorkerService_StartVM_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StartVMRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerServiceServer).StartVM(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkerService_StartVM_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerServiceServer).StartVM(ctx, req.(*StartVMRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkerService_StopVM_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StopVMRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerServiceServer).StopVM(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkerService_StopVM_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerServiceServer).StopVM(ctx, req.(*StopVMRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkerService_ForceStopVM_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ForceStopVMRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerServiceServer).ForceStopVM(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkerService_ForceStopVM_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerServiceServer).ForceStopVM(ctx, req.(*ForceStopVMRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkerService_RebootVM_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RebootVMRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerServiceServer).RebootVM(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkerService_RebootVM_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerServiceServer).RebootVM(ctx, req.(*RebootVMRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkerService_GetVMState_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetVMStateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerServiceServer).GetVMState(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkerService_GetVMState_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerServiceServer).GetVMState(ctx, req.(*GetVMStateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // WorkerService_ServiceDesc is the grpc.ServiceDesc for WorkerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -300,6 +470,26 @@ var WorkerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteVM",
 			Handler:    _WorkerService_DeleteVM_Handler,
+		},
+		{
+			MethodName: "StartVM",
+			Handler:    _WorkerService_StartVM_Handler,
+		},
+		{
+			MethodName: "StopVM",
+			Handler:    _WorkerService_StopVM_Handler,
+		},
+		{
+			MethodName: "ForceStopVM",
+			Handler:    _WorkerService_ForceStopVM_Handler,
+		},
+		{
+			MethodName: "RebootVM",
+			Handler:    _WorkerService_RebootVM_Handler,
+		},
+		{
+			MethodName: "GetVMState",
+			Handler:    _WorkerService_GetVMState_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

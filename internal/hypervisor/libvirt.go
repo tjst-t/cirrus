@@ -238,6 +238,17 @@ func (d *LibvirtDriver) StopVM(ctx context.Context, name string) error {
 	return nil
 }
 
+// RebootVM gracefully stops then starts a VM, simulating a reboot.
+func (d *LibvirtDriver) RebootVM(ctx context.Context, name string) error {
+	if err := d.StopVM(ctx, name); err != nil {
+		return fmt.Errorf("libvirt: RebootVM: stop: %w", err)
+	}
+	if err := d.StartVM(ctx, name); err != nil {
+		return fmt.Errorf("libvirt: RebootVM: start: %w", err)
+	}
+	return nil
+}
+
 // DestroyVM forcefully powers off a VM.
 func (d *LibvirtDriver) DestroyVM(ctx context.Context, name string) error {
 	if d.hostID == "" {
