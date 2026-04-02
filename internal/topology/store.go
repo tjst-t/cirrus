@@ -426,9 +426,15 @@ func (s *Store) ListReachableHosts(ctx context.Context, storageDomainID uuid.UUI
 	return ids, rows.Err()
 }
 
+// ListReachableBackends returns the IDs of active storage_backends reachable
+// from the given host (host → host_storage_domains → storage_backends).
+// Before Sprint 6 this returned storage_domain_ids; now it returns backend_ids.
 func (s *Store) ListReachableBackends(ctx context.Context, hostID uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT storage_domain_id FROM host_storage_domains WHERE host_id = $1`,
+		`SELECT sb.id
+		 FROM storage_backends sb
+		 JOIN host_storage_domains hsd ON hsd.storage_domain_id = sb.storage_domain_id
+		 WHERE hsd.host_id = $1 AND sb.state = 'active'`,
 		hostID)
 	if err != nil {
 		return nil, fmt.Errorf("topology: list reachable backends: %w", err)

@@ -27,6 +27,8 @@ import (
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/network"
 	"github.com/tjst-t/cirrus/internal/state"
+	"github.com/tjst-t/cirrus/internal/storage"
+	simstorage "github.com/tjst-t/cirrus/internal/storage/driver/sim"
 	"github.com/tjst-t/cirrus/internal/topology"
 )
 
@@ -137,8 +139,17 @@ func runController(cfg *config.ControllerConfig) error {
 	// Availability Zone service
 	azSvc := az.NewStore(pool)
 
+	// Storage service
+	storageDrivers := storage.DriverRegistry{
+		"sim": func(endpoint string, backendID string, _ map[string]any) storage.Driver {
+			return simstorage.New(endpoint, backendID)
+		},
+	}
+	storageStore := storage.NewStore(pool)
+	storageSvc := storage.NewService(storageStore, storageDrivers, logger)
+
 	// HTTP API
-	router := api.NewRouter(pool, logger, authn, authz, identitySvc, hostSvc, topologySvc, networkSvc, azSvc)
+	router := api.NewRouter(pool, logger, authn, authz, identitySvc, hostSvc, topologySvc, networkSvc, azSvc, storageSvc)
 	httpSrv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.APIPort),
 		Handler: router,
@@ -180,6 +191,12 @@ func runController(cfg *config.ControllerConfig) error {
 	netReconciler := reconcile.NewNetworkReconciler(stateCtrl, hostSvc, logger, 5*time.Minute)
 	g.Go(func() error {
 		return netReconciler.Run(gCtx)
+	})
+
+	// Storage reconciler
+	storageReconciler := reconcile.NewStorageReconciler(storageSvc, logger, 5*time.Minute)
+	g.Go(func() error {
+		return storageReconciler.Run(gCtx)
 	})
 
 	g.Go(func() error {

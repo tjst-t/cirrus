@@ -16,6 +16,7 @@ import (
 	"github.com/tjst-t/cirrus/internal/host"
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/network"
+	"github.com/tjst-t/cirrus/internal/storage"
 	"github.com/tjst-t/cirrus/internal/topology"
 )
 
@@ -52,6 +53,8 @@ func main() {
 	rootCmd.AddCommand(app.newNetworkCmd())
 	rootCmd.AddCommand(app.newGroupCmd())
 	rootCmd.AddCommand(app.newPolicyCmd())
+	rootCmd.AddCommand(app.newVolumeTypeCmd())
+	rootCmd.AddCommand(app.newVolumeCmd())
 	rootCmd.AddCommand(app.newAdminCmd())
 
 	if err := rootCmd.Execute(); err != nil {
@@ -838,6 +841,8 @@ func (app *cli) newAdminCmd() *cobra.Command {
 	cmd.AddCommand(app.newAdminComputePoolCmd())
 	cmd.AddCommand(app.newAdminFaultDomainCmd())
 	cmd.AddCommand(app.newAdminAZCmd())
+	cmd.AddCommand(app.newAdminStorageBackendCmd())
+	cmd.AddCommand(app.newAdminVolumeTypeCmd())
 	return cmd
 }
 
@@ -1819,4 +1824,459 @@ func (app *cli) printStatus(action, resource, id string) error {
 	}
 	fmt.Printf("%s %s %s\n", action, resource, id)
 	return nil
+}
+
+// --- Admin: Storage Backend commands ---
+
+func (app *cli) newAdminStorageBackendCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "storage-backend",
+		Short: "Manage storage backends",
+	}
+	cmd.AddCommand(app.newStorageBackendCreateCmd())
+	cmd.AddCommand(app.newStorageBackendListCmd())
+	cmd.AddCommand(app.newStorageBackendShowCmd())
+	cmd.AddCommand(app.newStorageBackendDrainCmd())
+	return cmd
+}
+
+func storageBackendRow(b *storage.Backend) []string {
+	return []string{b.ID.String(), b.Name, b.Driver, string(b.State), b.Endpoint}
+}
+
+func (app *cli) newStorageBackendCreateCmd() *cobra.Command {
+	var (
+		domainID     string
+		driver       string
+		endpoint     string
+		capacityGB   int64
+		iops         int64
+		capabilities []string
+	)
+	cmd := &cobra.Command{
+		Use:   "create <name>",
+		Short: "Register a new storage backend",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+
+			sdID, err := c.ResolveStorageDomain(ctx, domainID)
+			if err != nil {
+				return err
+			}
+			b, err := c.RegisterStorageBackend(ctx, client.RegisterBackendRequest{
+				StorageDomainID: sdID,
+				Name:            args[0],
+				Driver:          driver,
+				Endpoint:        endpoint,
+				TotalCapacityGB: capacityGB,
+				TotalIOPS:       iops,
+				Capabilities:    capabilities,
+			})
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NAME", "DRIVER", "STATE", "ENDPOINT"},
+				[][]string{storageBackendRow(b)},
+			)
+		},
+	}
+	cmd.Flags().StringVar(&domainID, "storage-domain", "", "Storage domain name or ID (required)")
+	cmd.Flags().StringVar(&driver, "driver", "sim", "Driver type (sim, iscsi, rbd, ...)")
+	cmd.Flags().StringVar(&endpoint, "endpoint", "", "Backend management API endpoint (required)")
+	cmd.Flags().Int64Var(&capacityGB, "capacity-gb", 0, "Total capacity in GB")
+	cmd.Flags().Int64Var(&iops, "iops", 0, "Total IOPS")
+	cmd.Flags().StringSliceVar(&capabilities, "capabilities", nil, "Capabilities (ssd,encryption,...)")
+	_ = cmd.MarkFlagRequired("storage-domain")
+	_ = cmd.MarkFlagRequired("endpoint")
+	return cmd
+}
+
+func (app *cli) newStorageBackendListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List storage backends",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			bs, err := app.newClient().ListStorageBackends(ctx)
+			if err != nil {
+				return err
+			}
+			rows := make([][]string, len(bs))
+			for i := range bs {
+				rows[i] = storageBackendRow(&bs[i])
+			}
+			return app.printTable([]string{"ID", "NAME", "DRIVER", "STATE", "ENDPOINT"}, rows)
+		},
+	}
+}
+
+func (app *cli) newStorageBackendShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show <id-or-name>",
+		Short: "Show storage backend details",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			id, err := c.ResolveStorageBackend(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			b, err := c.GetStorageBackend(ctx, id)
+			if err != nil {
+				return err
+			}
+			return app.printDetail(b,
+				"ID", b.ID.String(),
+				"Name", b.Name,
+				"Driver", b.Driver,
+				"State", string(b.State),
+				"Endpoint", b.Endpoint,
+				"CapacityGB", fmt.Sprintf("%d", b.TotalCapacityGB),
+				"IOPS", fmt.Sprintf("%d", b.TotalIOPS),
+			)
+		},
+	}
+}
+
+func (app *cli) newStorageBackendDrainCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "drain <id-or-name>",
+		Short: "Set storage backend to draining state",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			id, err := c.ResolveStorageBackend(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			if err := c.DrainStorageBackend(ctx, id); err != nil {
+				return err
+			}
+			return app.printStatus("drained", "storage-backend", id.String())
+		},
+	}
+}
+
+// --- Admin: Volume Type commands (create) ---
+
+func (app *cli) newAdminVolumeTypeCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "volume-type",
+		Short: "Manage volume types (admin)",
+	}
+	cmd.AddCommand(app.newAdminVolumeTypeCreateCmd())
+	return cmd
+}
+
+func (app *cli) newAdminVolumeTypeCreateCmd() *cobra.Command {
+	var (
+		description  string
+		capabilities []string
+		isPublic     bool
+	)
+	cmd := &cobra.Command{
+		Use:   "create <name>",
+		Short: "Create a new volume type",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			vt, err := app.newClient().CreateVolumeType(ctx, client.CreateVolumeTypeRequest{
+				Name:                 args[0],
+				Description:          description,
+				RequiredCapabilities: capabilities,
+				IsPublic:             isPublic,
+			})
+			if err != nil {
+				return err
+			}
+			return app.printDetail(vt,
+				"ID", vt.ID.String(),
+				"Name", vt.Name,
+				"Description", vt.Description,
+				"IsPublic", fmt.Sprintf("%v", vt.IsPublic),
+			)
+		},
+	}
+	cmd.Flags().StringVar(&description, "description", "", "Description")
+	cmd.Flags().StringSliceVar(&capabilities, "capabilities", nil, "Required backend capabilities")
+	cmd.Flags().BoolVar(&isPublic, "public", true, "Make volume type public")
+	return cmd
+}
+
+// --- Volume Type commands (tenant: list/show) ---
+
+func (app *cli) newVolumeTypeCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "volume-type",
+		Short: "List and show volume types",
+	}
+	cmd.AddCommand(app.newVolumeTypeListCmd())
+	cmd.AddCommand(app.newVolumeTypeShowCmd())
+	return cmd
+}
+
+func (app *cli) newVolumeTypeListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List available volume types",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			vts, err := app.newClient().ListVolumeTypes(ctx)
+			if err != nil {
+				return err
+			}
+			rows := make([][]string, len(vts))
+			for i, vt := range vts {
+				rows[i] = []string{vt.ID.String(), vt.Name, vt.Description, fmt.Sprintf("%v", vt.IsPublic)}
+			}
+			return app.printTable([]string{"ID", "NAME", "DESCRIPTION", "PUBLIC"}, rows)
+		},
+	}
+}
+
+func (app *cli) newVolumeTypeShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show <id-or-name>",
+		Short: "Show volume type details",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			id, err := c.ResolveVolumeType(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			vt, err := c.GetVolumeType(ctx, id)
+			if err != nil {
+				return err
+			}
+			return app.printDetail(vt,
+				"ID", vt.ID.String(),
+				"Name", vt.Name,
+				"Description", vt.Description,
+				"IsPublic", fmt.Sprintf("%v", vt.IsPublic),
+			)
+		},
+	}
+}
+
+// --- Volume commands (tenant-scoped) ---
+
+func (app *cli) newVolumeCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "volume",
+		Short: "Manage volumes",
+	}
+	cmd.AddCommand(app.newVolumeCreateCmd())
+	cmd.AddCommand(app.newVolumeListCmd())
+	cmd.AddCommand(app.newVolumeShowCmd())
+	cmd.AddCommand(app.newVolumeDeleteCmd())
+	cmd.AddCommand(app.newVolumeResizeCmd())
+	return cmd
+}
+
+func volumeRow(v *storage.Volume) []string {
+	vtID := ""
+	if v.VolumeTypeID != nil {
+		vtID = v.VolumeTypeID.String()
+	}
+	return []string{v.ID.String(), v.Name, fmt.Sprintf("%d", v.SizeGB), string(v.State), vtID}
+}
+
+func (app *cli) newVolumeCreateCmd() *cobra.Command {
+	var (
+		tenant       string
+		org          string
+		volumeTypeID string
+		sizeGB       int64
+		azID         string
+	)
+	cmd := &cobra.Command{
+		Use:   "create <name>",
+		Short: "Create a new volume",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+
+			req := client.CreateVolumeRequest{
+				Name:   args[0],
+				SizeGB: sizeGB,
+			}
+			if volumeTypeID != "" {
+				vtID, err := c.ResolveVolumeType(ctx, volumeTypeID)
+				if err != nil {
+					return err
+				}
+				req.VolumeTypeID = &vtID
+			}
+			if azID != "" {
+				id, err := uuid.Parse(azID)
+				if err != nil {
+					return fmt.Errorf("invalid az-id: %w", err)
+				}
+				req.AZID = &id
+			}
+
+			v, err := c.CreateVolume(ctx, tenantID, req)
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NAME", "SIZE_GB", "STATE", "VOLUME_TYPE"},
+				[][]string{volumeRow(v)},
+			)
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant name or ID (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization name or ID (required when --tenant is a name)")
+	cmd.Flags().StringVar(&volumeTypeID, "volume-type", "", "Volume type name or ID")
+	cmd.Flags().Int64Var(&sizeGB, "size-gb", 0, "Size in GB (required)")
+	cmd.Flags().StringVar(&azID, "az", "", "Availability zone ID")
+	_ = cmd.MarkFlagRequired("tenant")
+	_ = cmd.MarkFlagRequired("size-gb")
+	return cmd
+}
+
+func (app *cli) newVolumeListCmd() *cobra.Command {
+	var tenant, org string
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List volumes",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			vs, err := c.ListVolumes(ctx, tenantID)
+			if err != nil {
+				return err
+			}
+			rows := make([][]string, len(vs))
+			for i := range vs {
+				rows[i] = volumeRow(&vs[i])
+			}
+			return app.printTable([]string{"ID", "NAME", "SIZE_GB", "STATE", "VOLUME_TYPE"}, rows)
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant name or ID (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization name or ID (required when --tenant is a name)")
+	_ = cmd.MarkFlagRequired("tenant")
+	return cmd
+}
+
+func (app *cli) newVolumeShowCmd() *cobra.Command {
+	var tenant, org string
+	cmd := &cobra.Command{
+		Use:   "show <id-or-name>",
+		Short: "Show volume details",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			id, err := c.ResolveVolume(ctx, tenantID, args[0])
+			if err != nil {
+				return err
+			}
+			v, err := c.GetVolume(ctx, tenantID, id)
+			if err != nil {
+				return err
+			}
+			return app.printDetail(v,
+				"ID", v.ID.String(),
+				"Name", v.Name,
+				"SizeGB", fmt.Sprintf("%d", v.SizeGB),
+				"State", string(v.State),
+				"TenantID", v.TenantID.String(),
+			)
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant name or ID (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization name or ID (required when --tenant is a name)")
+	_ = cmd.MarkFlagRequired("tenant")
+	return cmd
+}
+
+func (app *cli) newVolumeDeleteCmd() *cobra.Command {
+	var tenant, org string
+	cmd := &cobra.Command{
+		Use:   "delete <id-or-name>",
+		Short: "Delete a volume",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			id, err := c.ResolveVolume(ctx, tenantID, args[0])
+			if err != nil {
+				return err
+			}
+			if err := c.DeleteVolume(ctx, tenantID, id); err != nil {
+				return err
+			}
+			return app.printStatus("deleted", "volume", id.String())
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant name or ID (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization name or ID (required when --tenant is a name)")
+	_ = cmd.MarkFlagRequired("tenant")
+	return cmd
+}
+
+func (app *cli) newVolumeResizeCmd() *cobra.Command {
+	var tenant, org string
+	var newSizeGB int64
+	cmd := &cobra.Command{
+		Use:   "resize <id-or-name>",
+		Short: "Resize a volume (increase only)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if newSizeGB <= 0 {
+				return fmt.Errorf("--size must be a positive integer (got %d)", newSizeGB)
+			}
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			id, err := c.ResolveVolume(ctx, tenantID, args[0])
+			if err != nil {
+				return err
+			}
+			v, err := c.ResizeVolume(ctx, tenantID, id, newSizeGB)
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NAME", "SIZE_GB", "STATE"},
+				[][]string{volumeRow(v)},
+			)
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant name or ID (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization name or ID (required when --tenant is a name)")
+	cmd.Flags().Int64Var(&newSizeGB, "size", 0, "New size in GB (required, must be larger than current)")
+	_ = cmd.MarkFlagRequired("tenant")
+	_ = cmd.MarkFlagRequired("size")
+	return cmd
 }

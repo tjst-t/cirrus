@@ -156,6 +156,32 @@ make test
 
 外部依存なし。純粋なGoテストで完結する。
 
+### Storage結合テスト（`make serve` 環境）
+
+`make serve` で起動した環境でStorage結合テストを行う場合、以下の手順が必要。
+
+storage-simはバックエンドをメモリ内に保持しており、controllerのDB上のバックエンドIDと一致している必要がある。`make serve`のseedではlibvirt-simのホストのみが登録されるため、storageバックエンドは手動で同期する。
+
+```bash
+# 1. controllerにバックエンドを登録
+BACKEND=$(curl -s -X POST -H "Authorization: Bearer dev-token" \
+  -H "Content-Type: application/json" \
+  -d '{"storage_domain_id": "<sd-id>", "name": "sim-backend-1", "driver": "sim",
+       "endpoint": "http://localhost:<sim-storage-port>",
+       "total_capacity_gb": 1000, "total_iops": 50000, "capabilities": ["ssd"]}' \
+  http://localhost:<api-port>/api/v1/admin/storage-backends)
+
+BACKEND_ID=$(echo $BACKEND | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+
+# 2. 取得したUUIDで storage-sim にも同じIDで登録
+curl -s -X POST -H "Content-Type: application/json" \
+  -d "{\"backend_id\": \"$BACKEND_ID\", \"total_capacity_gb\": 1000,
+       \"total_iops\": 50000, \"capabilities\": [\"ssd\"], \"overprovision_ratio\": 1.5}" \
+  http://localhost:<sim-storage-port>/sim/backends
+```
+
+なお、`$SIM_STORAGE_PORT` 等の実際のポート番号は `cat /tmp/cirrus-dev/portman.env` で確認できる。
+
 ### 結合テスト（レイヤー3）
 
 ```bash

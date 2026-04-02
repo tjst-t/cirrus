@@ -65,6 +65,24 @@ const (
 	ActionListPolicies  Action = "list_policies"
 	ActionGetPolicy     Action = "get_policy"
 	ActionDeletePolicy  Action = "delete_policy"
+
+	// Storage backend actions (infra_admin)
+	ActionCreateStorageBackend Action = "create_storage_backend"
+	ActionListStorageBackends  Action = "list_storage_backends"
+	ActionGetStorageBackend    Action = "get_storage_backend"
+	ActionDrainStorageBackend  Action = "drain_storage_backend"
+
+	// Volume type actions (infra_admin: create; tenant: list)
+	ActionCreateVolumeType Action = "create_volume_type"
+	ActionListVolumeTypes  Action = "list_volume_types"
+	ActionGetVolumeType    Action = "get_volume_type"
+
+	// Volume actions (tenant-scoped)
+	ActionCreateVolume Action = "create_volume"
+	ActionListVolumes  Action = "list_volumes"
+	ActionGetVolume    Action = "get_volume"
+	ActionDeleteVolume Action = "delete_volume"
+	ActionResizeVolume Action = "resize_volume"
 )
 
 // Resource represents the target resource of an authorization check.
@@ -147,7 +165,9 @@ func (a *RBACAuthorizer) checkPermission(ra RoleAssignment, action Action, resou
 		case ActionCreateNetwork, ActionListNetworks, ActionGetNetwork, ActionDeleteNetwork,
 			ActionListPorts, ActionGetPort,
 			ActionCreateGroup, ActionListGroups, ActionGetGroup, ActionDeleteGroup,
-			ActionCreatePolicy, ActionListPolicies, ActionGetPolicy, ActionDeletePolicy:
+			ActionCreatePolicy, ActionListPolicies, ActionGetPolicy, ActionDeletePolicy,
+			ActionListVolumeTypes, ActionGetVolumeType,
+			ActionCreateVolume, ActionListVolumes, ActionGetVolume, ActionDeleteVolume, ActionResizeVolume:
 			return resource.TenantID != nil && *resource.TenantID == *ra.ScopeID
 		}
 
@@ -162,7 +182,9 @@ func (a *RBACAuthorizer) checkPermission(ra RoleAssignment, action Action, resou
 		case ActionListNetworks, ActionGetNetwork,
 			ActionListPorts, ActionGetPort,
 			ActionListGroups, ActionGetGroup,
-			ActionListPolicies, ActionGetPolicy:
+			ActionListPolicies, ActionGetPolicy,
+			ActionListVolumeTypes, ActionGetVolumeType,
+			ActionListVolumes, ActionGetVolume:
 			return resource.TenantID != nil && *resource.TenantID == *ra.ScopeID
 		}
 	}

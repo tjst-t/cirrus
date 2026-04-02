@@ -10,11 +10,12 @@ import (
 	"github.com/tjst-t/cirrus/internal/host"
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/network"
+	"github.com/tjst-t/cirrus/internal/storage"
 	"github.com/tjst-t/cirrus/internal/topology"
 )
 
 // NewRouter creates the HTTP router with all middleware and routes.
-func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authenticator, authz identity.Authorizer, identitySvc identity.Service, hostSvc host.Service, topologySvc topology.Service, networkSvc network.Service, azSvc az.Service) http.Handler {
+func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authenticator, authz identity.Authorizer, identitySvc identity.Service, hostSvc host.Service, topologySvc topology.Service, networkSvc network.Service, azSvc az.Service, storageSvc storage.Service) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(RequestID)
@@ -107,6 +108,25 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 
 		r.Get("/ports", nh.listPorts)
 		r.Get("/ports/{port_id}", nh.getPort)
+
+		// Storage backends (infra_admin)
+		sh := &storageHandlers{svc: storageSvc, authz: authz}
+		r.Post("/admin/storage-backends", sh.createStorageBackend)
+		r.Get("/admin/storage-backends", sh.listStorageBackends)
+		r.Get("/admin/storage-backends/{backend_id}", sh.getStorageBackend)
+		r.Post("/admin/storage-backends/{backend_id}/drain", sh.drainStorageBackend)
+
+		// Volume types (infra_admin: create; all authenticated: list/get)
+		r.Post("/admin/volume-types", sh.createVolumeType)
+		r.Get("/volume-types", sh.listVolumeTypes)
+		r.Get("/volume-types/{volume_type_id}", sh.getVolumeType)
+
+		// Volumes (tenant-scoped)
+		r.Post("/volumes", sh.createVolume)
+		r.Get("/volumes", sh.listVolumes)
+		r.Get("/volumes/{volume_id}", sh.getVolume)
+		r.Delete("/volumes/{volume_id}", sh.deleteVolume)
+		r.Post("/volumes/{volume_id}/resize", sh.resizeVolume)
 	})
 
 	return r

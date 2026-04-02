@@ -554,44 +554,78 @@
 **ゴール**: ストレージバックエンドを登録し、ボリュームをAPIで作成でき、cirrus-sim storage-simに反映される。
 
 #### S6-1: バックエンドドライバ
-- [ ] internal/storage/driver/driver.go: BackendDriver インターフェース定義
-- [ ] cirrus-sim storage-sim用ドライバ実装（REST API呼び出し）
-- [ ] CreateVolume, DeleteVolume, ExportVolume, UnexportVolume
-- [ ] Capabilities() 返却
+- [x] internal/storage/driver.go: BackendDriver インターフェース定義（ExportVolume/UnexportVolume + HostInfo設計）
+- [x] cirrus-sim storage-sim用ドライバ実装（REST API呼び出し）: internal/storage/driver/sim/sim.go
+- [x] CreateVolume, DeleteVolume, ExportVolume, UnexportVolume
+- [x] Capabilities() 返却
 
 #### S6-2: ストレージモデルのDB
-- [ ] マイグレーション: storage_backends, volume_types, volumes テーブル
-- [ ] storage_backends.storage_domain_id 外部キー
-- [ ] volume_types: required_capabilities JSONB、qos_policy JSONB
+- [x] マイグレーション: storage_backends, volume_types, volumes テーブル（000011_storage.up.sql）
+- [x] storage_backends.storage_domain_id 外部キー
+- [x] volume_types: required_capabilities JSONB、qos_policy JSONB
+- [x] hosts.storage_properties JSONB（iSCSI IQN等のプロトコル固有接続情報）
+- [x] volumes.exported_host_id + export_info JSONB（アタッチ状態管理）
 
 #### S6-3: Storage Service
-- [ ] internal/storage/service.go: Service インターフェース定義
-- [ ] RegisterBackend, CreateVolume, DeleteVolume, ResizeVolume
-- [ ] ボリューム作成時: ボリュームタイプのcapability要件でバックエンド選定
-- [ ] AttachVolume/DetachVolume（メタデータ管理、実際のエクスポートはドライバ経由）
+- [x] internal/storage/service.go: Service インターフェース定義
+- [x] RegisterBackend, CreateVolume, DeleteVolume, ResizeVolume
+- [x] ボリューム作成時: ボリュームタイプのcapability要件でバックエンド選定 + AZフィルタ
+- [x] ExportVolume/UnexportVolume（AttachVolume/DetachVolumの設計変更版）
+  - 設計変更: AttachVolume → ExportVolume（ストレージ側）+ BlockDev.Attach（Worker側）に分離
+  - HostInfo.Propertiesでhosts.storage_propertiesをDriverに渡す
 
 #### S6-4: APIエンドポイント
-- [ ] POST/GET /api/v1/storage-backends（インフラ管理者）
-- [ ] POST/GET /api/v1/volume-types（インフラ管理者作成 + テナント向け一覧）
-- [ ] GET /api/v1/volume-types（テナント: 利用可能な Volume Type 一覧）
-- [ ] POST/GET/DELETE /api/v1/volumes（テナント操作、volume_type_id + az(optional) 指定）
-- [ ] POST /api/v1/volumes/{id}/attach, /detach
+- [x] POST/GET /api/v1/admin/storage-backends（インフラ管理者）
+- [x] POST /api/v1/admin/storage-backends/{id}/drain（バックエンドドレイン）
+- [x] POST /api/v1/admin/volume-types（インフラ管理者作成）
+- [x] GET /api/v1/volume-types（テナント: 利用可能な Volume Type 一覧）
+- [x] GET /api/v1/volume-types/{id}（取得）
+- [x] POST/GET/DELETE /api/v1/volumes（テナント操作、volume_type_id + az(optional) 指定）
+- [ ] POST /api/v1/volumes/{id}/attach, /detach → Sprint 7（Compute Orchestrator）に移動
 
 #### S6-5: Storage Reconciler 基礎（docs/reconciliation.md 参照）
-- [ ] internal/controller/reconcile/storage.go: StorageReconciler実装
-- [ ] reconcile loop（デフォルト5分間隔）で各バックエンドにListVolumes問い合わせ
-- [ ] DB上のvolumesと照合
-- [ ] 初期実装はログ出力のみ（DriftEvent基盤はSprint 8.5で完成後に移行）
-- [ ] 遷移中ステータス（creating, deleting, migrating）のボリュームは除外
+- [x] internal/controller/reconcile/storage.go: StorageReconciler実装
+- [x] reconcile loop（デフォルト5分間隔）で各バックエンドにListVolumes問い合わせ
+- [x] DB上のvolumesと照合（ログ出力のみ）
+- [x] 初期実装はログ出力のみ（DriftEvent基盤はSprint 8.5で完成後に移行）
+- [x] 遷移中ステータス（creating, deleting）のボリュームは除外
 
 #### S6-6: テスト
-- [ ] 結合テスト: バックエンド登録→ボリューム作成→storage-simに作成される
-- [ ] ボリュームタイプのcapabilityマッチングテスト
+- [x] ボリュームタイプのcapabilityマッチングテスト（internal/storage/service_impl_test.go）
+- [x] CreateVolume: 最初のマッチングバックエンド選択、Drainingバックエンドのスキップ、capability不足でのErrNoMatchingBackend
+- [x] CreateVolume: AZIDが指定された場合にListActiveBackendsForAZが呼ばれることの検証
+- [x] ResizeVolume: サイズ縮小・同値拒否、InUse拒否、テナント分離
+- [x] 結合テスト: バックエンド登録→ボリューム作成→storage-simに作成される
 
 #### S6-7: CLIクライアント
-- [ ] cirrusctl storage-backend/volume-type/volume コマンド追加
+- [x] cirrusctl admin storage-backend create/list/show/drain
+- [x] cirrusctl admin volume-type create
+- [x] cirrusctl volume-type list/show
+- [x] cirrusctl volume create/list/show/delete/resize
+
+**topology更新**: ListReachableBackends を storage_domain_id → backend_id を返すよう修正済み
 
 **デプロイ確認**: バックエンド登録→ボリューム作成→storage-simの管理APIで確認
+
+---
+
+### Sprint 6.5: Storageプロトコル Layer 3テスト（iSCSI / RBD）
+
+**ゴール**: 実iSCSI target・実Ceph（RBD）をdocker-composeに追加し、DriverのExportVolume→WorkerのBlockDevアタッチまでの全スタックを通すテストを構築する。Sprint 6のsimベーステストでは検証できない「プロトコルレベルの接続性」を担保する。
+
+#### S6.5-1: iSCSI Layer 3テスト
+- [ ] docker-composeにiSCSI targetコンテナ追加（tgt または targetcli ベースのカスタムイメージ）
+- [ ] iSCSI用BackendDriverの実装（tgt管理APIへのExportVolume/UnexportVolume）
+- [ ] WorkerコンテナにOpen-iSCSIイニシエータ（iscsiadm）をインストール
+- [ ] 結合テスト: ExportVolume → iscsiadm login → /dev/sdX が現れる → UnexportVolume → logout
+
+#### S6.5-2: RBD（Ceph）Layer 3テスト
+- [ ] docker-composeにCephシングルノードコンテナ追加（quay.io/ceph/demo）
+- [ ] RBD用BackendDriverの実装（Ceph管理API経由のCreateVolume/ExportVolume）
+- [ ] WorkerコンテナにCephクライアント（rbd コマンド）をインストール
+- [ ] 結合テスト: ExportVolume → rbd map → /dev/rbdX が現れる → UnexportVolume → rbd unmap
+
+**備考**: Sprint 6完了後に着手。CI/CDでは実行時間が長いため別ジョブとして分離することを検討する。
 
 ---
 

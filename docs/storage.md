@@ -30,6 +30,10 @@
 
 ### バックエンドドライバインターフェース
 
+Driverは**Controller側**で動作し、ストレージバックエンドの管理APIを呼び出す。Workerホストには直接アクセスしない。
+
+ホスト側のOSレベルアタッチ（iscsiadm、rbd map等）はWorker側の `blockdev.Manager` が担う（責務分担は下記参照）。
+
 ```go
 // internal/storage/driver.go
 package storage
@@ -40,9 +44,10 @@ type Driver interface {
     DeleteVolume(ctx context.Context, volumeID string) error
     ResizeVolume(ctx context.Context, volumeID string, newSizeGB int) error
 
-    // アタッチ/デタッチ
-    AttachVolume(ctx context.Context, volumeID string, hostID string) (*AttachInfo, error)
-    DetachVolume(ctx context.Context, volumeID string, hostID string) error
+    // エクスポート（ストレージ側のアクセス許可設定）
+    // HostInfo.Propertiesにプロトコル固有の接続情報（IQN等）が含まれる
+    ExportVolume(ctx context.Context, volumeID string, host HostInfo) (*ExportInfo, error)
+    UnexportVolume(ctx context.Context, volumeID string, host HostInfo) error
 
     // スナップショット
     CreateSnapshot(ctx context.Context, volumeID string, name string) (*Snapshot, error)
@@ -55,6 +60,21 @@ type Driver interface {
     Capabilities() DriverCapabilities
 }
 
+// HostInfo はExportVolume時にDriverに渡すホスト接続属性。
+// Storage ServiceがDBのhostsレコードから組み立てる。
+type HostInfo struct {
+    ID         string
+    DataIPs    []string
+    Properties map[string]string // hosts.storage_properties から詰めたもの
+                                 // 例: {"iscsi_iqn": "iqn.2024.com.example:host1"}
+}
+
+// ExportInfo はWorkerのblockdev.ManagerがOSレベルアタッチに使う接続情報。
+type ExportInfo struct {
+    Protocol string            // "rbd", "iscsi", "nfs", ...
+    Params   map[string]string // プロトコル固有パラメータ
+}
+
 type DriverCapabilities struct {
     QoS                    bool
     Encryption             bool
@@ -65,6 +85,34 @@ type DriverCapabilities struct {
     Clone                  bool
 }
 ```
+
+### DriverとBlockDevの責務分担
+
+```
+[Controller] Storage.ExportVolume(volumeID, hostID)
+               → HostInfo組み立て（DB参照）
+               → Driver.ExportVolume(volumeID, hostInfo)
+                   → ストレージバックエンド管理API呼び出し
+                       （iSCSI target作成+ACL設定、RBD keyring付与等）
+               → ExportInfo を返す
+               ↓ gRPC CreateVM に DiskSpec(ExportInfo) として含める
+[Worker]     blockdev.Manager.Attach(ExportInfo)
+               → OSレベルのデバイスとして接続
+                   （iscsiadm login、rbd map等）
+               → /dev/vda が現れる
+```
+
+### ホストのストレージ接続属性
+
+iSCSIイニシエータIQNやCephキーリング等、プロトコル固有の接続情報は**ホストの属性**であり、ストレージ実装の詳細ではない。hostsテーブルの `storage_properties JSONB` カラムに格納し、管理者がホスト登録時に設定する。
+
+```sql
+-- hosts テーブル
+storage_properties JSONB DEFAULT '{}'
+-- 例: {"iscsi_iqn": "iqn.2024.com.example:host1", "ceph_client": "client.host1"}
+```
+
+プロトコル固有カラムをhostsテーブルに追加しないことで、新しいドライバを追加してもDBマイグレーションが不要になる。
 
 ## スナップショット・クローンの依存関係管理
 
