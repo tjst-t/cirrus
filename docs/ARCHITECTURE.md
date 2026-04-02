@@ -8,10 +8,15 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 
 ### Controller
 
-- **Responsibility**: HTTP API、認証認可、VM/Network/Storage のオーケストレーション、Reconciler ループ
+- **Responsibility**: HTTP API、認証認可、VM/Network/Storage のオーケストレーション、Reconciler ループ、Heartbeat 監視
 - **Location**: `cmd/cirrus/` (entry), `internal/api/`, `internal/controller/`
 - **Key interfaces**: `api.Router` — HTTP ルーティング全体
 - **Depends on**: identity, compute, network, storage, topology, host, az, state
+- **Background loops**:
+  - `NetworkReconciler` — OVN 状態との乖離検出・修復（5 分間隔）
+  - `StorageReconciler` — Storage 状態との乖離検出・修復（5 分間隔）
+  - `HeartbeatMonitor` — Worker heartbeat 監視、3 回連続タイムアウトで `active`/`draining` → `faulty` 自動遷移、`draining` + VM 数 0 → `maintenance` 自動遷移（30 秒間隔）
+  - `HostFaultyHandler` — faulty 遷移時に同ホスト上の全 VM を `error`、関連ポートを `down` にカスケード更新
 
 ### Worker
 
@@ -72,6 +77,9 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 ### Host (`internal/host`)
 
 - ホスト登録・Capability・プロファイル・稼働状態管理
+- `SetOperationalState` に遷移ルール適用（host.md 遷移表準拠）、`active`/`draining` → `maintenance` は稼働 VM 数 0 を原子チェック（NOT EXISTS サブクエリ付き UPDATE）
+- `missed_heartbeat_count` カラム（DB 永続カウンタ）で heartbeat 途絶を検出
+- 状態: `registering` → `active` → `draining`/`maintenance`/`faulty`; `maintenance` → `retiring`（終端）
 
 ### State (`internal/state`)
 

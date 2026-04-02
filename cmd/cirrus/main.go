@@ -228,6 +228,13 @@ func runController(cfg *config.ControllerConfig) error {
 		return storageReconciler.Run(gCtx)
 	})
 
+	// Heartbeat monitor
+	faultyHandler := controller.NewHostFaultyHandler(pool, logger)
+	heartbeatMonitor := controller.NewHeartbeatMonitor(pool, hostSvc, faultyHandler, logger, 30*time.Second)
+	g.Go(func() error {
+		return heartbeatMonitor.Run(gCtx)
+	})
+
 	g.Go(func() error {
 		<-gCtx.Done()
 		logger.Info("shutting down...")

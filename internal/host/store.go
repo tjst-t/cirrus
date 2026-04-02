@@ -242,6 +242,35 @@ func (s *Store) SetOperationalState(ctx context.Context, hostID uuid.UUID, state
 		return fmt.Errorf("host: set operational state: transition %s → %s not allowed: %w", currentState, state, ErrInvalidState)
 	}
 
+	// For active→maintenance and draining→maintenance, the VM count check must be
+	// atomic with the state UPDATE to prevent a VM from being created after the check
+	// but before the transition commits.
+	if state == StateMaintenance && (currentState == StateActive || currentState == StateDraining) {
+		var updated bool
+		err = s.pool.QueryRow(ctx,
+			`UPDATE hosts SET operational_state = $1, updated_at = now()
+			 WHERE id = $2 AND operational_state = $3
+			   AND NOT EXISTS (
+			       SELECT 1 FROM vms
+			       WHERE vms.host_id = $2
+			         AND vms.status NOT IN ('deleted', 'error')
+			   )
+			 RETURNING true`,
+			state, hostID, currentState,
+		).Scan(&updated)
+		if err != nil {
+			// No row returned: either concurrent modification or active VMs blocked it.
+			var vmCount int
+			if cErr := s.pool.QueryRow(ctx,
+				`SELECT COUNT(*) FROM vms WHERE host_id = $1 AND status NOT IN ('deleted', 'error')`,
+				hostID).Scan(&vmCount); cErr == nil && vmCount > 0 {
+				return fmt.Errorf("host: set operational state: %w: %d VM(s) still active on host, drain first", ErrInvalidState, vmCount)
+			}
+			return fmt.Errorf("host: set operational state: concurrent modification: %w", ErrInvalidState)
+		}
+		return nil
+	}
+
 	tag, err := s.pool.Exec(ctx,
 		`UPDATE hosts SET operational_state = $1, updated_at = now()
 		 WHERE id = $2 AND operational_state = $3`,
@@ -268,11 +297,12 @@ func (s *Store) Heartbeat(ctx context.Context, hostID string, report ResourceRep
 	})
 
 	// registering状態: last_heartbeatのみ更新（activate前のheartbeat動作確認用）
-	// active/draining/maintenance/faulty: last_heartbeat + resource_used更新
+	// active/draining/maintenance/faulty: last_heartbeat + resource_used更新、missed_heartbeat_countリセット
 	// retiring: 拒否
 	tag, err := s.pool.Exec(ctx,
 		`UPDATE hosts SET
 		   last_heartbeat = $1,
+		   missed_heartbeat_count = 0,
 		   resource_used = CASE WHEN operational_state = 'registering' THEN resource_used ELSE $2 END,
 		   updated_at = $1
 		 WHERE id = $3 AND operational_state != 'retiring'`,

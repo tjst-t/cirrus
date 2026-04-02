@@ -1,0 +1,1 @@
+ALTER TABLE hosts ADD COLUMN IF NOT EXISTS missed_heartbeat_count INT NOT NULL DEFAULT 0;
