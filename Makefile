@@ -1,5 +1,6 @@
-.PHONY: all build test lint serve stop logs logs-worker logs-sim clean-dev reset-db fresh proto \
-       test-unit test-mock test-integration test-smoke build-sim
+.PHONY: all build test lint serve stop serve-storage stop-storage logs logs-worker logs-sim \
+        clean-dev reset-db fresh proto test-unit test-mock test-integration test-smoke build-sim \
+        build-storage-servers
 
 # ── Configuration ──
 
@@ -10,6 +11,7 @@ REGISTRATION_TOKEN ?= dev-registration-token
 # Docker (auto-detect sudo need)
 DOCKER_SUDO        := $(shell docker info >/dev/null 2>&1 && echo "" || echo "sudo -E")
 COMPOSE            := $(DOCKER_SUDO) docker-compose -f docker-compose.dev.yml
+COMPOSE_STORAGE    := $(DOCKER_SUDO) docker-compose -f docker-compose.dev.yml -f docker-compose.storage.yml
 
 # Docker host IP (for worker containers to reach host services)
 CONTROLLER_HOST    := $(shell sudo docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}' 2>/dev/null || echo "172.17.0.1")
@@ -34,6 +36,10 @@ build-sim:
 	go build -o bin/cirrus-sim ./cmd/cirrus-sim/
 	go build -o bin/libvirtd-sim ./cmd/libvirtd-sim/
 	go build -o bin/cirrus-sim-ctl ./cmd/cirrus-sim-ctl/
+
+build-storage-servers:
+	go build -o bin/cirrus-iscsi-server ./cmd/cirrus-iscsi-server/
+	go build -o bin/cirrus-rbd-server ./cmd/cirrus-rbd-server/
 
 # ── Proto ──
 
@@ -309,3 +315,17 @@ reset-db:
 	  echo "    Database reset OK."'
 
 fresh: stop serve
+
+# ── Storage Layer (local dev only: iSCSI + Ceph) ──
+
+serve-storage:
+	@bash -c 'set -a; [ -f $(PORTMAN_ENV) ] && source $(PORTMAN_ENV); set +a; \
+	  echo "==> Starting storage layer (iSCSI + Ceph)..."; \
+	  env CONTROLLER_HOST=$(CONTROLLER_HOST) \
+	    $(COMPOSE_STORAGE) up -d --build iscsi-target ceph 2>&1 | tail -10; \
+	  echo "  iSCSI target  http://localhost:18080 (mgmt)  tcp://10.100.0.100:3260 (iSCSI)"; \
+	  echo "  Ceph (RBD)    http://localhost:18090 (mgmt)  tcp://10.100.0.101:6789 (mon)"'
+
+stop-storage:
+	@bash -c 'set -a; [ -f $(PORTMAN_ENV) ] && source $(PORTMAN_ENV); set +a; \
+	  CONTROLLER_HOST=$(CONTROLLER_HOST) $(COMPOSE_STORAGE) stop iscsi-target ceph 2>/dev/null || true'

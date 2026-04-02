@@ -28,6 +28,8 @@ import (
 	"github.com/tjst-t/cirrus/internal/network"
 	"github.com/tjst-t/cirrus/internal/state"
 	"github.com/tjst-t/cirrus/internal/storage"
+	iscsistorage "github.com/tjst-t/cirrus/internal/storage/driver/iscsi"
+	rbdstorage "github.com/tjst-t/cirrus/internal/storage/driver/rbd"
 	simstorage "github.com/tjst-t/cirrus/internal/storage/driver/sim"
 	"github.com/tjst-t/cirrus/internal/topology"
 )
@@ -143,6 +145,12 @@ func runController(cfg *config.ControllerConfig) error {
 	storageDrivers := storage.DriverRegistry{
 		"sim": func(endpoint string, backendID string, _ map[string]any) storage.Driver {
 			return simstorage.New(endpoint, backendID)
+		},
+		"iscsi": func(endpoint, backendID string, cfg map[string]any) storage.Driver {
+			return iscsistorage.New(endpoint, backendID, cfg)
+		},
+		"rbd": func(endpoint, backendID string, cfg map[string]any) storage.Driver {
+			return rbdstorage.New(endpoint, backendID, cfg)
 		},
 	}
 	storageStore := storage.NewStore(pool)

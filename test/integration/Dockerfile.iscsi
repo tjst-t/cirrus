@@ -1,0 +1,22 @@
+# Multi-stage: build cirrus-iscsi-server binary, then layer it onto a tgt image.
+FROM golang:1.25 AS builder
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN go build -o /cirrus-iscsi-server ./cmd/cirrus-iscsi-server/
+
+FROM ubuntu:24.04
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tgt \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /cirrus-iscsi-server /usr/local/bin/cirrus-iscsi-server
+
+ENV LISTEN_ADDR=:8080
+
+EXPOSE 3260 8080
+
+ENTRYPOINT ["/usr/local/bin/cirrus-iscsi-server"]

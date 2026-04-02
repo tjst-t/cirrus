@@ -1,63 +1,59 @@
 # Cirrus
 
-IaaSプラットフォーム。Goのモジュラーモノリス（controller/worker構成）。
+> IaaS プラットフォーム。Go モジュラーモノリス（controller/worker 構成）。
 
-## クイックリファレンス
+## Tech Stack
 
+Go 1.25, PostgreSQL, gRPC, libvirt, OVS/OpenFlow, cobra (CLI), chi (HTTP), golang-migrate
+
+## Commands
+
+- `make serve` — controller + worker + cirrus-sim を一括起動（バックグラウンド）
+- `make stop` — 全プロセス停止
 - `make build` — ビルド
 - `make test` — テスト
 - `make lint` — lint
-- `make serve` — controller + worker + cirrus-sim を一括起動（バックグラウンド）
-- `make stop` — 全プロセス停止
 - `make logs` / `make logs-worker` / `make logs-sim` — ログ確認
 - 再度 `make serve` を実行すると、古いプロセスを自動で停止してから起動する
 
-## サーバー起動
+## Development Rules
 
-- ポート番号を直接指定してはいけない。全ポートは portman が自動割り当てする
-- サーバー起動スクリプトを作成・変更する場合は、portman ガイドを参照すること:
-  https://raw.githubusercontent.com/tjst-t/port-manager/main/docs/CLAUDE_INTEGRATION.md
-- 起動の仕組みの詳細は [docs/serve.md](docs/serve.md) を参照
-- .env ファイルを git commit してはいけない
+- **ポート番号を直接指定しない**。全ポートは portman が自動割り当て
+- **モジュール間はインターフェース経由のみ**。直接依存禁止。詳細は docs/ARCHITECTURE.md
+- `.env` ファイルを git commit しない
+- **OVS 制御は antrea-io/ofnet ライブラリを使う**（CLI ラッパー禁止）
+- **Agent 機能はドメインごとにモジュール分離**し、実行バイナリで統合
 
-## 設計ドキュメント
+### cirrusctl コマンド規則
 
-docs/配下に設計ドキュメントがある。実装前に必ず該当ドキュメントを読むこと。
-
-- [docs/README.md](docs/README.md) — 基本思想、概念間の関係、Phase定義（**最初に読む**）
-- [docs/architecture.md](docs/architecture.md) — コンポーネント構成、モジュール間IF、ディレクトリ構成
-- [docs/roadmap.md](docs/roadmap.md) — 全29スプリントの実装計画
-
-ドメイン別: [host.md](docs/host.md) | [storage.md](docs/storage.md) | [network.md](docs/network.md) | [multitenancy.md](docs/multitenancy.md) | [tenant-model.md](docs/tenant-model.md)
-実装詳細: [database.md](docs/database.md) | [api.md](docs/api.md) | [sequences.md](docs/sequences.md)
-状態整合性: [reconciliation.md](docs/reconciliation.md) — desired vs actual stateの乖離検出・対応
-テスト: [testing.md](docs/testing.md) — cirrus-simによるシミュレーションテスト
-改善項目: [todo.md](docs/todo.md) — 実装済みSprintの残タスク
-
-## アーキテクチャ要点
-
-- **Controller**: API, Scheduler, ネットワーク状態管理（HostNetworkState計算・配信）, Storage Backend操作
-- **Worker**: ホストごとに1プロセス。libvirt VM操作 + ボリュームのホスト側アタッチ + cirrus-agent（OVS制御、DNS、DHCP、メタデータサービス）
-- 物理インフラ管理はhook（AWX等）経由で外部委譲。仮想化層はCirrusが直接制御
-- モジュール間はインターフェース経由のみ。詳細は docs/architecture.md
-
-## テスト
-
-3レイヤーのテスト戦略: レイヤー1（Goユニットテスト）、レイヤー2（OVSモッククライアント）、レイヤー3（実OVS + docker-compose結合テスト）。シミュレータはcirrusリポジトリに統合済み（test/sim/）。詳細は docs/testing.md
-
-## CLIクライアント（cirrusctl）
-
-- コマンド実装は `cmd/cirrusctl/`、APIクライアントは `internal/client/`
-- **コマンド構造は利用者/管理者で分離**:
-  - トップレベル: テナント利用者向け（`org`, `tenant`, `role`, 将来の `vm`, `network`, `volume` 等）
-  - `admin` サブコマンド配下: インフラ管理者向け（`admin host`, 将来の `admin storage-domain`, `admin host-profile` 等）
-- **リソース指定はIDと名前の両方を受け付ける**: UUIDパースを試み、失敗したら名前としてリスト取得→名前フィルタで解決する
-  - 名前が複数マッチした場合はエラーにしてUUID指定を促す
-  - 名前解決に親リソースが必要な場合（例: tenant名にはorgが必要）は `--org` フラグで補完する
+- コマンド構造: テナント利用者向けはトップレベル、管理者向けは `admin` サブコマンド配下
+- **リソース指定は UUID と名前の両方を受け付ける**: UUID パース失敗 → 名前でリスト取得 → フィルタ
+  - 複数マッチ → エラーにして UUID 指定を促す
+  - 名前解決に親リソースが必要な場合は `--org` 等フラグで補完
   - `internal/client` パッケージに `Resolve*` メソッドを置く
-- 新規リソースのCLIコマンド追加時もこのパターンを踏襲すること
+- 新規リソース追加時もこのパターンを踏襲
+
+## Server
+
+- portman でポート自動割り当て。サーバー起動スクリプト変更時は以下を参照:
+  https://raw.githubusercontent.com/tjst-t/port-manager/main/docs/CLAUDE_INTEGRATION.md
+- 起動の仕組みの詳細: [docs/serve.md](docs/serve.md)
 
 ## UI
 
 UIを実装する際は design-system リポジトリに従う:
 https://raw.githubusercontent.com/tjst-t/design-system/main/DESIGN_SYSTEM.md
+
+## References
+
+実装前に必ず該当ドキュメントを読むこと。
+
+- **Architecture**: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — コンポーネント構成・データフロー
+- **詳細設計** (docs/architecture.md) — モジュール間 IF、インターフェース定義
+- **Sprint roadmap**: [`docs/ROADMAP.md`](docs/ROADMAP.md)
+- **基本思想**: [`docs/README.md`](docs/README.md) — Phase 定義（**最初に読む**）
+- ドメイン別: [host.md](docs/host.md) | [storage.md](docs/storage.md) | [network.md](docs/network.md) | [multitenancy.md](docs/multitenancy.md) | [tenant-model.md](docs/tenant-model.md)
+- 実装詳細: [database.md](docs/database.md) | [api.md](docs/api.md) | [sequences.md](docs/sequences.md)
+- 状態整合性: [reconciliation.md](docs/reconciliation.md)
+- テスト戦略: [testing.md](docs/testing.md)
+- 残タスク: [todo.md](docs/todo.md)

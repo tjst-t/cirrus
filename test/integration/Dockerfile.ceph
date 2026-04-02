@@ -1,0 +1,22 @@
+# Multi-stage: build cirrus-rbd-server binary, then layer onto Ceph demo image.
+FROM golang:1.25 AS builder
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN go build -o /cirrus-rbd-server ./cmd/cirrus-rbd-server/
+
+FROM quay.io/ceph/demo:latest AS ceph-base
+
+COPY --from=builder /cirrus-rbd-server /usr/local/bin/cirrus-rbd-server
+
+ENV LISTEN_ADDR=:8090
+ENV CEPH_POOL=cirrus
+
+EXPOSE 6789 6800 8090
+
+# Ceph demo entrypoint initializes the cluster; we wrap it to also start our server.
+COPY test/integration/ceph-entrypoint.sh /ceph-entrypoint.sh
+RUN chmod +x /ceph-entrypoint.sh
+
+ENTRYPOINT ["/ceph-entrypoint.sh"]

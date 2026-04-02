@@ -1,0 +1,57 @@
+# Cirrus Storage Layer — iSCSI target + Ceph (RBD) containers
+#
+# For LOCAL DEVELOPMENT ONLY. Not used in CI.
+# Start with: make serve-storage
+# Stop with:  make stop-storage
+#
+# These services join the same "fabric" bridge network as the worker containers
+# (defined in docker-compose.dev.yml). Use both files together:
+#   docker-compose -f docker-compose.dev.yml -f docker-compose.storage.yml up
+
+version: "2.4"
+
+services:
+  iscsi-target:
+    build:
+      context: .
+      dockerfile: test/integration/Dockerfile.iscsi
+    privileged: true
+    hostname: iscsi-target
+    environment:
+      - PORTAL_IP=10.100.0.100
+      - LISTEN_ADDR=:8080
+    networks:
+      fabric:
+        ipv4_address: 10.100.0.100
+    ports:
+      - "3260:3260"
+      - "18080:8080"
+
+  ceph:
+    build:
+      context: .
+      dockerfile: test/integration/Dockerfile.ceph
+    privileged: true
+    hostname: ceph
+    environment:
+      - MON_IP=10.100.0.101
+      - MONITOR_IP=10.100.0.101
+      - CEPH_PUBLIC_NETWORK=10.100.0.0/24
+      - CEPH_POOL=cirrus
+      - LISTEN_ADDR=:8090
+    networks:
+      fabric:
+        ipv4_address: 10.100.0.101
+    ports:
+      - "6789:6789"
+      - "18090:8090"
+
+networks:
+  # Same definition as docker-compose.dev.yml so that this file can also be
+  # used standalone. When merged with -f dev.yml -f storage.yml the identical
+  # definitions are reconciled by docker-compose without conflict.
+  fabric:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.100.0.0/24
