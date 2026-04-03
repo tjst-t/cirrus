@@ -75,6 +75,22 @@ func (o *Orchestrator) setVMStatus(ctx context.Context, vmID uuid.UUID, status V
 	return err
 }
 
+// HealVM transitions a VM that has drifted from expected state to error.
+// It uses an optimistic check to avoid overwriting transitional statuses
+// (pending, building, deleting) or a status that was already corrected.
+// Satisfies reconcile.VMHealer.
+func (o *Orchestrator) HealVM(ctx context.Context, vmID uuid.UUID, reason string) error {
+	_, err := o.pool.Exec(ctx,
+		`UPDATE vms SET status = $1, error_message = $2, updated_at = $3
+		 WHERE id = $4 AND status NOT IN ('pending', 'building', 'deleting', 'error')`,
+		VMStatusError, reason, time.Now(), vmID,
+	)
+	if err != nil {
+		return fmt.Errorf("compute: heal vm %s: %w", vmID, err)
+	}
+	return nil
+}
+
 func (o *Orchestrator) setVMHost(ctx context.Context, vmID, hostID uuid.UUID) error {
 	_, err := o.pool.Exec(ctx,
 		`UPDATE vms SET host_id = $1, updated_at = $2 WHERE id = $3`,

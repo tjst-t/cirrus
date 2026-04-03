@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 
+	"github.com/tjst-t/cirrus/internal/controller/reconcile"
 	"github.com/tjst-t/cirrus/internal/host"
 	"github.com/tjst-t/cirrus/internal/network"
 	"github.com/tjst-t/cirrus/internal/topology"
@@ -21,21 +22,23 @@ import (
 // GRPCServer implements the ControllerService that workers connect to.
 type GRPCServer struct {
 	pb.UnimplementedControllerServiceServer
-	hostSvc           host.Service
-	topologySvc       topology.Service
-	logger            *slog.Logger
-	registrationToken string
+	hostSvc              host.Service
+	topologySvc          topology.Service
+	logger               *slog.Logger
+	registrationToken    string
+	heartbeatReconciler  *reconcile.HeartbeatReconciler // nil = disabled
 }
 
 // NewGRPCServer creates a new gRPC server with the ControllerService and
 // NetworkStateService registered.
-func NewGRPCServer(logger *slog.Logger, hostSvc host.Service, topologySvc topology.Service, networkStateSrv *network.GRPCStateServer, registrationToken string) *grpc.Server {
+func NewGRPCServer(logger *slog.Logger, hostSvc host.Service, topologySvc topology.Service, networkStateSrv *network.GRPCStateServer, registrationToken string, hbReconciler *reconcile.HeartbeatReconciler) *grpc.Server {
 	srv := grpc.NewServer()
 	pb.RegisterControllerServiceServer(srv, &GRPCServer{
-		hostSvc:           hostSvc,
-		topologySvc:       topologySvc,
-		logger:            logger,
-		registrationToken: registrationToken,
+		hostSvc:             hostSvc,
+		topologySvc:         topologySvc,
+		logger:              logger,
+		registrationToken:   registrationToken,
+		heartbeatReconciler: hbReconciler,
 	})
 	if networkStateSrv != nil {
 		networkpb.RegisterNetworkStateServiceServer(srv, networkStateSrv)
@@ -215,6 +218,12 @@ func (s *GRPCServer) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*
 			s.logger.Warn("heartbeat rejected", "host_id", req.HostId, "error", err)
 			return &pb.HeartbeatResponse{Accepted: false}, nil
 		}
+	}
+
+	// Run reconciliation asynchronously so it never delays the heartbeat response.
+	if s.heartbeatReconciler != nil && req.Resources != nil {
+		vms := req.Resources.GetRunningVms()
+		go s.heartbeatReconciler.Reconcile(context.Background(), req.HostId, vms)
 	}
 
 	return &pb.HeartbeatResponse{Accepted: true}, nil

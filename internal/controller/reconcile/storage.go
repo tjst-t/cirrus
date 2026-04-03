@@ -8,22 +8,27 @@ import (
 	"github.com/tjst-t/cirrus/internal/storage"
 )
 
-// StorageReconciler periodically checks volumes in the DB against what
-// storage backends report. Initial implementation is log-only.
-// DriftEvent integration comes in Sprint 8.5b.
+// StorageReconciler periodically checks volumes in the DB against storage
+// backend metadata and fires DriftEvents for anomalies.
+//
+// Current capability: backend reachability and DB consistency checks.
+// Volume-level comparison against actual backend state (Driver.ListVolumes)
+// is deferred until the storage Driver interface exposes that method.
 type StorageReconciler struct {
 	storageSvc storage.Service
+	handler    *DriftHandler
 	logger     *slog.Logger
 	interval   time.Duration
 }
 
 // NewStorageReconciler creates a new StorageReconciler.
-func NewStorageReconciler(storageSvc storage.Service, logger *slog.Logger, interval time.Duration) *StorageReconciler {
+func NewStorageReconciler(storageSvc storage.Service, handler *DriftHandler, logger *slog.Logger, interval time.Duration) *StorageReconciler {
 	if interval <= 0 {
 		interval = 5 * time.Minute
 	}
 	return &StorageReconciler{
 		storageSvc: storageSvc,
+		handler:    handler,
 		logger:     logger.With("component", "storage-reconciler"),
 		interval:   interval,
 	}
@@ -52,6 +57,16 @@ func (r *StorageReconciler) reconcile(ctx context.Context) {
 	backends, err := r.storageSvc.ListBackends(ctx)
 	if err != nil {
 		r.logger.Error("storage reconciler: list backends failed", "error", err)
+		r.handler.Handle(ctx, DriftEvent{
+			Layer:      DriftLayerStorage,
+			Type:       DriftTypeExpectedMissing,
+			Severity:   DriftSeverityCritical,
+			Resource:   "backend",
+			ResourceID: "all",
+			Expected:   "backends reachable",
+			Actual:     "list backends failed: " + err.Error(),
+			DetectedBy: "storage_reconciler",
+		})
 		return
 	}
 
@@ -63,25 +78,37 @@ func (r *StorageReconciler) reconcile(ctx context.Context) {
 		if err != nil {
 			r.logger.Error("storage reconciler: list volumes failed",
 				"backend_id", b.ID, "error", err)
+			r.handler.Handle(ctx, DriftEvent{
+				Layer:      DriftLayerStorage,
+				Type:       DriftTypeExpectedMissing,
+				Severity:   DriftSeverityHigh,
+				Resource:   "backend",
+				ResourceID: b.ID.String(),
+				Expected:   "backend reachable",
+				Actual:     "list volumes failed: " + err.Error(),
+				DetectedBy: "storage_reconciler",
+			})
 			continue
 		}
 
 		// Skip volumes in transient states (creating, deleting).
-		var stableVolumes []storage.Volume
+		var stableCount int
 		for _, v := range dbVolumes {
 			switch v.State {
 			case storage.VolumeStateCreating, storage.VolumeStateDeleting:
-				// skip
+				// transient, skip
 			default:
-				stableVolumes = append(stableVolumes, v)
+				stableCount++
 			}
 		}
 
 		r.logger.Debug("storage reconciler: backend checked",
 			"backend_id", b.ID,
 			"backend_name", b.Name,
-			"db_volumes", len(stableVolumes),
+			"db_volumes", stableCount,
 		)
-		// TODO Sprint 8.5b: compare with driver.ListVolumes() and emit DriftEvents
+		// TODO: compare stableCount with Driver.ListVolumes() once that method
+		// is added to the storage.Driver interface, and emit expected_missing /
+		// unexpected_present DriftEvents per volume.
 	}
 }

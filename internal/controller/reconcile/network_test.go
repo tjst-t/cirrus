@@ -1,15 +1,31 @@
 package reconcile
 
 import (
+	"context"
+	"log/slog"
 	"testing"
 
 	pb "github.com/tjst-t/cirrus/proto/networkpb"
-
-	"log/slog"
 )
 
+// newTestDriftHandler returns a DriftHandler with no DB (no persistence) for testing.
+func newTestDriftHandler() *DriftHandler {
+	return NewDriftHandler(DriftHandlerConfig{
+		Pool:            nil, // no DB in unit tests
+		Logger:          slog.Default(),
+		AutoHealEnabled: false,
+	})
+}
+
+func newTestNetworkReconciler() *NetworkReconciler {
+	return &NetworkReconciler{
+		handler: newTestDriftHandler(),
+		logger:  slog.Default(),
+	}
+}
+
 func TestCheckConsistency_NoWarnings(t *testing.T) {
-	r := &NetworkReconciler{logger: slog.Default()}
+	r := newTestNetworkReconciler()
 
 	state := &pb.HostNetworkState{
 		Ports: []*pb.PortState{
@@ -26,14 +42,14 @@ func TestCheckConsistency_NoWarnings(t *testing.T) {
 		},
 	}
 
-	warnings := r.checkConsistency(state, "test-host")
-	if warnings != 0 {
-		t.Fatalf("expected 0 warnings, got %d", warnings)
+	drift := r.checkConsistency(context.Background(), state, "host-id-1", "test-host")
+	if drift != 0 {
+		t.Fatalf("expected 0 drift events, got %d", drift)
 	}
 }
 
 func TestCheckConsistency_PortMissingGroup(t *testing.T) {
-	r := &NetworkReconciler{logger: slog.Default()}
+	r := newTestNetworkReconciler()
 
 	state := &pb.HostNetworkState{
 		Ports: []*pb.PortState{
@@ -41,14 +57,14 @@ func TestCheckConsistency_PortMissingGroup(t *testing.T) {
 		},
 	}
 
-	warnings := r.checkConsistency(state, "test-host")
-	if warnings != 1 {
-		t.Fatalf("expected 1 warning for missing group, got %d", warnings)
+	drift := r.checkConsistency(context.Background(), state, "host-id-1", "test-host")
+	if drift != 1 {
+		t.Fatalf("expected 1 drift event for missing group, got %d", drift)
 	}
 }
 
 func TestCheckConsistency_PolicyUnknownGroups(t *testing.T) {
-	r := &NetworkReconciler{logger: slog.Default()}
+	r := newTestNetworkReconciler()
 
 	state := &pb.HostNetworkState{
 		Ports: []*pb.PortState{
@@ -59,14 +75,14 @@ func TestCheckConsistency_PolicyUnknownGroups(t *testing.T) {
 		},
 	}
 
-	warnings := r.checkConsistency(state, "test-host")
-	if warnings != 1 {
-		t.Fatalf("expected 1 warning for unknown groups, got %d", warnings)
+	drift := r.checkConsistency(context.Background(), state, "host-id-1", "test-host")
+	if drift != 1 {
+		t.Fatalf("expected 1 drift event for unknown groups, got %d", drift)
 	}
 }
 
 func TestCheckConsistency_DNSUnknownNetwork(t *testing.T) {
-	r := &NetworkReconciler{logger: slog.Default()}
+	r := newTestNetworkReconciler()
 
 	state := &pb.HostNetworkState{
 		Ports: []*pb.PortState{
@@ -77,8 +93,8 @@ func TestCheckConsistency_DNSUnknownNetwork(t *testing.T) {
 		},
 	}
 
-	warnings := r.checkConsistency(state, "test-host")
-	if warnings != 1 {
-		t.Fatalf("expected 1 warning for unknown network, got %d", warnings)
+	drift := r.checkConsistency(context.Background(), state, "host-id-1", "test-host")
+	if drift != 1 {
+		t.Fatalf("expected 1 drift event for unknown network, got %d", drift)
 	}
 }

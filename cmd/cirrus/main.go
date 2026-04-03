@@ -71,6 +71,13 @@ func newControllerCmd() *cobra.Command {
 	f.StringVar(&cfg.RegistrationToken, "registration-token", "", "Shared secret for worker self-registration")
 	f.StringVar(&cfg.LogLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 	f.BoolVar(&cfg.Debug, "debug", false, "Include internal error details in API 500 responses (development only)")
+	f.IntVar(&cfg.ReconcileInterval, "reconcile-interval", 300, "Active reconcile loop interval in seconds")
+	f.IntVar(&cfg.ReconcileNetworkInterval, "reconcile-network-interval", 0, "Network reconcile interval in seconds (0 = use --reconcile-interval)")
+	f.IntVar(&cfg.ReconcileStorageInterval, "reconcile-storage-interval", 0, "Storage reconcile interval in seconds (0 = use --reconcile-interval)")
+	f.BoolVar(&cfg.ReconcileEnabled, "reconcile-enabled", true, "Enable active reconcile loops")
+	f.BoolVar(&cfg.AutoHealEnabled, "auto-heal-enabled", true, "Enable auto-heal actions on drift detection")
+	f.IntVar(&cfg.UnexpectedPresentThreshold, "unexpected-present-threshold", 3, "Consecutive detections before unexpected_present escalation")
+	f.IntVar(&cfg.DriftEventRetentionDays, "drift-event-retention-days", 90, "Days to retain drift_events records")
 	return cmd
 }
 
@@ -188,8 +195,35 @@ func runController(cfg *config.ControllerConfig) error {
 	stateCtrl := network.NewStateController(pool, logger)
 	networkStateSrv := network.NewGRPCStateServer(stateCtrl, logger, cfg.RegistrationToken)
 
+	// Reconcile intervals
+	reconcileInterval := time.Duration(cfg.ReconcileInterval) * time.Second
+	if reconcileInterval <= 0 {
+		reconcileInterval = 5 * time.Minute
+	}
+	netInterval := time.Duration(cfg.ReconcileNetworkInterval) * time.Second
+	if netInterval <= 0 {
+		netInterval = reconcileInterval
+	}
+	storageInterval := time.Duration(cfg.ReconcileStorageInterval) * time.Second
+	if storageInterval <= 0 {
+		storageInterval = reconcileInterval
+	}
+
+	// DriftHandler (wires VMHealer + NetworkHealer)
+	driftHandler := reconcile.NewDriftHandler(reconcile.DriftHandlerConfig{
+		Pool:            pool,
+		Logger:          logger,
+		AutoHealEnabled: cfg.AutoHealEnabled,
+		DedupTTL:        reconcileInterval * 2,
+		VMHealer:        computeSvc,
+		NetworkHealer:   networkStateSrv,
+	})
+
+	// HeartbeatReconciler
+	hbReconciler := reconcile.NewHeartbeatReconciler(pool, driftHandler, logger)
+
 	// gRPC
-	grpcSrv := controller.NewGRPCServer(logger, hostSvc, topologySvc, networkStateSrv, cfg.RegistrationToken)
+	grpcSrv := controller.NewGRPCServer(logger, hostSvc, topologySvc, networkStateSrv, cfg.RegistrationToken, hbReconciler)
 	grpcLis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
 	if err != nil {
 		return fmt.Errorf("controller: grpc listen: %w", err)
@@ -198,6 +232,8 @@ func runController(cfg *config.ControllerConfig) error {
 	logger.Info("controller starting",
 		"api_port", cfg.APIPort,
 		"grpc_port", cfg.GRPCPort,
+		"reconcile_enabled", cfg.ReconcileEnabled,
+		"auto_heal_enabled", cfg.AutoHealEnabled,
 	)
 
 	g, gCtx := errgroup.WithContext(ctx)
@@ -217,16 +253,18 @@ func runController(cfg *config.ControllerConfig) error {
 	})
 
 	// Network reconciler
-	netReconciler := reconcile.NewNetworkReconciler(stateCtrl, hostSvc, logger, 5*time.Minute)
-	g.Go(func() error {
-		return netReconciler.Run(gCtx)
-	})
+	if cfg.ReconcileEnabled {
+		netReconciler := reconcile.NewNetworkReconciler(stateCtrl, hostSvc, driftHandler, logger, netInterval)
+		g.Go(func() error {
+			return netReconciler.Run(gCtx)
+		})
 
-	// Storage reconciler
-	storageReconciler := reconcile.NewStorageReconciler(storageSvc, logger, 5*time.Minute)
-	g.Go(func() error {
-		return storageReconciler.Run(gCtx)
-	})
+		// Storage reconciler
+		storageReconciler := reconcile.NewStorageReconciler(storageSvc, driftHandler, logger, storageInterval)
+		g.Go(func() error {
+			return storageReconciler.Run(gCtx)
+		})
+	}
 
 	// Heartbeat monitor
 	faultyHandler := controller.NewHostFaultyHandler(pool, logger)

@@ -140,15 +140,20 @@ func (a *Agent) collectResources(ctx context.Context) *pb.ResourceReport {
 	}
 
 	for _, vm := range vms {
-		if vm.State == hypervisor.StateRunning {
-			report.UsedVcpus += vm.Vcpus
-			report.UsedRamMb += vm.RAMMb
+		switch vm.State {
+		case hypervisor.StateRunning, hypervisor.StateShutoff, hypervisor.StateCrashed:
+			// Report stable and notable states. paused/shutdown are transient or
+			// have no corresponding DB status, so they are intentionally excluded.
 			report.RunningVms = append(report.RunningVms, &pb.VMInfo{
 				VmId:   vm.ID,
 				Status: string(vm.State),
 				Vcpus:  vm.Vcpus,
 				RamMb:  vm.RAMMb,
 			})
+			if vm.State == hypervisor.StateRunning {
+				report.UsedVcpus += vm.Vcpus
+				report.UsedRamMb += vm.RAMMb
+			}
 		}
 	}
 

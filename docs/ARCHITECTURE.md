@@ -108,10 +108,22 @@ HTTP Request
 
 ```
 Controller起動
-  → reconcile.{Domain}Reconciler.Run (goroutine)
-  → 定期ポーリング (5分ごと)
-  → desired state (DB) vs actual state (Driver) を比較
-  → 乖離があれば Driver を呼び出して修復
+  → reconcile.NetworkReconciler.Run (goroutine, 5分ごと)
+  → reconcile.StorageReconciler.Run (goroutine, 5分ごと)
+  → 各 Reconciler が DriftEvent を検出 → DriftHandler.Handle へ送信
+
+gRPC Heartbeat 受信
+  → reconcile.HeartbeatReconciler.Reconcile (goroutine, 非同期)
+  → DB stable VMs vs heartbeat VMInfo を比較
+  → 乖離があれば DriftEvent 発火 → DriftHandler.Handle へ送信
+
+DriftHandler.Handle
+  → 重複抑制 (インメモリ TTL キャッシュ, resource_id:type キー)
+  → AutoHealer 呼び出し (auto_heal_enabled 時のみ):
+      compute: VMHealer.HealVM → DB status = error（楽観的ロック）
+      network: NetworkHealer.TriggerRefresh → 次回 poll で state 再配信
+  → slog.Warn でログ出力
+  → drift_events テーブルに永続化
 ```
 
 ### Worker Control Flow
@@ -190,7 +202,7 @@ cirrus/
 │   ├── hypervisor/   # libvirt (DefineVM/StartVM 等)
 │   ├── netcontroller/# OVS OpenFlow
 │   ├── controller/   # Controller gRPC サーバ + WorkerClientPool
-│   ├── controller/reconcile/ # Reconciler ループ群
+│   ├── controller/reconcile/ # DriftHandler + HeartbeatReconciler + Network/StorageReconciler
 │   ├── client/       # cirrusctl API クライアント
 │   └── state/        # DB・マイグレーション
 ├── docs/             # 設計ドキュメント

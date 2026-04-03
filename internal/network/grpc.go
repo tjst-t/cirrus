@@ -20,8 +20,9 @@ type GRPCStateServer struct {
 	registrationToken string
 	pollInterval      time.Duration
 
-	mu       sync.RWMutex
-	watchers map[string]*hostWatcher
+	mu             sync.RWMutex
+	watchers       map[string]*hostWatcher
+	pendingRefresh map[string]bool // host_id → force re-send on next tick
 }
 
 type hostWatcher struct {
@@ -37,7 +38,17 @@ func NewGRPCStateServer(stateCtrl *StateController, logger *slog.Logger, registr
 		registrationToken: registrationToken,
 		pollInterval:      2 * time.Second,
 		watchers:          make(map[string]*hostWatcher),
+		pendingRefresh:    make(map[string]bool),
 	}
+}
+
+// TriggerRefresh schedules a forced HostNetworkState re-delivery for the given
+// host on the next poll tick, regardless of whether the state has changed.
+// Satisfies reconcile.NetworkHealer.
+func (s *GRPCStateServer) TriggerRefresh(hostID uuid.UUID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pendingRefresh[hostID.String()] = true
 }
 
 // WatchHostNetworkState implements the server streaming RPC.
@@ -110,7 +121,12 @@ func (s *GRPCStateServer) WatchHostNetworkState(req *pb.WatchHostNetworkStateReq
 				continue
 			}
 
-			if stateEqual(lastState, newState) {
+			s.mu.Lock()
+			forceRefresh := s.pendingRefresh[hostID.String()]
+			delete(s.pendingRefresh, hostID.String())
+			s.mu.Unlock()
+
+			if !forceRefresh && stateEqual(lastState, newState) {
 				continue
 			}
 

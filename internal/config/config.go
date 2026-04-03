@@ -17,6 +17,15 @@ type ControllerConfig struct {
 	RegistrationToken string `yaml:"registration_token"` // shared secret for worker self-registration
 	LogLevel          string `yaml:"log_level"`          // debug, info, warn, error
 	Debug             bool   `yaml:"debug"`              // include internal error details in API 500 responses
+
+	// Reconciler settings
+	ReconcileInterval          int  `yaml:"reconcile_interval"`           // seconds; default 300
+	ReconcileNetworkInterval   int  `yaml:"reconcile_network_interval"`   // seconds; 0 = use ReconcileInterval
+	ReconcileStorageInterval   int  `yaml:"reconcile_storage_interval"`   // seconds; 0 = use ReconcileInterval
+	ReconcileEnabled           bool `yaml:"reconcile_enabled"`            // default true
+	AutoHealEnabled            bool `yaml:"auto_heal_enabled"`            // default true
+	UnexpectedPresentThreshold int  `yaml:"unexpected_present_threshold"` // default 3
+	DriftEventRetentionDays    int  `yaml:"drift_event_retention_days"`   // default 90
 }
 
 // WorkerConfig holds configuration for the worker process.
