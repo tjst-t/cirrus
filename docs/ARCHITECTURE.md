@@ -34,7 +34,13 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 ### Network (`internal/network`)
 
 - VPC/Group/Policy/Egress/Ingress の CRUD、HostNetworkState 計算・配信、IPAM
-- `internal/netcontroller` — OVS OpenFlow コントローラ（antrea-io/ofnet）
+- **Gateway Node 管理**: `gateway_nodes` テーブルで管理。`hosts.node_roles` に `gateway` を持つホストを GW ノードとして登録し、Network 単位で 1 台割り当て（Active-Standby HA は S033 で対応）
+- **IP Pool 管理**: 管理者が公開 IP プール（CIDR）を登録し、Direct IP Ingress の公開 IP をここから払い出す
+- **NAT Gateway Egress** (`type=nat_gateway`): テナントネットワーク発の外部通信を GW ノードで SNAT
+- **Direct IP Ingress** (`type=direct_ip`): 公開 IP → VM プライベート IP の DNAT ルールを GW ノードで適用
+- `StateController.ComputeHostNetworkState`: 各 Worker へ配信する `HostNetworkState` を計算（local ports / remote ports / policies / DNS / egress rules / ingress rules）。GW ホストでローカル VM がなくても、担当ネットワークの remote port ルーティングを含める
+- `GRPCStateServer.WatchHostNetworkState`: gRPC server-streaming で Worker に `HostNetworkState` を Push（2 秒ポーリング差分検出、`TriggerRefresh` で強制再配信）
+- `internal/network/agent/` — Worker 側 OVS OpenFlow フロー生成・適用（Table 0–7）、SNAT/DNAT フロー含む
 
 ### Storage (`internal/storage`)
 
@@ -57,7 +63,7 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 ### Quota (`internal/quota`)
 
 - テナントおよび組織単位のリソースクォータ管理（階層: 組織 → テナント）
-- **対象リソース**: vCPU, RAM(MB), ボリューム容量(GB), VM数, ボリューム数, スナップショット数, ネットワーク数
+- **対象リソース**: vCPU, RAM(MB), ボリューム容量(GB), VM数, ボリューム数, スナップショット数, ネットワーク数, Egress ルール数, Ingress ルール数
 - **予約パターン**: `Reserve` → 作成成功時 `Commit` / 失敗時 `Release`; 削除時 `Decommit`
 - **0 = 無制限**: 全ディメンションで limit=0 は無制限扱い
 - **DB**: `quota_usage`（確定使用量）、`quota_reserves`（in-flight 予約）テーブル; テナント/組織の limit はそれぞれ `tenants`, `organizations` テーブルのカラム
@@ -150,6 +156,30 @@ Controller → gRPC → Agent (internal/agent)
   → Hypervisor (libvirt) — VM操作
   → BlockDev — ボリュームアタッチ
   → NetworkAgent (OVS) — OpenFlowフロー設定
+```
+
+### NAT Gateway / Direct IP Ingress フロー
+
+```
+[NAT Gateway Egress: VM → 外部]
+VM (worker-N)
+  → OVS Table 2 (DstGroup): nw_dst=外部IP → resubmit(,7) (EgressTable)
+  → OVS Table 7 on worker-N: nw_src=VM-IP → GW ノードへ Geneve 転送
+  → GW ホスト OVS Table 7: ct(commit,nat(src=公開IP)), NORMAL
+  → 外部ネットワーク
+
+[Direct IP Ingress: 外部 → VM]
+外部クライアント → GW ホスト
+  → OVS Table 0 on GW (priority=300): ip,nw_dst=公開IP → ct(commit,nat(dst=VM-IP)), resubmit(,4)
+  → OVS Table 4: ip,nw_dst=VM-IP → Geneve encap → worker-N (VM が稼働中のホスト)
+  → worker-N: OVS → VM tap
+
+[HostNetworkState 配信]
+Controller StateController
+  → ComputeHostNetworkState (各 Worker の local/remote ports, policies, egress/ingress rules)
+  → GRPCStateServer.WatchHostNetworkState (server-streaming, 2秒ポーリング)
+  → Worker NetworkAgent.ApplyState
+      → OVS flows の差分適用 (ovs-ofctl add-flow / del-flow)
 ```
 
 ### VM 作成フロー (Compute Orchestrator)
