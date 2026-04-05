@@ -89,6 +89,20 @@ func (p *Pipeline) Apply(state *pb.HostNetworkState) error {
 
 	p.currentFlows = desired
 
+	// 5. Apply egress (SNAT) rules for GW-role hosts
+	if state.GatewayInfo != nil && len(state.EgressRules) > 0 {
+		if err := p.applyEgressRules(state.EgressRules, state.GatewayInfo); err != nil {
+			return fmt.Errorf("pipeline: apply egress rules: %w", err)
+		}
+	}
+
+	// 6. Apply ingress (DNAT) rules for GW-role hosts
+	if state.GatewayInfo != nil && len(state.IngressRules) > 0 {
+		if err := p.applyIngressRules(state.IngressRules, state.GatewayInfo); err != nil {
+			return fmt.Errorf("pipeline: apply ingress rules: %w", err)
+		}
+	}
+
 	p.logger.Info("pipeline applied",
 		"added", len(add),
 		"deleted", len(del),
@@ -96,8 +110,67 @@ func (p *Pipeline) Apply(state *pb.HostNetworkState) error {
 		"local_ports", len(localPorts),
 		"remote_ports", len(state.RemotePorts),
 		"policies", len(state.Policies),
+		"egress_rules", len(state.EgressRules),
+		"ingress_rules", len(state.IngressRules),
 	)
 
+	return nil
+}
+
+// applyIngressRules installs DNAT OVS flows for Direct IP ingress rules on a GW-role host.
+// For each direct_ip rule, traffic destined for public_ip is DNAT'd to target_ip (VM private IP).
+func (p *Pipeline) applyIngressRules(ingressRules []*pb.IngressRule, gatewayInfo *pb.GatewayInfo) error {
+	for _, rule := range ingressRules {
+		if rule.Type != "direct_ip" {
+			continue
+		}
+		// Table 0: DNAT for direct_ip ingress
+		// match: ip, nw_dst=<public_ip>
+		// action: ct(commit,nat(dst=<target_ip>)),resubmit(,TableDstHostResolution)
+		flow := FlowEntry{
+			Table:    TableInputClassification,
+			Priority: 300,
+			Match:    fmt.Sprintf("ip,nw_dst=%s", rule.PublicIp),
+			Actions:  fmt.Sprintf("ct(commit,nat(dst=%s)),resubmit(,%d)", rule.TargetIp, TableDstHostResolution),
+		}
+		if err := p.client.AddFlow(flow.Table, flow.Priority, flow.Match, flow.Actions); err != nil {
+			return fmt.Errorf("add dnat flow for ingress %s: %w", rule.IngressId, err)
+		}
+		p.logger.Info("installed DNAT flow",
+			"ingress_id", rule.IngressId,
+			"public_ip", rule.PublicIp,
+			"target_ip", rule.TargetIp,
+			"gateway_external_ip", gatewayInfo.ExternalIp,
+		)
+	}
+	return nil
+}
+
+// applyEgressRules installs SNAT flows for each EgressRule on a GW-role host.
+// For each nat_gateway egress rule, we install a flow in Table 7 (Egress) that
+// SNATs traffic from the network CIDR to the public IP.
+func (p *Pipeline) applyEgressRules(egressRules []*pb.EgressRule, gatewayInfo *pb.GatewayInfo) error {
+	for _, rule := range egressRules {
+		if rule.Type != "nat_gateway" {
+			continue
+		}
+		// Install SNAT flow: ip, nw_src=<network_cidr> → ct(commit,nat(src=<public_ip>)),output:NORMAL
+		flow := FlowEntry{
+			Table:    TableEgress,
+			Priority: 100,
+			Match:    fmt.Sprintf("ip,nw_src=%s", rule.NetworkCidr),
+			Actions:  fmt.Sprintf("ct(commit,nat(src=%s)),output:NORMAL", rule.PublicIp),
+		}
+		if err := p.client.AddFlow(flow.Table, flow.Priority, flow.Match, flow.Actions); err != nil {
+			return fmt.Errorf("add snat flow for egress %s: %w", rule.EgressId, err)
+		}
+		p.logger.Info("installed SNAT flow",
+			"egress_id", rule.EgressId,
+			"network_cidr", rule.NetworkCidr,
+			"public_ip", rule.PublicIp,
+			"gateway_external_ip", gatewayInfo.ExternalIp,
+		)
+	}
 	return nil
 }
 

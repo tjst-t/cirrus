@@ -40,4 +40,22 @@ type Service interface {
 	DeleteGatewayNode(ctx context.Context, id uuid.UUID) error
 	AssignGatewayNode(ctx context.Context, networkID uuid.UUID, gatewayNodeID uuid.UUID) error
 	GetNetworkGatewayNode(ctx context.Context, networkID uuid.UUID) (*GatewayNode, error)
+
+	// Egress (tenant operations)
+	CreateEgress(ctx context.Context, networkID uuid.UUID, spec EgressSpec) (*Egress, error)
+	GetEgress(ctx context.Context, id uuid.UUID) (*Egress, error)
+	ListEgresses(ctx context.Context, networkID uuid.UUID) ([]Egress, error)
+	DeleteEgress(ctx context.Context, id uuid.UUID) error
+
+	// IP Pools (admin)
+	CreateIPPool(ctx context.Context, spec IPPoolSpec) (*IPPool, error)
+	GetIPPool(ctx context.Context, id uuid.UUID) (*IPPool, error)
+	ListIPPools(ctx context.Context) ([]IPPool, error)
+	DeleteIPPool(ctx context.Context, id uuid.UUID) error
+
+	// Ingress (tenant operations)
+	CreateIngress(ctx context.Context, networkID uuid.UUID, spec IngressSpec) (*Ingress, error)
+	GetIngress(ctx context.Context, id uuid.UUID) (*Ingress, error)
+	ListIngresses(ctx context.Context, networkID uuid.UUID) ([]Ingress, error)
+	DeleteIngress(ctx context.Context, id uuid.UUID) error
 }

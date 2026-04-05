@@ -121,3 +121,63 @@ type GatewayNodeSpec struct {
 	ExternalIP string    `json:"external_ip"`
 	InternalIP string    `json:"internal_ip"`
 }
+
+// Egress represents a network egress rule (e.g. NAT gateway SNAT).
+type Egress struct {
+	ID        uuid.UUID    `json:"id"`
+	NetworkID uuid.UUID    `json:"network_id"`
+	Type      string       `json:"type"`   // "nat_gateway"
+	Config    EgressConfig `json:"config"`
+}
+
+// EgressConfig holds type-specific egress configuration.
+type EgressConfig struct {
+	PublicIP string `json:"public_ip"` // For nat_gateway: the SNAT public IP
+}
+
+// EgressSpec is the input for creating a new egress rule.
+type EgressSpec struct {
+	Type   string       `json:"type"`
+	Config EgressConfig `json:"config"`
+}
+
+// IPPool represents a pool of public IP addresses managed by the admin.
+type IPPool struct {
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	CIDR        string    `json:"cidr"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// IPPoolSpec is the input for creating a new IP pool.
+type IPPoolSpec struct {
+	Name        string `json:"name"`
+	CIDR        string `json:"cidr"`
+	Description string `json:"description,omitempty"`
+}
+
+// Ingress represents an external traffic entry rule (e.g. Direct IP DNAT).
+type Ingress struct {
+	ID        uuid.UUID     `json:"id"`
+	NetworkID uuid.UUID     `json:"network_id"`
+	Type      string        `json:"type"`    // "direct_ip"
+	PublicIP  string        `json:"public_ip"`
+	IPPoolID  *uuid.UUID    `json:"ip_pool_id,omitempty"`
+	Config    IngressConfig `json:"config"`
+	CreatedAt time.Time     `json:"created_at"`
+}
+
+// IngressConfig holds type-specific ingress configuration.
+type IngressConfig struct {
+	TargetVMID string `json:"target_vm_id"` // UUID of the VM to DNAT to
+	TargetIP   string `json:"target_ip"`    // Private IP of the VM (resolved at create time)
+}
+
+// IngressSpec is the input for creating a new ingress rule.
+type IngressSpec struct {
+	Type     string        `json:"type"`
+	PublicIP string        `json:"public_ip"`  // Must be within an ip_pool CIDR
+	IPPoolID uuid.UUID     `json:"ip_pool_id"`
+	Config   IngressConfig `json:"config"`
+}

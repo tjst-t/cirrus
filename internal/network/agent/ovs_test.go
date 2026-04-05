@@ -190,6 +190,186 @@ func TestPipeline_Apply_Idempotent(t *testing.T) {
 	}
 }
 
+func TestPipeline_Apply_EgressRules_GWHost(t *testing.T) {
+	pipeline, mock := newTestPipeline(t)
+
+	// A GW-role host receives EgressRules and GatewayInfo in the state.
+	state := &pb.HostNetworkState{
+		Ports: []*pb.PortState{
+			{
+				PortId:      "port-1-uuid-abcdef",
+				VmId:        "vm-1",
+				VmName:      "web-1",
+				NetworkId:   "net-1",
+				NetworkName: "prod",
+				GroupId:     "11111111-1111-1111-1111-111111111111",
+				GroupName:   "web",
+				MacAddress:  "aa:bb:cc:dd:ee:01",
+				IpAddress:   "100.64.0.1",
+				GatewayIp:   "100.64.0.2",
+				Vni:         100,
+			},
+		},
+		GatewayInfo: &pb.GatewayInfo{
+			ExternalIp: "203.0.113.1",
+			InternalIp: "10.0.0.1",
+		},
+		EgressRules: []*pb.EgressRule{
+			{
+				EgressId:    "egress-1-uuid",
+				NetworkId:   "net-1",
+				Type:        "nat_gateway",
+				PublicIp:    "203.0.113.1",
+				NetworkCidr: "100.64.0.0/24",
+			},
+		},
+	}
+
+	if err := pipeline.Apply(state); err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	// Verify a SNAT flow was installed in Table 7 (Egress) via AddFlow
+	cmds := mock.GetRecordedCommands()
+	hasSNATFlow := false
+	for _, cmd := range cmds {
+		if cmd.Op == "add-flow" {
+			if containsSubstr(cmd.Match, "nw_src=100.64.0.0/24") || containsSubstr(cmd.Actions, "nat(src=203.0.113.1)") {
+				hasSNATFlow = true
+				break
+			}
+		}
+	}
+	if !hasSNATFlow {
+		t.Error("expected SNAT flow to be installed for egress rule")
+	}
+}
+
+func TestPipeline_Apply_NoEgressRules_NonGWHost(t *testing.T) {
+	pipeline, mock := newTestPipeline(t)
+
+	// A non-GW host has no GatewayInfo and no EgressRules.
+	state := &pb.HostNetworkState{
+		Ports: []*pb.PortState{
+			{
+				PortId:      "port-1-uuid-abcdef",
+				VmId:        "vm-1",
+				VmName:      "web-1",
+				NetworkId:   "net-1",
+				NetworkName: "prod",
+				GroupId:     "11111111-1111-1111-1111-111111111111",
+				GroupName:   "web",
+				MacAddress:  "aa:bb:cc:dd:ee:01",
+				IpAddress:   "100.64.0.1",
+				GatewayIp:   "100.64.0.2",
+				Vni:         100,
+			},
+		},
+		// No GatewayInfo and no EgressRules — non-GW host
+	}
+
+	if err := pipeline.Apply(state); err != nil {
+		t.Fatalf("Apply failed for non-GW host: %v", err)
+	}
+
+	// Should NOT install any SNAT (AddFlow) commands with nat(src=...)
+	cmds := mock.GetRecordedCommands()
+	for _, cmd := range cmds {
+		if cmd.Op == "add-flow" && containsSubstr(cmd.Actions, "nat(src=") {
+			t.Error("unexpected SNAT flow installed on non-GW host")
+		}
+	}
+}
+
+func TestPipeline_Apply_IngressRules_GWHost(t *testing.T) {
+	pipeline, mock := newTestPipeline(t)
+
+	// A GW-role host receives IngressRules and GatewayInfo in the state.
+	state := &pb.HostNetworkState{
+		Ports: []*pb.PortState{
+			{
+				PortId:      "port-1-uuid-abcdef",
+				VmId:        "vm-1",
+				VmName:      "web-1",
+				NetworkId:   "net-1",
+				NetworkName: "prod",
+				GroupId:     "11111111-1111-1111-1111-111111111111",
+				GroupName:   "web",
+				MacAddress:  "aa:bb:cc:dd:ee:01",
+				IpAddress:   "100.64.0.1",
+				GatewayIp:   "100.64.0.2",
+				Vni:         100,
+			},
+		},
+		GatewayInfo: &pb.GatewayInfo{
+			ExternalIp: "203.0.113.1",
+			InternalIp: "10.0.0.1",
+		},
+		IngressRules: []*pb.IngressRule{
+			{
+				IngressId: "ingress-1-uuid",
+				NetworkId: "net-1",
+				Type:      "direct_ip",
+				PublicIp:  "203.0.113.42",
+				TargetIp:  "100.64.0.1",
+			},
+		},
+	}
+
+	if err := pipeline.Apply(state); err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	// Verify a DNAT flow was installed via AddFlow
+	cmds := mock.GetRecordedCommands()
+	hasDNATFlow := false
+	for _, cmd := range cmds {
+		if cmd.Op == "add-flow" && containsSubstr(cmd.Match, "203.0.113.42") && containsSubstr(cmd.Actions, "nat(dst=") {
+			hasDNATFlow = true
+			break
+		}
+	}
+	if !hasDNATFlow {
+		t.Error("expected DNAT flow installed for direct_ip ingress rule")
+	}
+}
+
+func TestPipeline_Apply_NoIngressRules_NonGWHost(t *testing.T) {
+	pipeline, mock := newTestPipeline(t)
+
+	// A non-GW host does NOT receive IngressRules or GatewayInfo.
+	state := &pb.HostNetworkState{
+		Ports: []*pb.PortState{
+			{
+				PortId:      "port-1-uuid-abcdef",
+				VmId:        "vm-1",
+				VmName:      "web-1",
+				NetworkId:   "net-1",
+				NetworkName: "prod",
+				GroupId:     "11111111-1111-1111-1111-111111111111",
+				GroupName:   "web",
+				MacAddress:  "aa:bb:cc:dd:ee:01",
+				IpAddress:   "100.64.0.1",
+				GatewayIp:   "100.64.0.2",
+				Vni:         100,
+			},
+		},
+		// No GatewayInfo, no IngressRules
+	}
+
+	if err := pipeline.Apply(state); err != nil {
+		t.Fatalf("Apply failed for non-GW host: %v", err)
+	}
+
+	// Should NOT install any DNAT (AddFlow) commands with nat(dst=...)
+	cmds := mock.GetRecordedCommands()
+	for _, cmd := range cmds {
+		if cmd.Op == "add-flow" && containsSubstr(cmd.Actions, "nat(dst=") {
+			t.Error("unexpected DNAT flow installed on non-GW host")
+		}
+	}
+}
+
 func containsSubstr(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && findSubstr(s, substr))
 }

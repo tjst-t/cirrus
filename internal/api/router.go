@@ -163,6 +163,29 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		r.Delete("/admin/gateway-nodes/{id}", gwh.deleteGatewayNode)
 		r.Put("/admin/networks/{network_id}/gateway", gwh.assignGatewayNode)
 		r.Get("/admin/networks/{network_id}/gateway", gwh.getNetworkGatewayNode)
+
+		// Egress routes (tenant-scoped, nested under tenant/network)
+		eh := &egressHandlers{svc: networkSvc, authz: authz, logger: logger}
+		r.Route("/tenants/{tenant_id}/networks/{network_id}/egresses", func(r chi.Router) {
+			r.Post("/", eh.createEgress)
+			r.Get("/", eh.listEgresses)
+			r.Get("/{egress_id}", eh.getEgress)
+			r.Delete("/{egress_id}", eh.deleteEgress)
+		})
+
+		// IP Pools (infra_admin)
+		iph := &ipPoolHandlers{svc: networkSvc, authz: authz}
+		r.Post("/admin/ip-pools", iph.createIPPool)
+		r.Get("/admin/ip-pools", iph.listIPPools)
+		r.Get("/admin/ip-pools/{pool_id}", iph.getIPPool)
+		r.Delete("/admin/ip-pools/{pool_id}", iph.deleteIPPool)
+
+		// Ingresses (tenant-scoped, nested under network)
+		ingh := &ingressHandlers{svc: networkSvc, authz: authz}
+		r.Post("/networks/{network_id}/ingresses", ingh.createIngress)
+		r.Get("/networks/{network_id}/ingresses", ingh.listIngresses)
+		r.Get("/networks/{network_id}/ingresses/{ingress_id}", ingh.getIngress)
+		r.Delete("/networks/{network_id}/ingresses/{ingress_id}", ingh.deleteIngress)
 	})
 
 	return r

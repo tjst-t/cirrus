@@ -150,7 +150,8 @@ func (s *GRPCStateServer) WatchHostNetworkState(req *pb.WatchHostNetworkStateReq
 // For the initial implementation, compare counts and key fields.
 func stateEqual(a, b *pb.HostNetworkState) bool {
 	if len(a.Ports) != len(b.Ports) || len(a.Policies) != len(b.Policies) ||
-		len(a.RemotePorts) != len(b.RemotePorts) || len(a.DnsRecords) != len(b.DnsRecords) {
+		len(a.RemotePorts) != len(b.RemotePorts) || len(a.DnsRecords) != len(b.DnsRecords) ||
+		len(a.EgressRules) != len(b.EgressRules) {
 		return false
 	}
 
@@ -183,6 +184,17 @@ func stateEqual(a, b *pb.HostNetworkState) bool {
 	}
 	for _, rp := range b.RemotePorts {
 		if !aRemoteMap[rp.IpAddress] {
+			return false
+		}
+	}
+
+	// Compare egress rule IDs
+	aEgressMap := make(map[string]bool, len(a.EgressRules))
+	for _, er := range a.EgressRules {
+		aEgressMap[er.EgressId] = true
+	}
+	for _, er := range b.EgressRules {
+		if !aEgressMap[er.EgressId] {
 			return false
 		}
 	}

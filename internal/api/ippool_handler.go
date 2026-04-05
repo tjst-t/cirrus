@@ -1,0 +1,128 @@
+package api
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+	"github.com/tjst-t/cirrus/internal/identity"
+	"github.com/tjst-t/cirrus/internal/network"
+)
+
+type ipPoolHandlers struct {
+	svc   network.Service
+	authz identity.Authorizer
+}
+
+func (h *ipPoolHandlers) createIPPool(w http.ResponseWriter, r *http.Request) {
+	user := UserFromContext(r.Context())
+	decision, err := h.authz.Authorize(r.Context(), user, identity.ActionCreateIPPool, identity.Resource{})
+	if err != nil || decision == identity.Deny {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	var spec network.IPPoolSpec
+	if err := json.NewDecoder(r.Body).Decode(&spec); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	if spec.Name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+		return
+	}
+	if spec.CIDR == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cidr is required"})
+		return
+	}
+
+	pool, err := h.svc.CreateIPPool(r.Context(), spec)
+	if err != nil {
+		if errors.Is(err, network.ErrConflict) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "ip pool with that name already exists"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create ip pool"})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, pool)
+}
+
+func (h *ipPoolHandlers) listIPPools(w http.ResponseWriter, r *http.Request) {
+	user := UserFromContext(r.Context())
+	decision, err := h.authz.Authorize(r.Context(), user, identity.ActionListIPPools, identity.Resource{})
+	if err != nil || decision == identity.Deny {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	pools, err := h.svc.ListIPPools(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list ip pools"})
+		return
+	}
+	if pools == nil {
+		pools = []network.IPPool{}
+	}
+	writeJSON(w, http.StatusOK, pools)
+}
+
+func (h *ipPoolHandlers) getIPPool(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "pool_id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid ip pool id"})
+		return
+	}
+
+	user := UserFromContext(r.Context())
+	decision, authErr := h.authz.Authorize(r.Context(), user, identity.ActionGetIPPool, identity.Resource{})
+	if authErr != nil || decision == identity.Deny {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	pool, err := h.svc.GetIPPool(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, network.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "ip pool not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get ip pool"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, pool)
+}
+
+func (h *ipPoolHandlers) deleteIPPool(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "pool_id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid ip pool id"})
+		return
+	}
+
+	user := UserFromContext(r.Context())
+	decision, authErr := h.authz.Authorize(r.Context(), user, identity.ActionDeleteIPPool, identity.Resource{})
+	if authErr != nil || decision == identity.Deny {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	if err := h.svc.DeleteIPPool(r.Context(), id); err != nil {
+		if errors.Is(err, network.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "ip pool not found"})
+			return
+		}
+		if errors.Is(err, network.ErrConflict) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "ip pool is in use"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete ip pool"})
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}

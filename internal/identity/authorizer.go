@@ -111,6 +111,24 @@ const (
 	ActionDeleteGatewayNode       Action = "delete_gateway_node"
 	ActionAssignGatewayNode       Action = "assign_gateway_node"
 	ActionGetNetworkGatewayNode   Action = "get_network_gateway_node"
+
+	// Egress actions (tenant-scoped)
+	ActionCreateEgress Action = "create_egress"
+	ActionListEgresses Action = "list_egresses"
+	ActionGetEgress    Action = "get_egress"
+	ActionDeleteEgress Action = "delete_egress"
+
+	// IP Pool actions (infra_admin)
+	ActionCreateIPPool Action = "create_ip_pool"
+	ActionListIPPools  Action = "list_ip_pools"
+	ActionGetIPPool    Action = "get_ip_pool"
+	ActionDeleteIPPool Action = "delete_ip_pool"
+
+	// Ingress actions (tenant-scoped)
+	ActionCreateIngress Action = "create_ingress"
+	ActionListIngresses Action = "list_ingresses"
+	ActionGetIngress    Action = "get_ingress"
+	ActionDeleteIngress Action = "delete_ingress"
 )
 
 // Resource represents the target resource of an authorization check.
@@ -196,6 +214,8 @@ func (a *RBACAuthorizer) checkPermission(ra RoleAssignment, action Action, resou
 			ActionListPorts, ActionGetPort,
 			ActionCreateGroup, ActionListGroups, ActionGetGroup, ActionDeleteGroup,
 			ActionCreatePolicy, ActionListPolicies, ActionGetPolicy, ActionDeletePolicy,
+			ActionCreateEgress, ActionListEgresses, ActionGetEgress, ActionDeleteEgress,
+			ActionCreateIngress, ActionListIngresses, ActionGetIngress, ActionDeleteIngress,
 			ActionListVolumeTypes, ActionGetVolumeType,
 			ActionCreateVolume, ActionListVolumes, ActionGetVolume, ActionDeleteVolume, ActionResizeVolume,
 			ActionListFlavors, ActionGetFlavor,
@@ -220,6 +240,8 @@ func (a *RBACAuthorizer) checkPermission(ra RoleAssignment, action Action, resou
 			ActionListPorts, ActionGetPort,
 			ActionListGroups, ActionGetGroup,
 			ActionListPolicies, ActionGetPolicy,
+			ActionListEgresses, ActionGetEgress,
+			ActionListIngresses, ActionGetIngress,
 			ActionListVolumeTypes, ActionGetVolumeType,
 			ActionListVolumes, ActionGetVolume,
 			ActionListFlavors, ActionGetFlavor,
