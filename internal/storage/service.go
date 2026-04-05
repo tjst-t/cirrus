@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -23,6 +24,7 @@ type Service interface {
 	CreateVolume(ctx context.Context, spec CreateVolumeSpec) (*Volume, error)
 	GetVolume(ctx context.Context, tenantID, volumeID uuid.UUID) (*Volume, error)
 	ListVolumes(ctx context.Context, tenantID uuid.UUID) ([]Volume, error)
+	ListVolumesPage(ctx context.Context, tenantID uuid.UUID, afterCreatedAt time.Time, afterID uuid.UUID, limit int) ([]Volume, error)
 	DeleteVolume(ctx context.Context, tenantID, volumeID uuid.UUID) error
 	ResizeVolume(ctx context.Context, tenantID, volumeID uuid.UUID, newSizeGB int64) (*Volume, error)
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -296,6 +297,30 @@ func (s *Store) ListVolumesByTenant(ctx context.Context, tenantID uuid.UUID) ([]
 		vs = append(vs, *v)
 	}
 	return vs, rows.Err()
+}
+
+func (s *Store) ListVolumesByTenantPage(ctx context.Context, tenantID uuid.UUID, afterCreatedAt time.Time, afterID uuid.UUID, limit int) ([]Volume, error) {
+	scanVols := func(query string, args ...any) ([]Volume, error) {
+		rows, err := s.pool.Query(ctx, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("storage: list volumes page: %w", err)
+		}
+		defer rows.Close()
+		var vs []Volume
+		for rows.Next() {
+			v, err := scanVolume(rows)
+			if err != nil {
+				return nil, fmt.Errorf("storage: list volumes page scan: %w", err)
+			}
+			vs = append(vs, *v)
+		}
+		return vs, rows.Err()
+	}
+	if afterCreatedAt.IsZero() {
+		return scanVols(`SELECT `+volumeColumns+` FROM volumes WHERE tenant_id = $1 ORDER BY created_at, id LIMIT $2`, tenantID, limit)
+	}
+	return scanVols(`SELECT `+volumeColumns+` FROM volumes WHERE tenant_id = $1 AND (created_at > $2 OR (created_at = $2 AND id > $3)) ORDER BY created_at, id LIMIT $4`,
+		tenantID, afterCreatedAt, afterID, limit)
 }
 
 func (s *Store) ListVolumesByBackend(ctx context.Context, backendID uuid.UUID) ([]Volume, error) {

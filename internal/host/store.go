@@ -148,6 +148,36 @@ func (s *Store) ListHosts(ctx context.Context) ([]Host, error) {
 	return hosts, rows.Err()
 }
 
+func (s *Store) ListHostsPage(ctx context.Context, afterCreatedAt time.Time, afterID uuid.UUID, limit int) ([]Host, error) {
+	const cols = `id, name, address, worker_grpc_addr, fabric_ip, operational_state, capability, resource_physical,
+	              overcommit_ratios, resource_used, last_heartbeat, created_at, updated_at`
+
+	scanHosts := func(query string, args ...any) ([]Host, error) {
+		rows, err := s.pool.Query(ctx, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("host: list page: %w", err)
+		}
+		defer rows.Close()
+		var hosts []Host
+		for rows.Next() {
+			var h Host
+			if err := rows.Scan(&h.ID, &h.Name, &h.Address, &h.WorkerGRPCAddr, &h.FabricIP, &h.OperationalState,
+				&h.Capability, &h.ResourcePhysical, &h.OvercommitRatios, &h.ResourceUsed,
+				&h.LastHeartbeat, &h.CreatedAt, &h.UpdatedAt); err != nil {
+				return nil, fmt.Errorf("host: list page scan: %w", err)
+			}
+			hosts = append(hosts, h)
+		}
+		return hosts, rows.Err()
+	}
+
+	if afterCreatedAt.IsZero() {
+		return scanHosts(`SELECT `+cols+` FROM hosts ORDER BY created_at, id LIMIT $1`, limit)
+	}
+	return scanHosts(`SELECT `+cols+` FROM hosts WHERE (created_at, id) > ($1, $2) ORDER BY created_at, id LIMIT $3`,
+		afterCreatedAt, afterID, limit)
+}
+
 func (s *Store) DeleteHost(ctx context.Context, id uuid.UUID) error {
 	tag, err := s.pool.Exec(ctx, `DELETE FROM hosts WHERE id = $1 AND operational_state = 'retiring'`, id)
 	if err != nil {

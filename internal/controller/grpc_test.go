@@ -67,6 +67,9 @@ func (m *mockHostSvc) ListHosts(context.Context) ([]host.Host, error)         { 
 func (m *mockHostSvc) ListHostsByState(context.Context, host.OperationalState) ([]host.Host, error) {
 	return nil, nil
 }
+func (m *mockHostSvc) ListHostsPage(_ context.Context, _ time.Time, _ uuid.UUID, _ int) ([]host.Host, error) {
+	return nil, nil
+}
 func (m *mockHostSvc) DeleteHost(context.Context, uuid.UUID) error                    { return nil }
 func (m *mockHostSvc) UpdateCapability(context.Context, uuid.UUID, []byte) error      { return nil }
 func (m *mockHostSvc) UpdateResourcePhysical(context.Context, uuid.UUID, []byte) error { return nil }

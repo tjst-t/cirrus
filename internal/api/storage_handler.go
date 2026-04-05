@@ -39,8 +39,16 @@ func (h *storageHandlers) createStorageBackend(w http.ResponseWriter, r *http.Re
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
-	if req.Name == "" || req.Driver == "" || req.Endpoint == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name, driver, endpoint are required"})
+	if err := validateName(req.Name); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if req.Driver == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "driver is required"})
+		return
+	}
+	if req.Endpoint == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "endpoint is required"})
 		return
 	}
 
@@ -139,8 +147,12 @@ func (h *storageHandlers) createVolumeType(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
-	if req.Name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+	if err := validateName(req.Name); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := validateDescription(req.Description); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	isPublic := true
@@ -225,8 +237,12 @@ func (h *storageHandlers) createVolume(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
-	if req.Name == "" || req.SizeGB <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name and size_gb are required"})
+	if err := validateName(req.Name); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if req.SizeGB <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "size_gb must be a positive integer"})
 		return
 	}
 	v, err := h.svc.CreateVolume(r.Context(), storage.CreateVolumeSpec{
@@ -262,12 +278,29 @@ func (h *storageHandlers) listVolumes(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
-	vs, err := h.svc.ListVolumes(r.Context(), *tenantID)
+
+	cursor, limit, pErr := parsePaginationParams(r)
+	if pErr != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": pErr.Error()})
+		return
+	}
+
+	afterAt, afterID := cursorValues(cursor)
+	vs, err := h.svc.ListVolumesPage(r.Context(), *tenantID, afterAt, afterID, limit)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list volumes"})
 		return
 	}
-	writeJSON(w, http.StatusOK, vs)
+	if vs == nil {
+		vs = []storage.Volume{}
+	}
+
+	nextCursor := ""
+	if len(vs) == limit {
+		last := vs[len(vs)-1]
+		nextCursor = encodeCursor(last.CreatedAt, last.ID)
+	}
+	writeJSON(w, http.StatusOK, PagedResponse{Items: vs, NextCursor: nextCursor})
 }
 
 func (h *storageHandlers) getVolume(w http.ResponseWriter, r *http.Request) {

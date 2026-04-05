@@ -2,6 +2,7 @@ package host
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -15,6 +16,8 @@ type Service interface {
 	GetHost(ctx context.Context, id uuid.UUID) (*Host, error)
 	ListHosts(ctx context.Context) ([]Host, error)
 	ListHostsByState(ctx context.Context, state OperationalState) ([]Host, error)
+	// ListHostsPage returns a page of hosts ordered by (created_at, id).
+	ListHostsPage(ctx context.Context, afterCreatedAt time.Time, afterID uuid.UUID, limit int) ([]Host, error)
 	DeleteHost(ctx context.Context, id uuid.UUID) error
 
 	// Capability and resource management

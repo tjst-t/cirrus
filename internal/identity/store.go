@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -79,6 +80,30 @@ func (s *Store) ListOrganizations(ctx context.Context) ([]Organization, error) {
 	return orgs, rows.Err()
 }
 
+func (s *Store) ListOrganizationsPage(ctx context.Context, afterCreatedAt time.Time, afterID uuid.UUID, limit int) ([]Organization, error) {
+	const q = `SELECT id, name, quota_vcpus, quota_ram_mb, quota_volume_gb, created_at, updated_at FROM organizations`
+	scanOrgs := func(query string, args ...any) ([]Organization, error) {
+		rows, err := s.pool.Query(ctx, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("identity: list organizations page: %w", err)
+		}
+		defer rows.Close()
+		var orgs []Organization
+		for rows.Next() {
+			var org Organization
+			if err := rows.Scan(&org.ID, &org.Name, &org.QuotaVcpus, &org.QuotaRAMMB, &org.QuotaVolumeGB, &org.CreatedAt, &org.UpdatedAt); err != nil {
+				return nil, fmt.Errorf("identity: list organizations page scan: %w", err)
+			}
+			orgs = append(orgs, org)
+		}
+		return orgs, rows.Err()
+	}
+	if afterCreatedAt.IsZero() {
+		return scanOrgs(q+` ORDER BY created_at, id LIMIT $1`, limit)
+	}
+	return scanOrgs(q+` WHERE (created_at, id) > ($1, $2) ORDER BY created_at, id LIMIT $3`, afterCreatedAt, afterID, limit)
+}
+
 func (s *Store) CreateTenant(ctx context.Context, orgID uuid.UUID, name string) (*Tenant, error) {
 	var t Tenant
 	err := s.pool.QueryRow(ctx,
@@ -137,6 +162,34 @@ func (s *Store) ListTenants(ctx context.Context, orgID uuid.UUID) ([]Tenant, err
 		tenants = append(tenants, t)
 	}
 	return tenants, rows.Err()
+}
+
+func (s *Store) ListTenantsPage(ctx context.Context, orgID uuid.UUID, afterCreatedAt time.Time, afterID uuid.UUID, limit int) ([]Tenant, error) {
+	const cols = `id, organization_id, name, quota_vcpus, quota_ram_mb, quota_volume_gb,
+	              quota_vms, quota_volumes, quota_snapshots, quota_networks, quota_floating_ips, created_at, updated_at`
+	scanTenants := func(query string, args ...any) ([]Tenant, error) {
+		rows, err := s.pool.Query(ctx, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("identity: list tenants page: %w", err)
+		}
+		defer rows.Close()
+		var tenants []Tenant
+		for rows.Next() {
+			var t Tenant
+			if err := rows.Scan(&t.ID, &t.OrganizationID, &t.Name, &t.QuotaVcpus, &t.QuotaRAMMB, &t.QuotaVolumeGB,
+				&t.QuotaVMs, &t.QuotaVolumes, &t.QuotaSnapshots, &t.QuotaNetworks, &t.QuotaFloatingIPs,
+				&t.CreatedAt, &t.UpdatedAt); err != nil {
+				return nil, fmt.Errorf("identity: list tenants page scan: %w", err)
+			}
+			tenants = append(tenants, t)
+		}
+		return tenants, rows.Err()
+	}
+	if afterCreatedAt.IsZero() {
+		return scanTenants(`SELECT `+cols+` FROM tenants WHERE organization_id = $1 ORDER BY created_at, id LIMIT $2`, orgID, limit)
+	}
+	return scanTenants(`SELECT `+cols+` FROM tenants WHERE organization_id = $1 AND (created_at > $2 OR (created_at = $2 AND id > $3)) ORDER BY created_at, id LIMIT $4`,
+		orgID, afterCreatedAt, afterID, limit)
 }
 
 func (s *Store) CreateUser(ctx context.Context, externalID, name, email string) (*User, error) {

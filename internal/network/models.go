@@ -66,6 +66,7 @@ type Group struct {
 	ID        uuid.UUID `json:"id"`
 	NetworkID uuid.UUID `json:"network_id"`
 	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Policy represents a communication rule between groups within a network.
@@ -78,6 +79,7 @@ type Policy struct {
 	DstPort    *int      `json:"dst_port,omitempty"`
 	Priority   int       `json:"priority"`
 	Action     string    `json:"action"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // NetworkSpec is the input for creating a new network.

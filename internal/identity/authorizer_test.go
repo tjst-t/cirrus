@@ -3,6 +3,7 @@ package identity_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/tjst-t/cirrus/internal/identity"
@@ -22,6 +23,9 @@ func (m *mockService) GetOrganization(ctx context.Context, id uuid.UUID) (*ident
 func (m *mockService) ListOrganizations(ctx context.Context) ([]identity.Organization, error) {
 	return nil, nil
 }
+func (m *mockService) ListOrganizationsPage(_ context.Context, _ time.Time, _ uuid.UUID, _ int) ([]identity.Organization, error) {
+	return nil, nil
+}
 func (m *mockService) CreateTenant(ctx context.Context, orgID uuid.UUID, name string) (*identity.Tenant, error) {
 	return nil, nil
 }
@@ -29,6 +33,9 @@ func (m *mockService) GetTenant(ctx context.Context, id uuid.UUID) (*identity.Te
 	return nil, nil
 }
 func (m *mockService) ListTenants(ctx context.Context, orgID uuid.UUID) ([]identity.Tenant, error) {
+	return nil, nil
+}
+func (m *mockService) ListTenantsPage(_ context.Context, _ uuid.UUID, _ time.Time, _ uuid.UUID, _ int) ([]identity.Tenant, error) {
 	return nil, nil
 }
 func (m *mockService) CreateUser(ctx context.Context, externalID, name, email string) (*identity.User, error) {

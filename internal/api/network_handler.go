@@ -80,7 +80,14 @@ func (h *networkHandlers) listNetworks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	networks, err := h.svc.ListNetworks(r.Context(), *tenantID)
+	cursor, limit, err := parsePaginationParams(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	afterAt, afterID := cursorValues(cursor)
+	networks, err := h.svc.ListNetworksPage(r.Context(), *tenantID, afterAt, afterID, limit)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list networks"})
 		return
@@ -88,7 +95,13 @@ func (h *networkHandlers) listNetworks(w http.ResponseWriter, r *http.Request) {
 	if networks == nil {
 		networks = []network.Network{}
 	}
-	writeJSON(w, http.StatusOK, networks)
+
+	nextCursor := ""
+	if len(networks) == limit {
+		last := networks[len(networks)-1]
+		nextCursor = encodeCursor(last.CreatedAt, last.ID)
+	}
+	writeJSON(w, http.StatusOK, PagedResponse{Items: networks, NextCursor: nextCursor})
 }
 
 func (h *networkHandlers) getNetwork(w http.ResponseWriter, r *http.Request) {
@@ -224,7 +237,14 @@ func (h *networkHandlers) listGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	groups, err := h.svc.ListGroups(r.Context(), net.ID)
+	cursor, limit, err := parsePaginationParams(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	afterAt, afterID := cursorValues(cursor)
+	groups, err := h.svc.ListGroupsPage(r.Context(), net.ID, afterAt, afterID, limit)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list groups"})
 		return
@@ -232,7 +252,13 @@ func (h *networkHandlers) listGroups(w http.ResponseWriter, r *http.Request) {
 	if groups == nil {
 		groups = []network.Group{}
 	}
-	writeJSON(w, http.StatusOK, groups)
+
+	nextCursor := ""
+	if len(groups) == limit {
+		last := groups[len(groups)-1]
+		nextCursor = encodeCursor(last.CreatedAt, last.ID)
+	}
+	writeJSON(w, http.StatusOK, PagedResponse{Items: groups, NextCursor: nextCursor})
 }
 
 func (h *networkHandlers) getGroup(w http.ResponseWriter, r *http.Request) {
@@ -384,7 +410,14 @@ func (h *networkHandlers) listPolicies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	policies, err := h.svc.ListPolicies(r.Context(), net.ID)
+	cursor, limit, err := parsePaginationParams(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	afterAt, afterID := cursorValues(cursor)
+	policies, err := h.svc.ListPoliciesPage(r.Context(), net.ID, afterAt, afterID, limit)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list policies"})
 		return
@@ -392,7 +425,13 @@ func (h *networkHandlers) listPolicies(w http.ResponseWriter, r *http.Request) {
 	if policies == nil {
 		policies = []network.Policy{}
 	}
-	writeJSON(w, http.StatusOK, policies)
+
+	nextCursor := ""
+	if len(policies) == limit {
+		last := policies[len(policies)-1]
+		nextCursor = encodeCursor(last.CreatedAt, last.ID)
+	}
+	writeJSON(w, http.StatusOK, PagedResponse{Items: policies, NextCursor: nextCursor})
 }
 
 func (h *networkHandlers) deletePolicy(w http.ResponseWriter, r *http.Request) {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -107,6 +108,18 @@ func (f *fakeStore) ListVolumesByTenant(_ context.Context, tenantID uuid.UUID) (
 		if v.TenantID == tenantID {
 			out = append(out, v)
 		}
+	}
+	return out, nil
+}
+func (f *fakeStore) ListVolumesByTenantPage(_ context.Context, tenantID uuid.UUID, _ time.Time, _ uuid.UUID, limit int) ([]Volume, error) {
+	var out []Volume
+	for _, v := range f.volumes {
+		if v.TenantID == tenantID {
+			out = append(out, v)
+		}
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
 	}
 	return out, nil
 }

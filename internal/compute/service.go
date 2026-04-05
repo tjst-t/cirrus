@@ -3,6 +3,7 @@ package compute
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -17,6 +18,9 @@ type Service interface {
 
 	// ListVMs returns all VMs belonging to the given tenant.
 	ListVMs(ctx context.Context, tenantID uuid.UUID) ([]VM, error)
+
+	// ListVMsPage returns a page of VMs ordered by (created_at, id).
+	ListVMsPage(ctx context.Context, tenantID uuid.UUID, afterCreatedAt time.Time, afterID uuid.UUID, limit int) ([]VM, error)
 
 	// DeleteVM enqueues an async VM deletion job.
 	// Allowed only when status is stopped or error.

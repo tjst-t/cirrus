@@ -2,6 +2,7 @@ package network
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -12,18 +13,21 @@ type Service interface {
 	CreateNetwork(ctx context.Context, tenantID uuid.UUID, spec NetworkSpec) (*Network, error)
 	GetNetwork(ctx context.Context, id uuid.UUID) (*Network, error)
 	ListNetworks(ctx context.Context, tenantID uuid.UUID) ([]Network, error)
+	ListNetworksPage(ctx context.Context, tenantID uuid.UUID, afterCreatedAt time.Time, afterID uuid.UUID, limit int) ([]Network, error)
 	DeleteNetwork(ctx context.Context, id uuid.UUID) error
 
 	// Groups
 	CreateGroup(ctx context.Context, networkID uuid.UUID, spec GroupSpec) (*Group, error)
 	GetGroup(ctx context.Context, id uuid.UUID) (*Group, error)
 	ListGroups(ctx context.Context, networkID uuid.UUID) ([]Group, error)
+	ListGroupsPage(ctx context.Context, networkID uuid.UUID, afterCreatedAt time.Time, afterID uuid.UUID, limit int) ([]Group, error)
 	DeleteGroup(ctx context.Context, id uuid.UUID) error
 
 	// Policies
 	CreatePolicy(ctx context.Context, networkID uuid.UUID, spec PolicySpec) (*Policy, error)
 	GetPolicy(ctx context.Context, id uuid.UUID) (*Policy, error)
 	ListPolicies(ctx context.Context, networkID uuid.UUID) ([]Policy, error)
+	ListPoliciesPage(ctx context.Context, networkID uuid.UUID, afterCreatedAt time.Time, afterID uuid.UUID, limit int) ([]Policy, error)
 	DeletePolicy(ctx context.Context, id uuid.UUID) error
 
 	// Ports (read-only for tenants; creation is internal via VM lifecycle)

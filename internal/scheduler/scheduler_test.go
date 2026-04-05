@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/tjst-t/cirrus/internal/flavor"
@@ -61,6 +62,9 @@ func (f *fakeHostSvc) GetAllocatable(ctx context.Context, id uuid.UUID) (*host.A
 	}
 	return &host.AllocatableResources{}, nil
 }
+func (f *fakeHostSvc) ListHostsPage(_ context.Context, _ time.Time, _ uuid.UUID, _ int) ([]host.Host, error) {
+	return nil, nil
+}
 
 type fakeStorageSvc struct {
 	backendsForAZ    []storage.Backend
@@ -110,6 +114,9 @@ func (f *fakeStorageSvc) ExportVolume(ctx context.Context, volumeID, hostID uuid
 }
 func (f *fakeStorageSvc) UnexportVolume(ctx context.Context, volumeID uuid.UUID) error { return nil }
 func (f *fakeStorageSvc) ListVolumesOnBackend(ctx context.Context, backendID uuid.UUID) ([]storage.Volume, error) {
+	return nil, nil
+}
+func (f *fakeStorageSvc) ListVolumesPage(_ context.Context, _ uuid.UUID, _ time.Time, _ uuid.UUID, _ int) ([]storage.Volume, error) {
 	return nil, nil
 }
 

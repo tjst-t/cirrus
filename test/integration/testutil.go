@@ -51,7 +51,7 @@ func NewTestEnv(t *testing.T) *TestEnv {
 
 	return &TestEnv{
 		DB:       pool,
-		NetStore: network.NewStore(pool, logger),
+		NetStore: network.NewStore(pool, logger, nil),
 		Logger:   logger,
 	}
 }

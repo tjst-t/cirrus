@@ -63,17 +63,33 @@ func (h *hostHandlers) listHosts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var hosts []host.Host
+	// State filter bypasses cursor pagination (simple filter, typically small result).
 	if stateParam := r.URL.Query().Get("state"); stateParam != "" {
 		state := host.OperationalState(stateParam)
 		if !host.IsValidOperationalState(state) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid state: must be one of registering, active, maintenance, draining, faulty, retiring"})
 			return
 		}
-		hosts, err = h.svc.ListHostsByState(r.Context(), state)
-	} else {
-		hosts, err = h.svc.ListHosts(r.Context())
+		hosts, err := h.svc.ListHostsByState(r.Context(), state)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list hosts"})
+			return
+		}
+		if hosts == nil {
+			hosts = []host.Host{}
+		}
+		writeJSON(w, http.StatusOK, hosts)
+		return
 	}
+
+	cursor, limit, err := parsePaginationParams(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	afterAt, afterID := cursorValues(cursor)
+	hosts, err := h.svc.ListHostsPage(r.Context(), afterAt, afterID, limit)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list hosts"})
 		return
@@ -82,7 +98,12 @@ func (h *hostHandlers) listHosts(w http.ResponseWriter, r *http.Request) {
 		hosts = []host.Host{}
 	}
 
-	writeJSON(w, http.StatusOK, hosts)
+	nextCursor := ""
+	if len(hosts) == limit {
+		last := hosts[len(hosts)-1]
+		nextCursor = encodeCursor(last.CreatedAt, last.ID)
+	}
+	writeJSON(w, http.StatusOK, PagedResponse{Items: hosts, NextCursor: nextCursor})
 }
 
 func (h *hostHandlers) deleteHost(w http.ResponseWriter, r *http.Request) {

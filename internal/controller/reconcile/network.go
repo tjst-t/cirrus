@@ -14,15 +14,28 @@ import (
 	pb "github.com/tjst-t/cirrus/proto/networkpb"
 )
 
+// DriftTypeFlowMissing is fired when OVS flows expected for a host are absent.
+const DriftTypeFlowMissing = "flow_missing"
+
+// OVSFlowVerifier can verify that expected OVS flows are present on a host.
+// Implementations may query a live OVS bridge, a network agent, or use a
+// test double.
+type OVSFlowVerifier interface {
+	// VerifyFlows returns a non-nil error if any expected flows are missing
+	// for the given host.
+	VerifyFlows(ctx context.Context, hostID uuid.UUID) error
+}
+
 // NetworkReconciler periodically checks the desired HostNetworkState for
 // each active host and fires DriftEvents for any inconsistencies detected.
 type NetworkReconciler struct {
-	stateCtrl *network.StateController
-	hostSvc   host.Service
-	handler   *DriftHandler
-	logger    *slog.Logger
-	interval  time.Duration
-	pool      *pgxpool.Pool
+	stateCtrl    *network.StateController
+	hostSvc      host.Service
+	handler      *DriftHandler
+	logger       *slog.Logger
+	interval     time.Duration
+	pool         *pgxpool.Pool
+	flowVerifier OVSFlowVerifier // optional; nil disables OVS flow verification
 }
 
 // NewNetworkReconciler creates a new NetworkReconciler.
@@ -37,6 +50,13 @@ func NewNetworkReconciler(stateCtrl *network.StateController, hostSvc host.Servi
 		logger:    logger.With("component", "network-reconciler"),
 		interval:  interval,
 	}
+}
+
+// WithOVSFlowVerifier sets the OVS flow verifier. If not set, OVS flow
+// verification is skipped during reconciliation.
+func (r *NetworkReconciler) WithOVSFlowVerifier(v OVSFlowVerifier) *NetworkReconciler {
+	r.flowVerifier = v
+	return r
 }
 
 // WithPool sets the DB pool for egress/ingress reconciliation.
@@ -99,6 +119,24 @@ func (r *NetworkReconciler) reconcileOnce(ctx context.Context) {
 
 		hostDrift := r.checkConsistency(ctx, state, h.ID.String(), h.Name)
 		driftCount += hostDrift
+
+		// OVS flow verification (optional — skipped when no verifier is set).
+		if r.flowVerifier != nil {
+			if err := r.flowVerifier.VerifyFlows(ctx, h.ID); err != nil {
+				r.handler.Handle(ctx, DriftEvent{
+					Layer:      DriftLayerNetwork,
+					Type:       DriftTypeFlowMissing,
+					Severity:   DriftSeverityHigh,
+					Resource:   "ovs_flow",
+					ResourceID: h.ID.String(),
+					HostID:     h.ID.String(),
+					Expected:   "all OVS flows present",
+					Actual:     err.Error(),
+					DetectedBy: "network_reconciler",
+				})
+				driftCount++
+			}
+		}
 
 		r.logger.Debug("reconcile: host state",
 			"host_id", h.ID,

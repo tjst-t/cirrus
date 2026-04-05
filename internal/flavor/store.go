@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -72,6 +73,42 @@ func (s *serviceImpl) List(ctx context.Context) ([]Flavor, error) {
 		flavors = []Flavor{}
 	}
 	return flavors, nil
+}
+
+func (s *serviceImpl) ListPage(ctx context.Context, afterCreatedAt time.Time, afterID uuid.UUID, limit int) ([]Flavor, error) {
+	scanFlavors := func(query string, args ...any) ([]Flavor, error) {
+		rows, err := s.db.Query(ctx, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("flavor: list page: %w", err)
+		}
+		defer rows.Close()
+		var flavors []Flavor
+		for rows.Next() {
+			var f Flavor
+			if err := rows.Scan(&f.ID, &f.Name, &f.VCPUs, &f.RAMMB, &f.DiskGB, &f.IsPublic, &f.CreatedAt, &f.UpdatedAt); err != nil {
+				return nil, fmt.Errorf("flavor: list page scan: %w", err)
+			}
+			flavors = append(flavors, f)
+		}
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("flavor: list page rows: %w", err)
+		}
+		if flavors == nil {
+			flavors = []Flavor{}
+		}
+		return flavors, nil
+	}
+
+	if afterCreatedAt.IsZero() {
+		return scanFlavors(`
+			SELECT id, name, vcpus, ram_mb, disk_gb, is_public, created_at, updated_at
+			FROM flavors ORDER BY created_at, id LIMIT $1`, limit)
+	}
+	return scanFlavors(`
+		SELECT id, name, vcpus, ram_mb, disk_gb, is_public, created_at, updated_at
+		FROM flavors
+		WHERE (created_at, id) > ($1, $2)
+		ORDER BY created_at, id LIMIT $3`, afterCreatedAt, afterID, limit)
 }
 
 func (s *serviceImpl) Delete(ctx context.Context, id uuid.UUID) error {

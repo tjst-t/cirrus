@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -12,11 +13,13 @@ type Service interface {
 	CreateOrganization(ctx context.Context, name string) (*Organization, error)
 	GetOrganization(ctx context.Context, id uuid.UUID) (*Organization, error)
 	ListOrganizations(ctx context.Context) ([]Organization, error)
+	ListOrganizationsPage(ctx context.Context, afterCreatedAt time.Time, afterID uuid.UUID, limit int) ([]Organization, error)
 
 	// Tenants
 	CreateTenant(ctx context.Context, orgID uuid.UUID, name string) (*Tenant, error)
 	GetTenant(ctx context.Context, id uuid.UUID) (*Tenant, error)
 	ListTenants(ctx context.Context, orgID uuid.UUID) ([]Tenant, error)
+	ListTenantsPage(ctx context.Context, orgID uuid.UUID, afterCreatedAt time.Time, afterID uuid.UUID, limit int) ([]Tenant, error)
 
 	// Users
 	CreateUser(ctx context.Context, externalID, name, email string) (*User, error)

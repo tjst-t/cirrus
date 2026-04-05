@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -34,6 +35,7 @@ type storageStore interface {
 	InsertVolume(ctx context.Context, v Volume) (*Volume, error)
 	GetVolume(ctx context.Context, id uuid.UUID) (*Volume, error)
 	ListVolumesByTenant(ctx context.Context, tenantID uuid.UUID) ([]Volume, error)
+	ListVolumesByTenantPage(ctx context.Context, tenantID uuid.UUID, afterCreatedAt time.Time, afterID uuid.UUID, limit int) ([]Volume, error)
 	ListVolumesByBackend(ctx context.Context, backendID uuid.UUID) ([]Volume, error)
 	SetVolumeState(ctx context.Context, id uuid.UUID, state VolumeState) error
 	SetVolumeExport(ctx context.Context, id, hostID uuid.UUID, info json.RawMessage) error
@@ -263,6 +265,10 @@ func (s *serviceImpl) GetVolume(ctx context.Context, tenantID, volumeID uuid.UUI
 
 func (s *serviceImpl) ListVolumes(ctx context.Context, tenantID uuid.UUID) ([]Volume, error) {
 	return s.store.ListVolumesByTenant(ctx, tenantID)
+}
+
+func (s *serviceImpl) ListVolumesPage(ctx context.Context, tenantID uuid.UUID, afterCreatedAt time.Time, afterID uuid.UUID, limit int) ([]Volume, error) {
+	return s.store.ListVolumesByTenantPage(ctx, tenantID, afterCreatedAt, afterID, limit)
 }
 
 func (s *serviceImpl) DeleteVolume(ctx context.Context, tenantID, volumeID uuid.UUID) error {

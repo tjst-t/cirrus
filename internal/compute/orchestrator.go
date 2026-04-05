@@ -3,6 +3,7 @@ package compute
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -153,7 +154,6 @@ func (o *Orchestrator) DeleteVM(ctx context.Context, tenantID, vmID uuid.UUID) e
 		delCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 		if err := o.teardownVM(delCtx, vm); err != nil {
-			o.logger.Error("VM teardown failed", "vm_id", vmID, "error", err)
 			_ = o.setVMStatus(context.Background(), vmID, VMStatusError, err.Error())
 		} else {
 			_ = o.deleteVMRecord(context.Background(), vmID)
@@ -298,7 +298,9 @@ func (o *Orchestrator) resolveWorker(ctx context.Context, vm *VM) (*controller.W
 // buildVM orchestrates the full VM creation pipeline.
 // Each step is idempotent: if a step was already completed (e.g., volume exists),
 // it re-uses the existing resource.
-func (o *Orchestrator) buildVM(ctx context.Context, vmID uuid.UUID, spec CreateVMSpec, flv *flavor.Flavor) error {
+// Cleanup defers are registered after each resource is created so that partial
+// failures do not leave dangling ports or volumes.
+func (o *Orchestrator) buildVM(ctx context.Context, vmID uuid.UUID, spec CreateVMSpec, flv *flavor.Flavor) (retErr error) {
 	if err := o.setVMStatus(ctx, vmID, VMStatusBuilding, ""); err != nil {
 		return err
 	}
@@ -337,6 +339,14 @@ func (o *Orchestrator) buildVM(ctx context.Context, vmID uuid.UUID, spec CreateV
 		if err != nil {
 			return fmt.Errorf("create port: %w", err)
 		}
+		// Cleanup: if a subsequent step fails, delete the port we just created.
+		defer func() {
+			if retErr != nil && port != nil {
+				if delErr := o.networkSvc.DeletePort(context.Background(), port.ID); delErr != nil {
+					o.logger.Warn("buildVM cleanup: failed to delete port", "port_id", port.ID, "error", delErr)
+				}
+			}
+		}()
 	}
 
 	// 4. Create root volume (idempotent)
@@ -352,6 +362,17 @@ func (o *Orchestrator) buildVM(ctx context.Context, vmID uuid.UUID, spec CreateV
 	if err != nil {
 		return fmt.Errorf("create volume: %w", err)
 	}
+	// Cleanup: if a subsequent step fails, delete the volume we just created.
+	defer func() {
+		if retErr != nil {
+			if unexErr := o.storageSvc.UnexportVolume(context.Background(), vol.ID); unexErr != nil {
+				o.logger.Warn("buildVM cleanup: unexport volume failed", "volume_id", vol.ID, "error", unexErr)
+			}
+			if delErr := o.storageSvc.DeleteVolume(context.Background(), spec.TenantID, vol.ID); delErr != nil {
+				o.logger.Warn("buildVM cleanup: delete volume failed", "volume_id", vol.ID, "error", delErr)
+			}
+		}
+	}()
 
 	// Persist volume association
 	if err := o.insertVMVolume(ctx, vmID, vol.ID, "vda"); err != nil {
@@ -415,22 +436,29 @@ func (o *Orchestrator) buildVM(ctx context.Context, vmID uuid.UUID, spec CreateV
 // teardownVM stops and deletes a VM on the worker, then cleans up volumes and ports.
 // Order: worker.DeleteVM (DestroyVM→BlockDev.Detach→UndefineVM) →
 //        Network.DeletePort → Storage.UnexportVolume → Storage.DeleteVolume → DB delete
+// All errors are collected and logged at the end; individual step failures do not
+// abort subsequent steps.
 func (o *Orchestrator) teardownVM(ctx context.Context, vm *VM) error {
 	vmName := fmt.Sprintf("vm-%s", vm.ID.String()[:8])
+
+	var errs []error
 
 	volumeIDs, err := o.listVMVolumeIDs(ctx, vm.ID)
 	if err != nil {
 		o.logger.Warn("teardownVM: list vm volumes failed", "vm_id", vm.ID, "error", err)
+		errs = append(errs, fmt.Errorf("list volumes: %w", err))
 	}
 
 	if vm.HostID != nil {
 		h, err := o.getHostByID(ctx, *vm.HostID)
 		if err != nil {
 			o.logger.Warn("teardownVM: get host failed", "vm_id", vm.ID, "error", err)
+			errs = append(errs, fmt.Errorf("get host: %w", err))
 		} else if h.WorkerGRPCAddr != "" {
 			workerClient, err := o.workers.Get(h.WorkerGRPCAddr)
 			if err != nil {
 				o.logger.Warn("teardownVM: get worker client failed", "vm_id", vm.ID, "error", err)
+				errs = append(errs, fmt.Errorf("get worker client: %w", err))
 			} else {
 				req := &pb.DeleteVMRequest{VmId: vm.ID.String(), Name: vmName}
 				for _, vid := range volumeIDs {
@@ -451,6 +479,7 @@ func (o *Orchestrator) teardownVM(ctx context.Context, vm *VM) error {
 				}
 				if _, err := workerClient.DeleteVM(ctx, req); err != nil {
 					o.logger.Warn("worker DeleteVM failed", "vm_id", vm.ID, "error", err)
+					errs = append(errs, fmt.Errorf("worker DeleteVM: %w", err))
 				}
 			}
 		}
@@ -460,17 +489,25 @@ func (o *Orchestrator) teardownVM(ctx context.Context, vm *VM) error {
 	if err == nil {
 		if err := o.networkSvc.DeletePort(ctx, port.ID); err != nil {
 			o.logger.Warn("teardownVM: delete port failed", "vm_id", vm.ID, "error", err)
+			errs = append(errs, fmt.Errorf("delete port: %w", err))
 		}
 	}
 
+	// UnexportVolume failure should not block DeleteVolume so we continue regardless.
 	for _, vid := range volumeIDs {
 		if err := o.storageSvc.UnexportVolume(ctx, vid); err != nil {
 			o.logger.Warn("teardownVM: unexport volume failed", "volume_id", vid, "error", err)
+			errs = append(errs, fmt.Errorf("unexport volume %s: %w", vid, err))
 		}
+		// Delete even if unexport failed — best effort; reconciler handles drift.
 		if err := o.storageSvc.DeleteVolume(ctx, vm.TenantID, vid); err != nil {
 			o.logger.Warn("teardownVM: delete volume failed", "volume_id", vid, "error", err)
+			errs = append(errs, fmt.Errorf("delete volume %s: %w", vid, err))
 		}
 	}
 
+	if len(errs) > 0 {
+		return fmt.Errorf("teardownVM: %d error(s): %w", len(errs), errors.Join(errs...))
+	}
 	return nil
 }

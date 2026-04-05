@@ -12,6 +12,8 @@ import (
 	"github.com/tjst-t/cirrus/internal/host"
 )
 
+const vmCols = `id, tenant_id, name, flavor_id, az_id, network_id, host_id, status, error_message, created_at, updated_at`
+
 // ErrNotFound is returned when a VM is not found.
 var ErrNotFound = errors.New("compute: vm not found")
 
@@ -65,6 +67,33 @@ func (o *Orchestrator) listVMs(ctx context.Context, tenantID uuid.UUID) ([]VM, e
 		vms = append(vms, vm)
 	}
 	return vms, rows.Err()
+}
+
+// ListVMsPage implements Service.ListVMsPage.
+func (o *Orchestrator) ListVMsPage(ctx context.Context, tenantID uuid.UUID, afterCreatedAt time.Time, afterID uuid.UUID, limit int) ([]VM, error) {
+	scanVMs := func(query string, args ...any) ([]VM, error) {
+		rows, err := o.pool.Query(ctx, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("compute: list vms page: %w", err)
+		}
+		defer rows.Close()
+		var vms []VM
+		for rows.Next() {
+			var vm VM
+			if err := rows.Scan(&vm.ID, &vm.TenantID, &vm.Name, &vm.FlavorID, &vm.AZID, &vm.NetworkID, &vm.HostID,
+				&vm.Status, &vm.ErrorMessage, &vm.CreatedAt, &vm.UpdatedAt); err != nil {
+				return nil, fmt.Errorf("compute: list vms page scan: %w", err)
+			}
+			vms = append(vms, vm)
+		}
+		return vms, rows.Err()
+	}
+
+	if afterCreatedAt.IsZero() {
+		return scanVMs(`SELECT `+vmCols+` FROM vms WHERE tenant_id = $1 ORDER BY created_at, id LIMIT $2`, tenantID, limit)
+	}
+	return scanVMs(`SELECT `+vmCols+` FROM vms WHERE tenant_id = $1 AND (created_at > $2 OR (created_at = $2 AND id > $3)) ORDER BY created_at, id LIMIT $4`,
+		tenantID, afterCreatedAt, afterID, limit)
 }
 
 func (o *Orchestrator) setVMStatus(ctx context.Context, vmID uuid.UUID, status VMStatus, errMsg string) error {

@@ -43,14 +43,18 @@ func (h *vmHandlers) createVM(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
-	if req.Name == "" || req.FlavorID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name and flavor_id are required"})
+	if err := validateName(req.Name); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if req.FlavorID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "flavor_id is required"})
 		return
 	}
 
 	flavorID, err := uuid.Parse(req.FlavorID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid flavor_id"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid flavor_id: must be a valid UUID"})
 		return
 	}
 
@@ -98,7 +102,14 @@ func (h *vmHandlers) listVMs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vms, err := h.svc.ListVMs(r.Context(), tenantID)
+	cursor, limit, err := parsePaginationParams(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	afterAt, afterID := cursorValues(cursor)
+	vms, err := h.svc.ListVMsPage(r.Context(), tenantID, afterAt, afterID, limit)
 	if err != nil {
 		writeInternalError(w, err, h.debug)
 		return
@@ -106,7 +117,13 @@ func (h *vmHandlers) listVMs(w http.ResponseWriter, r *http.Request) {
 	if vms == nil {
 		vms = []compute.VM{}
 	}
-	writeJSON(w, http.StatusOK, vms)
+
+	nextCursor := ""
+	if len(vms) == limit {
+		last := vms[len(vms)-1]
+		nextCursor = encodeCursor(last.CreatedAt, last.ID)
+	}
+	writeJSON(w, http.StatusOK, PagedResponse{Items: vms, NextCursor: nextCursor})
 }
 
 func (h *vmHandlers) getVM(w http.ResponseWriter, r *http.Request) {

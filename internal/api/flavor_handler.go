@@ -34,8 +34,16 @@ func (h *flavorHandlers) createFlavor(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
-	if req.Name == "" || req.VCPUs <= 0 || req.RAMMB <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name, vcpus, ram_mb are required"})
+	if err := validateName(req.Name); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if req.VCPUs <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "vcpus must be a positive integer"})
+		return
+	}
+	if req.RAMMB <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "ram_mb must be a positive integer"})
 		return
 	}
 
@@ -70,12 +78,28 @@ func (h *flavorHandlers) listFlavors(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	flavors, err := h.svc.List(r.Context())
+	cursor, limit, err := parsePaginationParams(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	afterAt, afterID := cursorValues(cursor)
+	flavors, err := h.svc.ListPage(r.Context(), afterAt, afterID, limit)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, flavors)
+	if flavors == nil {
+		flavors = []flavor.Flavor{}
+	}
+
+	nextCursor := ""
+	if len(flavors) == limit {
+		last := flavors[len(flavors)-1]
+		nextCursor = encodeCursor(last.CreatedAt, last.ID)
+	}
+	writeJSON(w, http.StatusOK, PagedResponse{Items: flavors, NextCursor: nextCursor})
 }
 
 func (h *flavorHandlers) getFlavor(w http.ResponseWriter, r *http.Request) {

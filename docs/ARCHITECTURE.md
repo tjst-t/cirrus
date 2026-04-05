@@ -13,7 +13,7 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 - **Key interfaces**: `api.Router` — HTTP ルーティング全体
 - **Depends on**: identity, compute, network, storage, topology, host, az, state
 - **Background loops**:
-  - `NetworkReconciler` — OVN 状態との乖離検出・修復（5 分間隔）
+  - `NetworkReconciler` — OVN 状態との乖離検出・修復（5 分間隔）。オプショナルな `OVSFlowVerifier` インターフェース経由で OVS フローレベルの検証も実施（欠損時は `flow_missing` DriftEvent を発火）
   - `StorageReconciler` — Storage 状態との乖離検出・修復（5 分間隔）
   - `HeartbeatMonitor` — Worker heartbeat 監視、3 回連続タイムアウトで `active`/`draining` → `faulty` 自動遷移、`draining` + VM 数 0 → `maintenance` 自動遷移（30 秒間隔）
   - `HostFaultyHandler` — faulty 遷移時に同ホスト上の全 VM を `error`、関連ポートを `down` にカスケード更新

@@ -59,7 +59,14 @@ func (h *identityHandlers) listOrganizations(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	orgs, err := h.svc.ListOrganizations(r.Context())
+	cursor, limit, pErr := parsePaginationParams(r)
+	if pErr != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": pErr.Error()})
+		return
+	}
+
+	afterAt, afterID := cursorValues(cursor)
+	orgs, err := h.svc.ListOrganizationsPage(r.Context(), afterAt, afterID, limit)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list organizations"})
 		return
@@ -68,7 +75,12 @@ func (h *identityHandlers) listOrganizations(w http.ResponseWriter, r *http.Requ
 		orgs = []identity.Organization{}
 	}
 
-	writeJSON(w, http.StatusOK, orgs)
+	nextCursor := ""
+	if len(orgs) == limit {
+		last := orgs[len(orgs)-1]
+		nextCursor = encodeCursor(last.CreatedAt, last.ID)
+	}
+	writeJSON(w, http.StatusOK, PagedResponse{Items: orgs, NextCursor: nextCursor})
 }
 
 func (h *identityHandlers) getOrganization(w http.ResponseWriter, r *http.Request) {
@@ -142,7 +154,7 @@ func (h *identityHandlers) createTenant(w http.ResponseWriter, r *http.Request) 
 func (h *identityHandlers) listTenants(w http.ResponseWriter, r *http.Request) {
 	orgID, err := uuid.Parse(chi.URLParam(r, "org_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid organization id"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid organization id: must be a valid UUID"})
 		return
 	}
 
@@ -153,7 +165,14 @@ func (h *identityHandlers) listTenants(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tenants, err := h.svc.ListTenants(r.Context(), orgID)
+	cursor, limit, pErr := parsePaginationParams(r)
+	if pErr != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": pErr.Error()})
+		return
+	}
+
+	afterAt, afterID := cursorValues(cursor)
+	tenants, err := h.svc.ListTenantsPage(r.Context(), orgID, afterAt, afterID, limit)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list tenants"})
 		return
@@ -162,7 +181,12 @@ func (h *identityHandlers) listTenants(w http.ResponseWriter, r *http.Request) {
 		tenants = []identity.Tenant{}
 	}
 
-	writeJSON(w, http.StatusOK, tenants)
+	nextCursor := ""
+	if len(tenants) == limit {
+		last := tenants[len(tenants)-1]
+		nextCursor = encodeCursor(last.CreatedAt, last.ID)
+	}
+	writeJSON(w, http.StatusOK, PagedResponse{Items: tenants, NextCursor: nextCursor})
 }
 
 func (h *identityHandlers) getTenant(w http.ResponseWriter, r *http.Request) {

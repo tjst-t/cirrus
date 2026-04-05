@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -141,6 +142,30 @@ func (s *Store) ListNetworks(ctx context.Context, tenantID uuid.UUID) ([]Network
 	return networks, rows.Err()
 }
 
+func (s *Store) ListNetworksPage(ctx context.Context, tenantID uuid.UUID, afterCreatedAt time.Time, afterID uuid.UUID, limit int) ([]Network, error) {
+	scanNetworks := func(query string, args ...any) ([]Network, error) {
+		rows, err := s.pool.Query(ctx, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("network: list page: %w", err)
+		}
+		defer rows.Close()
+		var networks []Network
+		for rows.Next() {
+			var n Network
+			if err := rows.Scan(&n.ID, &n.TenantID, &n.Name, &n.CIDR, &n.VNI, &n.Status, &n.CreatedAt, &n.UpdatedAt); err != nil {
+				return nil, fmt.Errorf("network: list page scan: %w", err)
+			}
+			networks = append(networks, n)
+		}
+		return networks, rows.Err()
+	}
+	if afterCreatedAt.IsZero() {
+		return scanNetworks(`SELECT id, tenant_id, name, cidr::TEXT, vni, status, created_at, updated_at FROM networks WHERE tenant_id = $1 ORDER BY created_at, id LIMIT $2`, tenantID, limit)
+	}
+	return scanNetworks(`SELECT id, tenant_id, name, cidr::TEXT, vni, status, created_at, updated_at FROM networks WHERE tenant_id = $1 AND (created_at > $2 OR (created_at = $2 AND id > $3)) ORDER BY created_at, id LIMIT $4`,
+		tenantID, afterCreatedAt, afterID, limit)
+}
+
 func (s *Store) DeleteNetwork(ctx context.Context, id uuid.UUID) error {
 	// Check for dependent groups
 	var groupCount int
@@ -193,9 +218,9 @@ func (s *Store) CreateGroup(ctx context.Context, networkID uuid.UUID, spec Group
 	err := s.pool.QueryRow(ctx,
 		`INSERT INTO groups (network_id, name)
 		 VALUES ($1, $2)
-		 RETURNING id, network_id, name`,
+		 RETURNING id, network_id, name, created_at`,
 		networkID, spec.Name,
-	).Scan(&g.ID, &g.NetworkID, &g.Name)
+	).Scan(&g.ID, &g.NetworkID, &g.Name, &g.CreatedAt)
 	if err != nil {
 		return nil, wrapErr("group: create", err)
 	}
@@ -205,8 +230,8 @@ func (s *Store) CreateGroup(ctx context.Context, networkID uuid.UUID, spec Group
 func (s *Store) GetGroup(ctx context.Context, id uuid.UUID) (*Group, error) {
 	var g Group
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, network_id, name FROM groups WHERE id = $1`, id,
-	).Scan(&g.ID, &g.NetworkID, &g.Name)
+		`SELECT id, network_id, name, created_at FROM groups WHERE id = $1`, id,
+	).Scan(&g.ID, &g.NetworkID, &g.Name, &g.CreatedAt)
 	if err != nil {
 		return nil, wrapErr("group: get", err)
 	}
@@ -215,7 +240,7 @@ func (s *Store) GetGroup(ctx context.Context, id uuid.UUID) (*Group, error) {
 
 func (s *Store) ListGroups(ctx context.Context, networkID uuid.UUID) ([]Group, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, network_id, name FROM groups WHERE network_id = $1 ORDER BY name`, networkID)
+		`SELECT id, network_id, name, created_at FROM groups WHERE network_id = $1 ORDER BY created_at, id`, networkID)
 	if err != nil {
 		return nil, fmt.Errorf("group: list: %w", err)
 	}
@@ -224,12 +249,36 @@ func (s *Store) ListGroups(ctx context.Context, networkID uuid.UUID) ([]Group, e
 	var groups []Group
 	for rows.Next() {
 		var g Group
-		if err := rows.Scan(&g.ID, &g.NetworkID, &g.Name); err != nil {
+		if err := rows.Scan(&g.ID, &g.NetworkID, &g.Name, &g.CreatedAt); err != nil {
 			return nil, fmt.Errorf("group: list scan: %w", err)
 		}
 		groups = append(groups, g)
 	}
 	return groups, rows.Err()
+}
+
+func (s *Store) ListGroupsPage(ctx context.Context, networkID uuid.UUID, afterCreatedAt time.Time, afterID uuid.UUID, limit int) ([]Group, error) {
+	scanGroups := func(query string, args ...any) ([]Group, error) {
+		rows, err := s.pool.Query(ctx, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("group: list page: %w", err)
+		}
+		defer rows.Close()
+		var groups []Group
+		for rows.Next() {
+			var g Group
+			if err := rows.Scan(&g.ID, &g.NetworkID, &g.Name, &g.CreatedAt); err != nil {
+				return nil, fmt.Errorf("group: list page scan: %w", err)
+			}
+			groups = append(groups, g)
+		}
+		return groups, rows.Err()
+	}
+	if afterCreatedAt.IsZero() {
+		return scanGroups(`SELECT id, network_id, name, created_at FROM groups WHERE network_id = $1 ORDER BY created_at, id LIMIT $2`, networkID, limit)
+	}
+	return scanGroups(`SELECT id, network_id, name, created_at FROM groups WHERE network_id = $1 AND (created_at > $2 OR (created_at = $2 AND id > $3)) ORDER BY created_at, id LIMIT $4`,
+		networkID, afterCreatedAt, afterID, limit)
 }
 
 func (s *Store) DeleteGroup(ctx context.Context, id uuid.UUID) error {
@@ -294,9 +343,9 @@ func (s *Store) CreatePolicy(ctx context.Context, networkID uuid.UUID, spec Poli
 	err = s.pool.QueryRow(ctx,
 		`INSERT INTO policies (network_id, src_group_id, dst_group_id, protocol, dst_port, priority, action)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7)
-		 RETURNING id, network_id, src_group_id, dst_group_id, protocol, dst_port, priority, action`,
+		 RETURNING id, network_id, src_group_id, dst_group_id, protocol, dst_port, priority, action, created_at`,
 		networkID, spec.SrcGroupID, spec.DstGroupID, spec.Protocol, spec.DstPort, priority, action,
-	).Scan(&p.ID, &p.NetworkID, &p.SrcGroupID, &p.DstGroupID, &p.Protocol, &p.DstPort, &p.Priority, &p.Action)
+	).Scan(&p.ID, &p.NetworkID, &p.SrcGroupID, &p.DstGroupID, &p.Protocol, &p.DstPort, &p.Priority, &p.Action, &p.CreatedAt)
 	if err != nil {
 		return nil, wrapErr("policy: create", err)
 	}
@@ -306,9 +355,9 @@ func (s *Store) CreatePolicy(ctx context.Context, networkID uuid.UUID, spec Poli
 func (s *Store) GetPolicy(ctx context.Context, id uuid.UUID) (*Policy, error) {
 	var p Policy
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, network_id, src_group_id, dst_group_id, protocol, dst_port, priority, action
+		`SELECT id, network_id, src_group_id, dst_group_id, protocol, dst_port, priority, action, created_at
 		 FROM policies WHERE id = $1`, id,
-	).Scan(&p.ID, &p.NetworkID, &p.SrcGroupID, &p.DstGroupID, &p.Protocol, &p.DstPort, &p.Priority, &p.Action)
+	).Scan(&p.ID, &p.NetworkID, &p.SrcGroupID, &p.DstGroupID, &p.Protocol, &p.DstPort, &p.Priority, &p.Action, &p.CreatedAt)
 	if err != nil {
 		return nil, wrapErr("policy: get", err)
 	}
@@ -317,8 +366,8 @@ func (s *Store) GetPolicy(ctx context.Context, id uuid.UUID) (*Policy, error) {
 
 func (s *Store) ListPolicies(ctx context.Context, networkID uuid.UUID) ([]Policy, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, network_id, src_group_id, dst_group_id, protocol, dst_port, priority, action
-		 FROM policies WHERE network_id = $1 ORDER BY priority, id`, networkID)
+		`SELECT id, network_id, src_group_id, dst_group_id, protocol, dst_port, priority, action, created_at
+		 FROM policies WHERE network_id = $1 ORDER BY created_at, id`, networkID)
 	if err != nil {
 		return nil, fmt.Errorf("policy: list: %w", err)
 	}
@@ -327,12 +376,36 @@ func (s *Store) ListPolicies(ctx context.Context, networkID uuid.UUID) ([]Policy
 	var policies []Policy
 	for rows.Next() {
 		var p Policy
-		if err := rows.Scan(&p.ID, &p.NetworkID, &p.SrcGroupID, &p.DstGroupID, &p.Protocol, &p.DstPort, &p.Priority, &p.Action); err != nil {
+		if err := rows.Scan(&p.ID, &p.NetworkID, &p.SrcGroupID, &p.DstGroupID, &p.Protocol, &p.DstPort, &p.Priority, &p.Action, &p.CreatedAt); err != nil {
 			return nil, fmt.Errorf("policy: list scan: %w", err)
 		}
 		policies = append(policies, p)
 	}
 	return policies, rows.Err()
+}
+
+func (s *Store) ListPoliciesPage(ctx context.Context, networkID uuid.UUID, afterCreatedAt time.Time, afterID uuid.UUID, limit int) ([]Policy, error) {
+	scanPolicies := func(query string, args ...any) ([]Policy, error) {
+		rows, err := s.pool.Query(ctx, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("policy: list page: %w", err)
+		}
+		defer rows.Close()
+		var policies []Policy
+		for rows.Next() {
+			var p Policy
+			if err := rows.Scan(&p.ID, &p.NetworkID, &p.SrcGroupID, &p.DstGroupID, &p.Protocol, &p.DstPort, &p.Priority, &p.Action, &p.CreatedAt); err != nil {
+				return nil, fmt.Errorf("policy: list page scan: %w", err)
+			}
+			policies = append(policies, p)
+		}
+		return policies, rows.Err()
+	}
+	if afterCreatedAt.IsZero() {
+		return scanPolicies(`SELECT id, network_id, src_group_id, dst_group_id, protocol, dst_port, priority, action, created_at FROM policies WHERE network_id = $1 ORDER BY created_at, id LIMIT $2`, networkID, limit)
+	}
+	return scanPolicies(`SELECT id, network_id, src_group_id, dst_group_id, protocol, dst_port, priority, action, created_at FROM policies WHERE network_id = $1 AND (created_at > $2 OR (created_at = $2 AND id > $3)) ORDER BY created_at, id LIMIT $4`,
+		networkID, afterCreatedAt, afterID, limit)
 }
 
 func (s *Store) DeletePolicy(ctx context.Context, id uuid.UUID) error {
