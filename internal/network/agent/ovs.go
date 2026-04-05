@@ -6,6 +6,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/tjst-t/cirrus/internal/network"
 	pb "github.com/tjst-t/cirrus/proto/networkpb"
 )
 
@@ -118,15 +119,11 @@ func (p *Pipeline) Apply(state *pb.HostNetworkState) error {
 }
 
 // applyIngressRules installs DNAT OVS flows for Direct IP ingress rules on a GW-role host.
-// For each direct_ip rule, traffic destined for public_ip is DNAT'd to target_ip (VM private IP).
 func (p *Pipeline) applyIngressRules(ingressRules []*pb.IngressRule, gatewayInfo *pb.GatewayInfo) error {
 	for _, rule := range ingressRules {
-		if rule.Type != "direct_ip" {
+		if rule.Type != network.IngressTypeDirectIP {
 			continue
 		}
-		// Table 0: DNAT for direct_ip ingress
-		// match: ip, nw_dst=<public_ip>
-		// action: ct(commit,nat(dst=<target_ip>)),resubmit(,TableDstHostResolution)
 		flow := FlowEntry{
 			Table:    TableInputClassification,
 			Priority: 300,
@@ -147,14 +144,11 @@ func (p *Pipeline) applyIngressRules(ingressRules []*pb.IngressRule, gatewayInfo
 }
 
 // applyEgressRules installs SNAT flows for each EgressRule on a GW-role host.
-// For each nat_gateway egress rule, we install a flow in Table 7 (Egress) that
-// SNATs traffic from the network CIDR to the public IP.
 func (p *Pipeline) applyEgressRules(egressRules []*pb.EgressRule, gatewayInfo *pb.GatewayInfo) error {
 	for _, rule := range egressRules {
-		if rule.Type != "nat_gateway" {
+		if rule.Type != network.EgressTypeNATGateway {
 			continue
 		}
-		// Install SNAT flow: ip, nw_src=<network_cidr> → ct(commit,nat(src=<public_ip>)),output:NORMAL
 		flow := FlowEntry{
 			Table:    TableEgress,
 			Priority: 100,

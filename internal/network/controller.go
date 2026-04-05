@@ -3,11 +3,13 @@ package network
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	pb "github.com/tjst-t/cirrus/proto/networkpb"
@@ -275,8 +277,10 @@ func (sc *StateController) getGatewayNodeForHost(ctx context.Context, hostID uui
 		LIMIT 1
 	`, hostID).Scan(&gw.ID, &gw.HostID, &gw.ExternalIP, &gw.InternalIP, &gw.Status, &gw.CreatedAt)
 	if err != nil {
-		// Not a GW node — not an error condition
-		return nil, nil
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
 	}
 	return &gw, nil
 }

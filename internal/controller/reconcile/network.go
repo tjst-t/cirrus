@@ -249,7 +249,7 @@ func (r *NetworkReconciler) reconcileEgressIngress(ctx context.Context) error {
 				Layer:      DriftLayerNetwork,
 				Type:       DriftTypeStateMismatch,
 				Severity:   DriftSeverityMedium,
-				Resource:   string(DriftLayerNetwork),
+				Resource:   DriftLayerNetwork,
 				ResourceID: row.networkID.String(),
 				Expected:   "GW node heartbeat fresh",
 				Actual:     "GW node heartbeat stale; egress/ingress state uncertain",

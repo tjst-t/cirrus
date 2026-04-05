@@ -195,6 +195,20 @@ func (h *ingressHandlers) deleteIngress(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	ingress, err := h.svc.GetIngress(r.Context(), ingressID)
+	if err != nil {
+		if errors.Is(err, network.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "ingress not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get ingress"})
+		return
+	}
+	if ingress.NetworkID != networkID {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "ingress not found"})
+		return
+	}
+
 	if err := h.svc.DeleteIngress(r.Context(), ingressID); err != nil {
 		if errors.Is(err, network.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "ingress not found"})
