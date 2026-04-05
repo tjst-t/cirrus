@@ -241,6 +241,10 @@ func (h *storageHandlers) createVolume(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "no storage backend available for this volume type"})
 			return
 		}
+		if errQuotaExceeded(err) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+			return
+		}
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}

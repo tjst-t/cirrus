@@ -254,11 +254,14 @@ func scanVolume(row pgx.Row) (*Volume, error) {
 }
 
 func (s *Store) InsertVolume(ctx context.Context, v Volume) (*Volume, error) {
+	if v.ID == (uuid.UUID{}) {
+		v.ID = uuid.New()
+	}
 	result, err := scanVolume(s.pool.QueryRow(ctx,
-		`INSERT INTO volumes (tenant_id, name, volume_type_id, backend_id, size_gb, state, az_id)
-		 VALUES ($1,$2,$3,$4,$5,'creating',$6)
+		`INSERT INTO volumes (id, tenant_id, name, volume_type_id, backend_id, size_gb, state, az_id)
+		 VALUES ($1,$2,$3,$4,$5,$6,'creating',$7)
 		 RETURNING `+volumeColumns,
-		v.TenantID, v.Name, v.VolumeTypeID, v.BackendID, v.SizeGB, v.AZID))
+		v.ID, v.TenantID, v.Name, v.VolumeTypeID, v.BackendID, v.SizeGB, v.AZID))
 	if err != nil {
 		return nil, fmt.Errorf("storage: insert volume: %w", err)
 	}

@@ -56,6 +56,10 @@ func (h *networkHandlers) createNetwork(w http.ResponseWriter, r *http.Request) 
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "network with this name already exists in tenant"})
 			return
 		}
+		if errQuotaExceeded(err) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+			return
+		}
 		h.logger.Error("failed to create network", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create network"})
 		return

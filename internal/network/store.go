@@ -10,17 +10,20 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/tjst-t/cirrus/internal/quota"
 )
 
 // Store implements Service using PostgreSQL.
 type Store struct {
-	pool   *pgxpool.Pool
-	logger *slog.Logger
+	pool     *pgxpool.Pool
+	logger   *slog.Logger
+	quotaSvc quota.Service
 }
 
 // NewStore creates a new network store.
-func NewStore(pool *pgxpool.Pool, logger *slog.Logger) *Store {
-	return &Store{pool: pool, logger: logger}
+func NewStore(pool *pgxpool.Pool, logger *slog.Logger, quotaSvc quota.Service) *Store {
+	return &Store{pool: pool, logger: logger, quotaSvc: quotaSvc}
 }
 
 func wrapErr(msg string, err error) error {
@@ -71,15 +74,35 @@ func (s *Store) CreateNetwork(ctx context.Context, tenantID uuid.UUID, spec Netw
 		cidr = assigned
 	}
 
+	// Pre-generate the network UUID for quota reservation.
+	netID := uuid.New()
+
+	// Reserve quota before inserting.
+	if s.quotaSvc != nil {
+		netDelta := quota.ResourceDelta{Networks: 1}
+		if err := s.quotaSvc.Reserve(ctx, tenantID, quota.ResourceTypeNetwork, netID, netDelta); err != nil {
+			return nil, wrapErr("network: create: quota reserve", err)
+		}
+	}
+
 	var n Network
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO networks (tenant_id, name, cidr, vni, status)
-		 VALUES ($1, $2, $3, nextval('networks_vni_seq'), 'active')
+		`INSERT INTO networks (id, tenant_id, name, cidr, vni, status)
+		 VALUES ($1, $2, $3, $4, nextval('networks_vni_seq'), 'active')
 		 RETURNING id, tenant_id, name, cidr::TEXT, vni, status, created_at, updated_at`,
-		tenantID, spec.Name, cidr,
+		netID, tenantID, spec.Name, cidr,
 	).Scan(&n.ID, &n.TenantID, &n.Name, &n.CIDR, &n.VNI, &n.Status, &n.CreatedAt, &n.UpdatedAt)
 	if err != nil {
+		if s.quotaSvc != nil {
+			_ = s.quotaSvc.Release(ctx, quota.ResourceTypeNetwork, netID)
+		}
 		return nil, wrapErr("network: create", err)
+	}
+
+	if s.quotaSvc != nil {
+		if err := s.quotaSvc.Commit(ctx, quota.ResourceTypeNetwork, netID); err != nil {
+			s.logger.Warn("quota commit failed after network creation", "network_id", netID, "error", err)
+		}
 	}
 	return &n, nil
 }
@@ -144,12 +167,19 @@ func (s *Store) DeleteNetwork(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("network: delete: %d policies still attached: %w", policyCount, ErrHasDependents)
 	}
 
-	tag, err := s.pool.Exec(ctx, `DELETE FROM networks WHERE id = $1`, id)
-	if err != nil {
+	var tenantID uuid.UUID
+	if err := s.pool.QueryRow(ctx,
+		`DELETE FROM networks WHERE id = $1 RETURNING tenant_id`, id,
+	).Scan(&tenantID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("network: delete: %w", ErrNotFound)
+		}
 		return wrapErr("network: delete", err)
 	}
-	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("network: delete: %w", ErrNotFound)
+	if s.quotaSvc != nil {
+		if err := s.quotaSvc.Decommit(ctx, tenantID, quota.ResourceDelta{Networks: 1}); err != nil {
+			s.logger.Warn("quota decommit failed after network deletion", "network_id", id, "error", err)
+		}
 	}
 	return nil
 }

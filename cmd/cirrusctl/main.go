@@ -18,6 +18,7 @@ import (
 	"github.com/tjst-t/cirrus/internal/host"
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/network"
+	"github.com/tjst-t/cirrus/internal/quota"
 	"github.com/tjst-t/cirrus/internal/storage"
 	"github.com/tjst-t/cirrus/internal/topology"
 )
@@ -59,6 +60,7 @@ func main() {
 	rootCmd.AddCommand(app.newVolumeCmd())
 	rootCmd.AddCommand(app.newFlavorCmd())
 	rootCmd.AddCommand(app.newVMCmd())
+	rootCmd.AddCommand(app.newQuotaCmd())
 	rootCmd.AddCommand(app.newAdminCmd())
 
 	if err := rootCmd.Execute(); err != nil {
@@ -2649,4 +2651,126 @@ func (app *cli) newVMForceStopCmd() *cobra.Command {
 
 func (app *cli) newVMRebootCmd() *cobra.Command {
 	return newVMActionCmdHelper("reboot", "Reboot a running virtual machine", "reboot")(app)
+}
+
+// --- Quota ---
+
+func (app *cli) newQuotaCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "quota",
+		Short: "Manage resource quotas",
+	}
+	cmd.AddCommand(app.newQuotaShowCmd())
+	cmd.AddCommand(app.newQuotaSetCmd())
+	return cmd
+}
+
+func (app *cli) newQuotaShowCmd() *cobra.Command {
+	var tenant, org string
+	cmd := &cobra.Command{
+		Use:   "show",
+		Short: "Show quota limits and usage for a tenant",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			qr, err := c.GetTenantQuota(ctx, tenantID)
+			if err != nil {
+				return err
+			}
+			if app.output == "json" {
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(qr)
+			}
+			return printQuota(qr)
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization (ID or name) for tenant name resolution")
+	_ = cmd.MarkFlagRequired("tenant")
+	return cmd
+}
+
+func (app *cli) newQuotaSetCmd() *cobra.Command {
+	var tenant, org string
+	var vcpus, ramMB, volumeGB, vms, volumes, snapshots, networks int
+	cmd := &cobra.Command{
+		Use:   "set",
+		Short: "Set quota limits for a tenant (admin only)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			limits := quota.Limits{
+				Vcpus:     vcpus,
+				RAMMB:     ramMB,
+				VolumeGB:  volumeGB,
+				VMs:       vms,
+				Volumes:   volumes,
+				Snapshots: snapshots,
+				Networks:  networks,
+			}
+			qr, err := c.SetTenantQuota(ctx, tenantID, limits)
+			if err != nil {
+				return err
+			}
+			if app.output == "json" {
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(qr)
+			}
+			return printQuota(qr)
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (ID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization (ID or name) for tenant name resolution")
+	cmd.Flags().IntVar(&vcpus, "vcpus", 0, "vCPU limit (0=unlimited)")
+	cmd.Flags().IntVar(&ramMB, "ram-mb", 0, "RAM limit in MB (0=unlimited)")
+	cmd.Flags().IntVar(&volumeGB, "volume-gb", 0, "Total volume capacity limit in GB (0=unlimited)")
+	cmd.Flags().IntVar(&vms, "vms", 0, "VM count limit (0=unlimited)")
+	cmd.Flags().IntVar(&volumes, "volumes", 0, "Volume count limit (0=unlimited)")
+	cmd.Flags().IntVar(&snapshots, "snapshots", 0, "Snapshot count limit (0=unlimited)")
+	cmd.Flags().IntVar(&networks, "networks", 0, "Network count limit (0=unlimited)")
+	_ = cmd.MarkFlagRequired("tenant")
+	return cmd
+}
+
+func printQuota(qr *client.QuotaResponse) error {
+	l := qr.Limits
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "RESOURCE\tLIMIT\tUSED")
+	vcpusUsed, ramUsed, volGBUsed, vmsUsed, volsUsed, snapsUsed, netsUsed := 0, 0, 0, 0, 0, 0, 0
+	if qr.Usage != nil {
+		vcpusUsed = qr.Usage.VcpusUsed
+		ramUsed = qr.Usage.RAMMBUsed
+		volGBUsed = qr.Usage.VolumeGBUsed
+		vmsUsed = qr.Usage.VMsCount
+		volsUsed = qr.Usage.VolumesCount
+		snapsUsed = qr.Usage.SnapshotsCount
+		netsUsed = qr.Usage.NetworksCount
+	}
+	fmt.Fprintf(w, "vcpus\t%s\t%d\n", limitStr(l.Vcpus), vcpusUsed)
+	fmt.Fprintf(w, "ram_mb\t%s\t%d\n", limitStr(l.RAMMB), ramUsed)
+	fmt.Fprintf(w, "volume_gb\t%s\t%d\n", limitStr(l.VolumeGB), volGBUsed)
+	fmt.Fprintf(w, "vms\t%s\t%d\n", limitStr(l.VMs), vmsUsed)
+	fmt.Fprintf(w, "volumes\t%s\t%d\n", limitStr(l.Volumes), volsUsed)
+	fmt.Fprintf(w, "snapshots\t%s\t%d\n", limitStr(l.Snapshots), snapsUsed)
+	fmt.Fprintf(w, "networks\t%s\t%d\n", limitStr(l.Networks), netsUsed)
+	return w.Flush()
+}
+
+func limitStr(v int) string {
+	if v == 0 {
+		return "unlimited"
+	}
+	return fmt.Sprintf("%d", v)
 }

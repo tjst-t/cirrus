@@ -35,7 +35,7 @@ func main() {
 	}
 	defer pool.Close()
 
-	store := network.NewStore(pool, slog.Default())
+	store := network.NewStore(pool, slog.Default(), nil)
 	port, err := store.CreatePort(ctx, network.PortSpec{
 		TenantID:  tenantID,
 		NetworkID: netID,

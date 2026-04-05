@@ -73,6 +73,10 @@ func (h *vmHandlers) createVM(w http.ResponseWriter, r *http.Request) {
 
 	vm, err := h.svc.CreateVM(r.Context(), spec)
 	if err != nil {
+		if errQuotaExceeded(err) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+			return
+		}
 		writeInternalError(w, err, h.debug)
 		return
 	}

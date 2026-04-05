@@ -4,7 +4,7 @@
 
 ## Tech Stack
 
-Go 1.25, PostgreSQL, gRPC, libvirt, OVS/OpenFlow, cobra (CLI), chi (HTTP), golang-migrate
+Go 1.25, PostgreSQL, gRPC, libvirt, OVS/OpenFlow, cobra (CLI), chi (HTTP), golang-migrate, Vite + React + Tailwind CSS + shadcn/ui (WebUI)
 
 ## Commands
 
@@ -41,8 +41,12 @@ Go 1.25, PostgreSQL, gRPC, libvirt, OVS/OpenFlow, cobra (CLI), chi (HTTP), golan
 
 ## UI
 
-UIを実装する際は design-system リポジトリに従う:
-https://raw.githubusercontent.com/tjst-t/design-system/main/DESIGN_SYSTEM.md
+- **スタック**: Vite + React + Tailwind CSS + shadcn/ui（`web/` ディレクトリ）
+- **デザイントークン**: design-system リポジトリのトークンを Tailwind theme に適用
+- **配信**: `make build` で `web/dist/` にビルド → controller の chi が静的ファイルとして配信
+- **開発時**: Vite dev server が `/api/*` を Go controller にプロキシ
+- **原則**: WebUI でできることはすべて REST API でも実行可能（API ファースト）
+- design-system リポジトリ: https://raw.githubusercontent.com/tjst-t/design-system/main/DESIGN_SYSTEM.md
 
 ## References
 

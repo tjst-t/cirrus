@@ -30,6 +30,7 @@ import (
 	"github.com/tjst-t/cirrus/internal/hypervisor"
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/network"
+	"github.com/tjst-t/cirrus/internal/quota"
 	"github.com/tjst-t/cirrus/internal/state"
 	"github.com/tjst-t/cirrus/internal/storage"
 	iscsistorage "github.com/tjst-t/cirrus/internal/storage/driver/iscsi"
@@ -150,11 +151,11 @@ func runController(cfg *config.ControllerConfig) error {
 	// Topology service
 	topologySvc := topology.NewStore(pool)
 
-	// Network service
-	networkSvc := network.NewStore(pool, logger)
-
 	// Availability Zone service
 	azSvc := az.NewStore(pool)
+
+	// Quota service
+	quotaSvc := quota.NewStore(pool)
 
 	// Storage service
 	storageDrivers := storage.DriverRegistry{
@@ -169,10 +170,13 @@ func runController(cfg *config.ControllerConfig) error {
 		},
 	}
 	storageStore := storage.NewStore(pool)
-	storageSvc := storage.NewService(storageStore, storageDrivers, logger)
+	storageSvc := storage.NewService(storageStore, storageDrivers, quotaSvc, logger)
 
 	// Flavor service
 	flavorSvc := flavor.NewService(pool)
+
+	// Network service
+	networkSvc := network.NewStore(pool, logger, quotaSvc)
 
 	// Scheduler
 	sched := scheduler.New(hostSvc, storageSvc, topologySvc)
@@ -182,10 +186,10 @@ func runController(cfg *config.ControllerConfig) error {
 	defer workerPool.Close()
 
 	// Compute orchestrator
-	computeSvc := compute.NewOrchestrator(pool, flavorSvc, networkSvc, storageSvc, sched, workerPool, logger)
+	computeSvc := compute.NewOrchestrator(pool, flavorSvc, networkSvc, storageSvc, sched, workerPool, quotaSvc, logger)
 
 	// HTTP API
-	router := api.NewRouter(pool, logger, authn, authz, identitySvc, hostSvc, topologySvc, networkSvc, azSvc, storageSvc, flavorSvc, computeSvc, cfg.Debug)
+	router := api.NewRouter(pool, logger, authn, authz, identitySvc, hostSvc, topologySvc, networkSvc, azSvc, storageSvc, flavorSvc, computeSvc, quotaSvc, cfg.Debug)
 	httpSrv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.APIPort),
 		Handler: router,

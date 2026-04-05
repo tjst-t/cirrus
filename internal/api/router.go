@@ -12,13 +12,14 @@ import (
 	"github.com/tjst-t/cirrus/internal/host"
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/network"
+	"github.com/tjst-t/cirrus/internal/quota"
 	"github.com/tjst-t/cirrus/internal/storage"
 	"github.com/tjst-t/cirrus/internal/topology"
 )
 
 // NewRouter creates the HTTP router with all middleware and routes.
 // debug controls whether internal error details are included in 500 responses.
-func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authenticator, authz identity.Authorizer, identitySvc identity.Service, hostSvc host.Service, topologySvc topology.Service, networkSvc network.Service, azSvc az.Service, storageSvc storage.Service, flavorSvc flavor.Service, computeSvc compute.Service, debug bool) http.Handler {
+func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authenticator, authz identity.Authorizer, identitySvc identity.Service, hostSvc host.Service, topologySvc topology.Service, networkSvc network.Service, azSvc az.Service, storageSvc storage.Service, flavorSvc flavor.Service, computeSvc compute.Service, quotaSvc quota.Service, debug bool) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(RequestID)
@@ -32,6 +33,7 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 	ih := &identityHandlers{svc: identitySvc, authz: authz}
 	hh := &hostHandlers{svc: hostSvc, authz: authz}
 	th := &topologyHandlers{svc: topologySvc, authz: authz}
+	qh := &quotaHandlers{svc: quotaSvc, authz: authz}
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(Auth(authn))
 
@@ -46,6 +48,12 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		r.Post("/tenants/{tenant_id}/role-assignments", ih.createRoleAssignment)
 		r.Get("/tenants/{tenant_id}/role-assignments", ih.listRoleAssignments)
 		r.Delete("/tenants/{tenant_id}/role-assignments/{assignment_id}", ih.deleteRoleAssignment)
+
+		// Quota routes
+		r.Get("/tenants/{tenant_id}/quota", qh.getTenantQuota)
+		r.Put("/tenants/{tenant_id}/quota", qh.setTenantQuota)
+		r.Get("/organizations/{org_id}/quota", qh.getOrgQuota)
+		r.Put("/organizations/{org_id}/quota", qh.setOrgQuota)
 
 		// Host routes (infra_admin)
 		r.Post("/hosts", hh.createHost)

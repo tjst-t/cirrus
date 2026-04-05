@@ -54,6 +54,15 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 - 管理者修復 API: `error` → `stopped` 強制遷移（`RepairVM`）
 - DB: `vms`, `vm_volumes` テーブル
 
+### Quota (`internal/quota`)
+
+- テナントおよび組織単位のリソースクォータ管理（階層: 組織 → テナント）
+- **対象リソース**: vCPU, RAM(MB), ボリューム容量(GB), VM数, ボリューム数, スナップショット数, ネットワーク数
+- **予約パターン**: `Reserve` → 作成成功時 `Commit` / 失敗時 `Release`; 削除時 `Decommit`
+- **0 = 無制限**: 全ディメンションで limit=0 は無制限扱い
+- **DB**: `quota_usage`（確定使用量）、`quota_reserves`（in-flight 予約）テーブル; テナント/組織の limit はそれぞれ `tenants`, `organizations` テーブルのカラム
+- **インジェクション**: compute/storage/network に `quota.Service` インターフェース経由で注入（nil 許容）
+
 ### Scheduler (`internal/scheduler`)
 
 - `Scheduler.Schedule(spec) → (host_id, backend_id)` でプレースメントを決定
@@ -84,6 +93,14 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 ### State (`internal/state`)
 
 - PostgreSQL アクセス、golang-migrate マイグレーション（`internal/state/migrations/`）
+
+### WebUI (`web/`)
+
+- Vite + React + Tailwind CSS + shadcn/ui
+- design-system のデザイントークンを Tailwind theme に適用
+- 開発時: Vite dev server が `/api/*` を controller にプロキシ
+- 本番: `web/dist/` を controller の chi FileServer で配信（単一プロセス）
+- **WebUI でできることはすべて REST API でも実行可能**（API ファースト原則）
 
 ### CLI (`cmd/cirrusctl/`, `internal/client/`)
 
@@ -139,17 +156,20 @@ Controller → gRPC → Agent (internal/agent)
 
 ```
 POST /api/v1/vms
-  → compute.Orchestrator.CreateVM (DB に pending VM 挿入)
-  → goroutine で非同期実行:
+  → compute.Orchestrator.CreateVM
       1. flavor 解決
-      2. scheduler.Schedule → (host_id, backend_id)
-      3. network.CreatePort (OVN LSP 作成)
-      4. storage.CreateVolume + ExportVolume
-      5. WorkerClientPool.Get(host.worker_grpc_addr)
-      6. WorkerService.CreateVM gRPC
+      2. quota.Reserve (vcpus/ram/vms)
+      3. DB に pending VM 挿入
+  → goroutine で非同期実行:
+      4. scheduler.Schedule → (host_id, backend_id)
+      5. network.CreatePort (OVN LSP 作成)
+      6. storage.CreateVolume + ExportVolume
+      7. WorkerClientPool.Get(host.worker_grpc_addr)
+      8. WorkerService.CreateVM gRPC
            → blockdev.Attach (protocol 判定)
            → hypervisor.DefineVM (cloud-init ISO + domain XML → libvirtd-sim)
-      7. VM status → running
+      9. quota.Commit → VM status → running
+         (失敗時: quota.Release → VM status → error)
 ```
 
 ### VM 削除フロー (teardownVM)
@@ -193,6 +213,7 @@ cirrus/
 │   ├── network/      # VPC・OVS制御
 │   ├── storage/      # ボリューム・バックエンド管理
 │   ├── compute/      # VM ライフサイクル (Orchestrator)
+│   ├── quota/        # クォータ管理（予約パターン、階層チェック）
 │   ├── scheduler/    # VM プレースメント
 │   ├── flavor/       # VM スペックテンプレート
 │   ├── blockdev/     # Worker 側 ボリュームアタッチ

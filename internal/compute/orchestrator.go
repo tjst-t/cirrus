@@ -13,6 +13,7 @@ import (
 	"github.com/tjst-t/cirrus/internal/controller"
 	"github.com/tjst-t/cirrus/internal/flavor"
 	"github.com/tjst-t/cirrus/internal/network"
+	"github.com/tjst-t/cirrus/internal/quota"
 	"github.com/tjst-t/cirrus/internal/scheduler"
 	"github.com/tjst-t/cirrus/internal/storage"
 	pb "github.com/tjst-t/cirrus/proto/agentpb"
@@ -26,6 +27,7 @@ type Orchestrator struct {
 	storageSvc storage.Service
 	scheduler  scheduler.Scheduler
 	workers    *controller.WorkerClientPool
+	quotaSvc   quota.Service
 	logger     *slog.Logger
 }
 
@@ -37,6 +39,7 @@ func NewOrchestrator(
 	storageSvc storage.Service,
 	sched scheduler.Scheduler,
 	workers *controller.WorkerClientPool,
+	quotaSvc quota.Service,
 	logger *slog.Logger,
 ) *Orchestrator {
 	return &Orchestrator{
@@ -46,12 +49,19 @@ func NewOrchestrator(
 		storageSvc: storageSvc,
 		scheduler:  sched,
 		workers:    workers,
+		quotaSvc:   quotaSvc,
 		logger:     logger,
 	}
 }
 
 // CreateVM inserts a VM record in "pending" status, then launches a goroutine to build it.
 func (o *Orchestrator) CreateVM(ctx context.Context, spec CreateVMSpec) (*VM, error) {
+	// Resolve flavor up-front to compute the quota delta.
+	flv, err := o.flavorSvc.Get(ctx, spec.FlavorID)
+	if err != nil {
+		return nil, fmt.Errorf("compute: create vm: resolve flavor: %w", err)
+	}
+
 	vm := &VM{
 		ID:        uuid.New(),
 		TenantID:  spec.TenantID,
@@ -68,7 +78,18 @@ func (o *Orchestrator) CreateVM(ctx context.Context, spec CreateVMSpec) (*VM, er
 		vm.NetworkID = &spec.NetworkID
 	}
 
+	// Reserve quota before persisting the VM record.
+	if o.quotaSvc != nil {
+		vmDelta := quota.ResourceDelta{Vcpus: flv.VCPUs, RAMMB: int(flv.RAMMB), VMs: 1}
+		if err := o.quotaSvc.Reserve(ctx, spec.TenantID, quota.ResourceTypeVM, vm.ID, vmDelta); err != nil {
+			return nil, fmt.Errorf("compute: create vm: quota reserve: %w", err)
+		}
+	}
+
 	if err := o.insertVM(ctx, vm); err != nil {
+		if o.quotaSvc != nil {
+			_ = o.quotaSvc.Release(context.Background(), quota.ResourceTypeVM, vm.ID)
+		}
 		return nil, fmt.Errorf("compute: create vm: insert: %w", err)
 	}
 
@@ -77,9 +98,16 @@ func (o *Orchestrator) CreateVM(ctx context.Context, spec CreateVMSpec) (*VM, er
 	go func() {
 		buildCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		if err := o.buildVM(buildCtx, vm.ID, spec); err != nil {
+		if err := o.buildVM(buildCtx, vm.ID, spec, flv); err != nil {
 			o.logger.Error("VM build failed", "vm_id", vm.ID, "error", err)
+			if o.quotaSvc != nil {
+				_ = o.quotaSvc.Release(context.Background(), quota.ResourceTypeVM, vm.ID)
+			}
 			_ = o.setVMStatus(context.Background(), vm.ID, VMStatusError, err.Error())
+		} else if o.quotaSvc != nil {
+			if err := o.quotaSvc.Commit(context.Background(), quota.ResourceTypeVM, vm.ID); err != nil {
+				o.logger.Warn("quota commit failed after VM build", "vm_id", vm.ID, "error", err)
+			}
 		}
 	}()
 
@@ -113,6 +141,14 @@ func (o *Orchestrator) DeleteVM(ctx context.Context, tenantID, vmID uuid.UUID) e
 		return fmt.Errorf("compute: delete vm: %w", err)
 	}
 
+	// Capture flavor for quota decommit after teardown.
+	var vmFlavor *flavor.Flavor
+	if vm.FlavorID != nil {
+		if flv, err := o.flavorSvc.Get(ctx, *vm.FlavorID); err == nil {
+			vmFlavor = flv
+		}
+	}
+
 	go func() {
 		delCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
@@ -121,6 +157,15 @@ func (o *Orchestrator) DeleteVM(ctx context.Context, tenantID, vmID uuid.UUID) e
 			_ = o.setVMStatus(context.Background(), vmID, VMStatusError, err.Error())
 		} else {
 			_ = o.deleteVMRecord(context.Background(), vmID)
+			if o.quotaSvc != nil && vmFlavor != nil {
+				if err := o.quotaSvc.Decommit(context.Background(), vm.TenantID, quota.ResourceDelta{
+					Vcpus: vmFlavor.VCPUs,
+					RAMMB: int(vmFlavor.RAMMB),
+					VMs:   1,
+				}); err != nil {
+					o.logger.Warn("quota decommit failed after VM teardown", "vm_id", vmID, "error", err)
+				}
+			}
 		}
 	}()
 
@@ -253,18 +298,12 @@ func (o *Orchestrator) resolveWorker(ctx context.Context, vm *VM) (*controller.W
 // buildVM orchestrates the full VM creation pipeline.
 // Each step is idempotent: if a step was already completed (e.g., volume exists),
 // it re-uses the existing resource.
-func (o *Orchestrator) buildVM(ctx context.Context, vmID uuid.UUID, spec CreateVMSpec) error {
+func (o *Orchestrator) buildVM(ctx context.Context, vmID uuid.UUID, spec CreateVMSpec, flv *flavor.Flavor) error {
 	if err := o.setVMStatus(ctx, vmID, VMStatusBuilding, ""); err != nil {
 		return err
 	}
 
-	// 1. Resolve flavor
-	flv, err := o.flavorSvc.Get(ctx, spec.FlavorID)
-	if err != nil {
-		return fmt.Errorf("resolve flavor: %w", err)
-	}
-
-	// 2. Schedule: pick host + storage backend
+	// 1. Schedule: pick host + storage backend
 	schedSpec := scheduler.ScheduleSpec{
 		AZID:   spec.AZID,
 		Flavor: flv,

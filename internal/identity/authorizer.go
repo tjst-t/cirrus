@@ -100,6 +100,9 @@ const (
 	ActionForceStopVM Action = "force_stop_vm"
 	ActionRebootVM    Action = "reboot_vm"
 	ActionRepairVM    Action = "repair_vm" // admin only
+
+	ActionGetQuota Action = "get_quota"
+	ActionSetQuota Action = "set_quota"
 )
 
 // Resource represents the target resource of an authorization check.
@@ -167,6 +170,8 @@ func (a *RBACAuthorizer) checkPermission(ra RoleAssignment, action Action, resou
 		case ActionAssignRole, ActionListRoles, ActionDeleteRole:
 			// org_admin can manage roles within their org's tenants
 			return resource.OrganizationID != nil && *resource.OrganizationID == *ra.ScopeID
+		case ActionGetQuota, ActionSetQuota:
+			return resource.OrganizationID != nil && *resource.OrganizationID == *ra.ScopeID
 		}
 
 	case RoleTenantAdmin:
@@ -187,8 +192,12 @@ func (a *RBACAuthorizer) checkPermission(ra RoleAssignment, action Action, resou
 			ActionCreateVolume, ActionListVolumes, ActionGetVolume, ActionDeleteVolume, ActionResizeVolume,
 			ActionListFlavors, ActionGetFlavor,
 			ActionCreateVM, ActionListVMs, ActionGetVM, ActionDeleteVM,
-			ActionStartVM, ActionStopVM, ActionForceStopVM, ActionRebootVM:
+			ActionStartVM, ActionStopVM, ActionForceStopVM, ActionRebootVM,
+			ActionGetQuota:
 			return resource.TenantID != nil && *resource.TenantID == *ra.ScopeID
+		case ActionSetQuota:
+			// only org_admin or infra_admin may set quotas on a tenant
+			return false
 		}
 
 	case RoleTenantMember:

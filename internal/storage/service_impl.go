@@ -7,6 +7,8 @@ import (
 	"log/slog"
 
 	"github.com/google/uuid"
+
+	"github.com/tjst-t/cirrus/internal/quota"
 )
 
 // DriverRegistry maps driver name → factory function.
@@ -45,14 +47,15 @@ type storageStore interface {
 
 // serviceImpl implements Service.
 type serviceImpl struct {
-	store   storageStore
-	drivers DriverRegistry
-	logger  *slog.Logger
+	store    storageStore
+	drivers  DriverRegistry
+	quotaSvc quota.Service
+	logger   *slog.Logger
 }
 
 // NewService creates a new storage Service.
-func NewService(store *Store, drivers DriverRegistry, logger *slog.Logger) Service {
-	return &serviceImpl{store: store, drivers: drivers, logger: logger}
+func NewService(store *Store, drivers DriverRegistry, quotaSvc quota.Service, logger *slog.Logger) Service {
+	return &serviceImpl{store: store, drivers: drivers, quotaSvc: quotaSvc, logger: logger}
 }
 
 // --- Backend ---
@@ -169,8 +172,26 @@ func (s *serviceImpl) CreateVolume(ctx context.Context, spec CreateVolumeSpec) (
 		return nil, ErrNoMatchingBackend
 	}
 
+	// Pre-generate the volume UUID so we can tie the quota reservation to it.
+	volID := uuid.New()
+
+	// Reserve quota before persisting the volume record.
+	if s.quotaSvc != nil {
+		volDelta := quota.ResourceDelta{Volumes: 1, VolumeGB: int(spec.SizeGB)}
+		if err := s.quotaSvc.Reserve(ctx, spec.TenantID, quota.ResourceTypeVolume, volID, volDelta); err != nil {
+			return nil, fmt.Errorf("storage service: create volume: quota reserve: %w", err)
+		}
+	}
+
+	releaseQuota := func() {
+		if s.quotaSvc != nil {
+			_ = s.quotaSvc.Release(ctx, quota.ResourceTypeVolume, volID)
+		}
+	}
+
 	// Insert volume record in creating state.
 	vol := Volume{
+		ID:           volID,
 		TenantID:     spec.TenantID,
 		Name:         spec.Name,
 		VolumeTypeID: spec.VolumeTypeID,
@@ -180,12 +201,14 @@ func (s *serviceImpl) CreateVolume(ctx context.Context, spec CreateVolumeSpec) (
 	}
 	created, err := s.store.InsertVolume(ctx, vol)
 	if err != nil {
+		releaseQuota()
 		return nil, fmt.Errorf("storage service: create volume: insert: %w", err)
 	}
 
 	// Call driver to create the volume on the backend.
 	driver, err := s.driverFor(chosen)
 	if err != nil {
+		releaseQuota()
 		_ = s.store.SetVolumeState(ctx, created.ID, VolumeStateError)
 		return nil, fmt.Errorf("storage service: create volume: driver: %w", err)
 	}
@@ -196,6 +219,7 @@ func (s *serviceImpl) CreateVolume(ctx context.Context, spec CreateVolumeSpec) (
 		ThinProvisioned: true,
 	})
 	if err != nil {
+		releaseQuota()
 		_ = s.store.SetVolumeState(ctx, created.ID, VolumeStateError)
 		return nil, fmt.Errorf("storage service: create volume: driver create: %w", err)
 	}
@@ -207,12 +231,19 @@ func (s *serviceImpl) CreateVolume(ctx context.Context, spec CreateVolumeSpec) (
 	if err := s.store.SetVolumeState(ctx, created.ID, VolumeStateAvailable); err != nil {
 		s.logger.Error("volume created on backend but DB state update failed; attempting rollback",
 			"id", created.ID, "backend", chosen.Name, "error", err)
+		releaseQuota()
 		if delErr := driver.DeleteVolume(ctx, created.ID.String()); delErr != nil {
 			s.logger.Error("rollback delete on backend also failed — manual cleanup required",
 				"id", created.ID, "backend", chosen.Name, "error", delErr)
 		}
 		_ = s.store.SetVolumeState(ctx, created.ID, VolumeStateError)
 		return nil, fmt.Errorf("storage service: create volume: set available: %w", err)
+	}
+
+	if s.quotaSvc != nil {
+		if err := s.quotaSvc.Commit(ctx, quota.ResourceTypeVolume, volID); err != nil {
+			s.logger.Warn("quota commit failed after volume creation", "volume_id", volID, "error", err)
+		}
 	}
 	created.State = VolumeStateAvailable
 	s.logger.Info("volume created", "id", created.ID, "backend", chosen.Name, "size_gb", spec.SizeGB)
@@ -262,6 +293,11 @@ func (s *serviceImpl) DeleteVolume(ctx context.Context, tenantID, volumeID uuid.
 
 	if err := s.store.DeleteVolume(ctx, volumeID); err != nil {
 		return fmt.Errorf("storage service: delete volume: %w", err)
+	}
+	if s.quotaSvc != nil {
+		if err := s.quotaSvc.Decommit(ctx, v.TenantID, quota.ResourceDelta{Volumes: 1, VolumeGB: int(v.SizeGB)}); err != nil {
+			s.logger.Warn("quota decommit failed after volume deletion", "volume_id", volumeID, "error", err)
+		}
 	}
 	s.logger.Info("volume deleted", "id", volumeID)
 	return nil
