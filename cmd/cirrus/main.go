@@ -258,7 +258,7 @@ func runController(cfg *config.ControllerConfig) error {
 
 	// Network reconciler
 	if cfg.ReconcileEnabled {
-		netReconciler := reconcile.NewNetworkReconciler(stateCtrl, hostSvc, driftHandler, logger, netInterval)
+		netReconciler := reconcile.NewNetworkReconciler(stateCtrl, hostSvc, driftHandler, logger, netInterval).WithPool(pool)
 		g.Go(func() error {
 			return netReconciler.Run(gCtx)
 		})

@@ -37,11 +37,12 @@ func (s *Store) Reserve(ctx context.Context, tenantID uuid.UUID, resourceType Re
 	// Insert reservation.
 	_, err = tx.Exec(ctx,
 		`INSERT INTO quota_reserves
-		 (tenant_id, resource_type, resource_id, vcpus, ram_mb, volume_gb, vms, volumes, snapshots, networks)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		 (tenant_id, resource_type, resource_id, vcpus, ram_mb, volume_gb, vms, volumes, snapshots, networks, egresses, ingresses)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
 		tenantID, string(resourceType), resourceID,
 		delta.Vcpus, delta.RAMMB, delta.VolumeGB,
 		delta.VMs, delta.Volumes, delta.Snapshots, delta.Networks,
+		delta.Egresses, delta.Ingresses,
 	)
 	if err != nil {
 		return fmt.Errorf("quota: reserve: insert: %w", err)
@@ -72,13 +73,15 @@ func (s *Store) Commit(ctx context.Context, resourceType ResourceType, resourceI
 		volumes   int
 		snapshots int
 		networks  int
+		egresses  int
+		ingresses int
 	}
 	err = tx.QueryRow(ctx,
 		`DELETE FROM quota_reserves
 		 WHERE resource_type = $1 AND resource_id = $2
-		 RETURNING tenant_id, vcpus, ram_mb, volume_gb, vms, volumes, snapshots, networks`,
+		 RETURNING tenant_id, vcpus, ram_mb, volume_gb, vms, volumes, snapshots, networks, egresses, ingresses`,
 		string(resourceType), resourceID,
-	).Scan(&r.tenantID, &r.vcpus, &r.ramMB, &r.volumeGB, &r.vms, &r.volumes, &r.snapshots, &r.networks)
+	).Scan(&r.tenantID, &r.vcpus, &r.ramMB, &r.volumeGB, &r.vms, &r.volumes, &r.snapshots, &r.networks, &r.egresses, &r.ingresses)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrReservationNotFound
@@ -89,8 +92,8 @@ func (s *Store) Commit(ctx context.Context, resourceType ResourceType, resourceI
 	// Upsert usage.
 	_, err = tx.Exec(ctx,
 		`INSERT INTO quota_usage
-		 (tenant_id, vcpus_used, ram_mb_used, volume_gb_used, vms_count, volumes_count, snapshots_count, networks_count)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		 (tenant_id, vcpus_used, ram_mb_used, volume_gb_used, vms_count, volumes_count, snapshots_count, networks_count, egresses_count, ingresses_count)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		 ON CONFLICT (tenant_id) DO UPDATE SET
 		   vcpus_used      = quota_usage.vcpus_used      + EXCLUDED.vcpus_used,
 		   ram_mb_used     = quota_usage.ram_mb_used     + EXCLUDED.ram_mb_used,
@@ -99,8 +102,10 @@ func (s *Store) Commit(ctx context.Context, resourceType ResourceType, resourceI
 		   volumes_count   = quota_usage.volumes_count   + EXCLUDED.volumes_count,
 		   snapshots_count = quota_usage.snapshots_count + EXCLUDED.snapshots_count,
 		   networks_count  = quota_usage.networks_count  + EXCLUDED.networks_count,
+		   egresses_count  = quota_usage.egresses_count  + EXCLUDED.egresses_count,
+		   ingresses_count = quota_usage.ingresses_count + EXCLUDED.ingresses_count,
 		   updated_at      = now()`,
-		r.tenantID, r.vcpus, r.ramMB, r.volumeGB, r.vms, r.volumes, r.snapshots, r.networks,
+		r.tenantID, r.vcpus, r.ramMB, r.volumeGB, r.vms, r.volumes, r.snapshots, r.networks, r.egresses, r.ingresses,
 	)
 	if err != nil {
 		return fmt.Errorf("quota: commit: upsert usage: %w", err)
@@ -129,8 +134,8 @@ func (s *Store) Release(ctx context.Context, resourceType ResourceType, resource
 func (s *Store) Decommit(ctx context.Context, tenantID uuid.UUID, delta ResourceDelta) error {
 	_, err := s.pool.Exec(ctx,
 		`INSERT INTO quota_usage
-		 (tenant_id, vcpus_used, ram_mb_used, volume_gb_used, vms_count, volumes_count, snapshots_count, networks_count)
-		 VALUES ($1, 0, 0, 0, 0, 0, 0, 0)
+		 (tenant_id, vcpus_used, ram_mb_used, volume_gb_used, vms_count, volumes_count, snapshots_count, networks_count, egresses_count, ingresses_count)
+		 VALUES ($1, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 		 ON CONFLICT (tenant_id) DO UPDATE SET
 		   vcpus_used      = GREATEST(0, quota_usage.vcpus_used      - $2),
 		   ram_mb_used     = GREATEST(0, quota_usage.ram_mb_used     - $3),
@@ -139,10 +144,13 @@ func (s *Store) Decommit(ctx context.Context, tenantID uuid.UUID, delta Resource
 		   volumes_count   = GREATEST(0, quota_usage.volumes_count   - $6),
 		   snapshots_count = GREATEST(0, quota_usage.snapshots_count - $7),
 		   networks_count  = GREATEST(0, quota_usage.networks_count  - $8),
+		   egresses_count  = GREATEST(0, quota_usage.egresses_count  - $9),
+		   ingresses_count = GREATEST(0, quota_usage.ingresses_count - $10),
 		   updated_at      = now()`,
 		tenantID,
 		delta.Vcpus, delta.RAMMB, delta.VolumeGB,
 		delta.VMs, delta.Volumes, delta.Snapshots, delta.Networks,
+		delta.Egresses, delta.Ingresses,
 	)
 	if err != nil {
 		return fmt.Errorf("quota: decommit: %w", err)
@@ -154,10 +162,10 @@ func (s *Store) Decommit(ctx context.Context, tenantID uuid.UUID, delta Resource
 func (s *Store) GetUsage(ctx context.Context, tenantID uuid.UUID) (*Usage, error) {
 	u := &Usage{TenantID: tenantID}
 	err := s.pool.QueryRow(ctx,
-		`SELECT vcpus_used, ram_mb_used, volume_gb_used, vms_count, volumes_count, snapshots_count, networks_count
+		`SELECT vcpus_used, ram_mb_used, volume_gb_used, vms_count, volumes_count, snapshots_count, networks_count, egresses_count, ingresses_count
 		 FROM quota_usage WHERE tenant_id = $1`,
 		tenantID,
-	).Scan(&u.VcpusUsed, &u.RAMMBUsed, &u.VolumeGBUsed, &u.VMsCount, &u.VolumesCount, &u.SnapshotsCount, &u.NetworksCount)
+	).Scan(&u.VcpusUsed, &u.RAMMBUsed, &u.VolumeGBUsed, &u.VMsCount, &u.VolumesCount, &u.SnapshotsCount, &u.NetworksCount, &u.EgressesCount, &u.IngressesCount)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return u, nil // no usage row means zero usage
@@ -178,10 +186,13 @@ func (s *Store) SetTenantLimits(ctx context.Context, tenantID uuid.UUID, limits 
 		   quota_volumes   = $6,
 		   quota_snapshots = $7,
 		   quota_networks  = $8,
+		   quota_egresses  = $9,
+		   quota_ingresses = $10,
 		   updated_at      = now()
 		 WHERE id = $1`,
 		tenantID, limits.Vcpus, limits.RAMMB, limits.VolumeGB,
 		limits.VMs, limits.Volumes, limits.Snapshots, limits.Networks,
+		limits.Egresses, limits.Ingresses,
 	)
 	if err != nil {
 		return fmt.Errorf("quota: set tenant limits: %w", err)
@@ -196,10 +207,10 @@ func (s *Store) SetTenantLimits(ctx context.Context, tenantID uuid.UUID, limits 
 func (s *Store) GetTenantLimits(ctx context.Context, tenantID uuid.UUID) (*Limits, error) {
 	l := &Limits{}
 	err := s.pool.QueryRow(ctx,
-		`SELECT quota_vcpus, quota_ram_mb, quota_volume_gb, quota_vms, quota_volumes, quota_snapshots, quota_networks
+		`SELECT quota_vcpus, quota_ram_mb, quota_volume_gb, quota_vms, quota_volumes, quota_snapshots, quota_networks, quota_egresses, quota_ingresses
 		 FROM tenants WHERE id = $1`,
 		tenantID,
-	).Scan(&l.Vcpus, &l.RAMMB, &l.VolumeGB, &l.VMs, &l.Volumes, &l.Snapshots, &l.Networks)
+	).Scan(&l.Vcpus, &l.RAMMB, &l.VolumeGB, &l.VMs, &l.Volumes, &l.Snapshots, &l.Networks, &l.Egresses, &l.Ingresses)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("quota: get tenant limits: %w", ErrNotFound)
@@ -267,20 +278,23 @@ func (s *Store) checkLimitsTx(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID
 	var tl Limits
 	var orgID uuid.UUID
 	var e struct {
-		vcpus, ramMB, volumeGB, vms, volumes, snapshots, networks int
+		vcpus, ramMB, volumeGB, vms, volumes, snapshots, networks, egresses, ingresses int
 	}
 	err := tx.QueryRow(ctx,
 		`SELECT
 		   t.organization_id,
 		   t.quota_vcpus, t.quota_ram_mb, t.quota_volume_gb,
 		   t.quota_vms, t.quota_volumes, t.quota_snapshots, t.quota_networks,
+		   t.quota_egresses, t.quota_ingresses,
 		   COALESCE(u.vcpus_used,      0) + COALESCE(SUM(r.vcpus),     0) + $2,
 		   COALESCE(u.ram_mb_used,     0) + COALESCE(SUM(r.ram_mb),    0) + $3,
 		   COALESCE(u.volume_gb_used,  0) + COALESCE(SUM(r.volume_gb), 0) + $4,
 		   COALESCE(u.vms_count,       0) + COALESCE(SUM(r.vms),       0) + $5,
 		   COALESCE(u.volumes_count,   0) + COALESCE(SUM(r.volumes),   0) + $6,
 		   COALESCE(u.snapshots_count, 0) + COALESCE(SUM(r.snapshots), 0) + $7,
-		   COALESCE(u.networks_count,  0) + COALESCE(SUM(r.networks),  0) + $8
+		   COALESCE(u.networks_count,  0) + COALESCE(SUM(r.networks),  0) + $8,
+		   COALESCE(u.egresses_count,  0) + COALESCE(SUM(r.egresses),  0) + $9,
+		   COALESCE(u.ingresses_count, 0) + COALESCE(SUM(r.ingresses), 0) + $10
 		 FROM tenants t
 		 LEFT JOIN quota_usage u ON u.tenant_id = t.id
 		 LEFT JOIN quota_reserves r ON r.tenant_id = t.id
@@ -288,21 +302,26 @@ func (s *Store) checkLimitsTx(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID
 		 GROUP BY t.id, t.organization_id,
 		          t.quota_vcpus, t.quota_ram_mb, t.quota_volume_gb,
 		          t.quota_vms, t.quota_volumes, t.quota_snapshots, t.quota_networks,
+		          t.quota_egresses, t.quota_ingresses,
 		          u.vcpus_used, u.ram_mb_used, u.volume_gb_used,
-		          u.vms_count, u.volumes_count, u.snapshots_count, u.networks_count`,
+		          u.vms_count, u.volumes_count, u.snapshots_count, u.networks_count,
+		          u.egresses_count, u.ingresses_count`,
 		tenantID,
 		delta.Vcpus, delta.RAMMB, delta.VolumeGB,
 		delta.VMs, delta.Volumes, delta.Snapshots, delta.Networks,
+		delta.Egresses, delta.Ingresses,
 	).Scan(
 		&orgID,
 		&tl.Vcpus, &tl.RAMMB, &tl.VolumeGB, &tl.VMs, &tl.Volumes, &tl.Snapshots, &tl.Networks,
+		&tl.Egresses, &tl.Ingresses,
 		&e.vcpus, &e.ramMB, &e.volumeGB, &e.vms, &e.volumes, &e.snapshots, &e.networks,
+		&e.egresses, &e.ingresses,
 	)
 	if err != nil {
 		return fmt.Errorf("quota: check: tenant: %w", err)
 	}
 
-	if err := checkAgainst(e.vcpus, e.ramMB, e.volumeGB, e.vms, e.volumes, e.snapshots, e.networks, tl); err != nil {
+	if err := checkAgainst(e.vcpus, e.ramMB, e.volumeGB, e.vms, e.volumes, e.snapshots, e.networks, e.egresses, e.ingresses, tl); err != nil {
 		return err
 	}
 
@@ -345,7 +364,7 @@ func (s *Store) checkLimitsTx(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID
 
 // checkAgainst compares effective usage against tenant limits.
 // A limit of 0 means unlimited.
-func checkAgainst(vcpus, ramMB, volumeGB, vms, volumes, snapshots, networks int, l Limits) error {
+func checkAgainst(vcpus, ramMB, volumeGB, vms, volumes, snapshots, networks, egresses, ingresses int, l Limits) error {
 	if l.Vcpus > 0 && vcpus > l.Vcpus {
 		return fmt.Errorf("%w: vcpus limit %d, effective %d", ErrQuotaExceeded, l.Vcpus, vcpus)
 	}
@@ -366,6 +385,12 @@ func checkAgainst(vcpus, ramMB, volumeGB, vms, volumes, snapshots, networks int,
 	}
 	if l.Networks > 0 && networks > l.Networks {
 		return fmt.Errorf("%w: networks limit %d, effective %d", ErrQuotaExceeded, l.Networks, networks)
+	}
+	if l.Egresses > 0 && egresses > l.Egresses {
+		return fmt.Errorf("%w: egresses limit %d, effective %d", ErrQuotaExceeded, l.Egresses, egresses)
+	}
+	if l.Ingresses > 0 && ingresses > l.Ingresses {
+		return fmt.Errorf("%w: ingresses limit %d, effective %d", ErrQuotaExceeded, l.Ingresses, ingresses)
 	}
 	return nil
 }

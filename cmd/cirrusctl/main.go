@@ -62,6 +62,8 @@ func main() {
 	rootCmd.AddCommand(app.newVMCmd())
 	rootCmd.AddCommand(app.newQuotaCmd())
 	rootCmd.AddCommand(app.newAdminCmd())
+	rootCmd.AddCommand(app.newEgressCmd())
+	rootCmd.AddCommand(app.newIngressCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -851,6 +853,8 @@ func (app *cli) newAdminCmd() *cobra.Command {
 	cmd.AddCommand(app.newAdminVolumeTypeCmd())
 	cmd.AddCommand(app.newAdminFlavorCmd())
 	cmd.AddCommand(app.newAdminVMCmd())
+	cmd.AddCommand(app.newAdminGatewayNodeCmd())
+	cmd.AddCommand(app.newAdminIPPoolCmd())
 	return cmd
 }
 
@@ -2773,4 +2777,482 @@ func limitStr(v int) string {
 		return "unlimited"
 	}
 	return fmt.Sprintf("%d", v)
+}
+
+// --- Admin: Gateway Node commands ---
+
+func (app *cli) newAdminGatewayNodeCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "gateway-node",
+		Aliases: []string{"gw"},
+		Short:   "Manage gateway nodes",
+	}
+	cmd.AddCommand(app.newGatewayNodeListCmd())
+	cmd.AddCommand(app.newGatewayNodeCreateCmd())
+	cmd.AddCommand(app.newGatewayNodeDeleteCmd())
+	cmd.AddCommand(app.newGatewayNodeAssignCmd())
+	return cmd
+}
+
+func (app *cli) newGatewayNodeListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List all gateway nodes",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			nodes, err := app.newClient().ListGatewayNodes(ctx)
+			if err != nil {
+				return err
+			}
+			rows := make([][]string, len(nodes))
+			for i, n := range nodes {
+				rows[i] = []string{n.ID.String(), n.HostID.String(), n.ExternalIP, n.InternalIP, n.Status, n.CreatedAt.Format("2006-01-02T15:04:05Z")}
+			}
+			return app.printTable([]string{"ID", "HOST_ID", "EXTERNAL_IP", "INTERNAL_IP", "STATUS", "CREATED"}, rows)
+		},
+	}
+}
+
+func (app *cli) newGatewayNodeCreateCmd() *cobra.Command {
+	var hostStr, externalIP, internalIP string
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create a gateway node",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			hostID, err := c.ResolveHost(ctx, hostStr)
+			if err != nil {
+				return err
+			}
+			gw, err := c.CreateGatewayNode(ctx, network.GatewayNodeSpec{
+				HostID:     hostID,
+				ExternalIP: externalIP,
+				InternalIP: internalIP,
+			})
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "HOST_ID", "EXTERNAL_IP", "INTERNAL_IP", "STATUS"},
+				[][]string{{gw.ID.String(), gw.HostID.String(), gw.ExternalIP, gw.InternalIP, gw.Status}},
+			)
+		},
+	}
+	cmd.Flags().StringVar(&hostStr, "host", "", "Host (UUID or name) (required)")
+	cmd.Flags().StringVar(&externalIP, "external-ip", "", "External (public) IP address (required)")
+	cmd.Flags().StringVar(&internalIP, "internal-ip", "", "Internal (fabric) IP address (required)")
+	_ = cmd.MarkFlagRequired("host")
+	_ = cmd.MarkFlagRequired("external-ip")
+	_ = cmd.MarkFlagRequired("internal-ip")
+	return cmd
+}
+
+func (app *cli) newGatewayNodeDeleteCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete <id>",
+		Short: "Delete a gateway node",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			id, err := uuid.Parse(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid gateway-node ID: %w", err)
+			}
+			if err := c.DeleteGatewayNode(ctx, id); err != nil {
+				return err
+			}
+			return app.printStatus("Deleted", "gateway-node", id.String())
+		},
+	}
+}
+
+func (app *cli) newGatewayNodeAssignCmd() *cobra.Command {
+	var networkStr, org, tenant string
+	var gwNodeStr string
+	cmd := &cobra.Command{
+		Use:   "assign",
+		Short: "Assign a gateway node to a network",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			networkID, err := c.ResolveNetwork(ctx, networkStr, tenantID)
+			if err != nil {
+				return err
+			}
+			gwID, err := uuid.Parse(gwNodeStr)
+			if err != nil {
+				return fmt.Errorf("invalid gateway-node UUID: %w", err)
+			}
+			return c.AssignGatewayNodeToNetwork(ctx, networkID, gwID)
+		},
+	}
+	cmd.Flags().StringVar(&networkStr, "network", "", "Network (UUID or name) (required)")
+	cmd.Flags().StringVar(&gwNodeStr, "gateway-node", "", "Gateway node UUID (required)")
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (UUID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization (UUID or name) for tenant name resolution")
+	_ = cmd.MarkFlagRequired("network")
+	_ = cmd.MarkFlagRequired("gateway-node")
+	_ = cmd.MarkFlagRequired("tenant")
+	return cmd
+}
+
+// --- Admin: IP Pool commands ---
+
+func (app *cli) newAdminIPPoolCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "ip-pool",
+		Short: "Manage IP pools",
+	}
+	cmd.AddCommand(app.newIPPoolListCmd())
+	cmd.AddCommand(app.newIPPoolCreateCmd())
+	cmd.AddCommand(app.newIPPoolDeleteCmd())
+	return cmd
+}
+
+func (app *cli) newIPPoolListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List all IP pools",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			pools, err := app.newClient().ListIPPools(ctx)
+			if err != nil {
+				return err
+			}
+			rows := make([][]string, len(pools))
+			for i, p := range pools {
+				rows[i] = []string{p.ID.String(), p.Name, p.CIDR, p.Description}
+			}
+			return app.printTable([]string{"ID", "NAME", "CIDR", "DESCRIPTION"}, rows)
+		},
+	}
+}
+
+func (app *cli) newIPPoolCreateCmd() *cobra.Command {
+	var description string
+	cmd := &cobra.Command{
+		Use:   "create <name> --cidr <cidr>",
+		Short: "Create an IP pool",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			cidr, _ := cmd.Flags().GetString("cidr")
+			pool, err := app.newClient().CreateIPPool(ctx, network.IPPoolSpec{
+				Name:        args[0],
+				CIDR:        cidr,
+				Description: description,
+			})
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NAME", "CIDR", "DESCRIPTION"},
+				[][]string{{pool.ID.String(), pool.Name, pool.CIDR, pool.Description}},
+			)
+		},
+	}
+	cmd.Flags().String("cidr", "", "CIDR block (required)")
+	cmd.Flags().StringVar(&description, "description", "", "Optional description")
+	_ = cmd.MarkFlagRequired("cidr")
+	return cmd
+}
+
+func (app *cli) newIPPoolDeleteCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete <id>",
+		Short: "Delete an IP pool",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			id, err := c.ResolveIPPool(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			if err := c.DeleteIPPool(ctx, id); err != nil {
+				return err
+			}
+			return app.printStatus("Deleted", "ip-pool", id.String())
+		},
+	}
+}
+
+// --- Egress commands (tenant) ---
+
+func (app *cli) newEgressCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "egress",
+		Short: "Manage network egress rules",
+	}
+	cmd.AddCommand(app.newEgressListCmd())
+	cmd.AddCommand(app.newEgressCreateCmd())
+	cmd.AddCommand(app.newEgressDeleteCmd())
+	return cmd
+}
+
+func (app *cli) newEgressListCmd() *cobra.Command {
+	var networkStr, tenant, org string
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List egress rules for a network",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			networkID, err := c.ResolveNetwork(ctx, networkStr, tenantID)
+			if err != nil {
+				return err
+			}
+			egresses, err := c.ListEgresses(ctx, tenantID, networkID)
+			if err != nil {
+				return err
+			}
+			rows := make([][]string, len(egresses))
+			for i, e := range egresses {
+				rows[i] = []string{e.ID.String(), e.NetworkID.String(), e.Type, e.Config.PublicIP}
+			}
+			return app.printTable([]string{"ID", "NETWORK_ID", "TYPE", "PUBLIC_IP"}, rows)
+		},
+	}
+	cmd.Flags().StringVar(&networkStr, "network", "", "Network (UUID or name) (required)")
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (UUID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization for tenant name resolution")
+	_ = cmd.MarkFlagRequired("network")
+	_ = cmd.MarkFlagRequired("tenant")
+	return cmd
+}
+
+func (app *cli) newEgressCreateCmd() *cobra.Command {
+	var networkStr, tenant, org, egressType, publicIP string
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create an egress rule",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			networkID, err := c.ResolveNetwork(ctx, networkStr, tenantID)
+			if err != nil {
+				return err
+			}
+			e, err := c.CreateEgress(ctx, tenantID, networkID, network.EgressSpec{
+				Type:   egressType,
+				Config: network.EgressConfig{PublicIP: publicIP},
+			})
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NETWORK_ID", "TYPE", "PUBLIC_IP"},
+				[][]string{{e.ID.String(), e.NetworkID.String(), e.Type, e.Config.PublicIP}},
+			)
+		},
+	}
+	cmd.Flags().StringVar(&networkStr, "network", "", "Network (UUID or name) (required)")
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (UUID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization for tenant name resolution")
+	cmd.Flags().StringVar(&egressType, "type", "nat_gateway", "Egress type (nat_gateway)")
+	cmd.Flags().StringVar(&publicIP, "public-ip", "", "Public IP for SNAT (required)")
+	_ = cmd.MarkFlagRequired("network")
+	_ = cmd.MarkFlagRequired("tenant")
+	_ = cmd.MarkFlagRequired("public-ip")
+	return cmd
+}
+
+func (app *cli) newEgressDeleteCmd() *cobra.Command {
+	var networkStr, tenant, org string
+	cmd := &cobra.Command{
+		Use:   "delete <id>",
+		Short: "Delete an egress rule",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			networkID, err := c.ResolveNetwork(ctx, networkStr, tenantID)
+			if err != nil {
+				return err
+			}
+			egressID, err := uuid.Parse(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid egress ID: %w", err)
+			}
+			if err := c.DeleteEgress(ctx, tenantID, networkID, egressID); err != nil {
+				return err
+			}
+			return app.printStatus("Deleted", "egress", egressID.String())
+		},
+	}
+	cmd.Flags().StringVar(&networkStr, "network", "", "Network (UUID or name) (required)")
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (UUID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization for tenant name resolution")
+	_ = cmd.MarkFlagRequired("network")
+	_ = cmd.MarkFlagRequired("tenant")
+	return cmd
+}
+
+// --- Ingress commands (tenant) ---
+
+func (app *cli) newIngressCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "ingress",
+		Short: "Manage network ingress rules",
+	}
+	cmd.AddCommand(app.newIngressListCmd())
+	cmd.AddCommand(app.newIngressCreateCmd())
+	cmd.AddCommand(app.newIngressDeleteCmd())
+	return cmd
+}
+
+func (app *cli) newIngressListCmd() *cobra.Command {
+	var networkStr, tenant, org string
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List ingress rules for a network",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			networkID, err := c.ResolveNetwork(ctx, networkStr, tenantID)
+			if err != nil {
+				return err
+			}
+			ingresses, err := c.ListIngresses(ctx, tenantID, networkID)
+			if err != nil {
+				return err
+			}
+			rows := make([][]string, len(ingresses))
+			for i, ing := range ingresses {
+				rows[i] = []string{ing.ID.String(), ing.NetworkID.String(), ing.Type, ing.PublicIP, ing.Config.TargetIP}
+			}
+			return app.printTable([]string{"ID", "NETWORK_ID", "TYPE", "PUBLIC_IP", "TARGET_IP"}, rows)
+		},
+	}
+	cmd.Flags().StringVar(&networkStr, "network", "", "Network (UUID or name) (required)")
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (UUID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization for tenant name resolution")
+	_ = cmd.MarkFlagRequired("network")
+	_ = cmd.MarkFlagRequired("tenant")
+	return cmd
+}
+
+func (app *cli) newIngressCreateCmd() *cobra.Command {
+	var networkStr, tenant, org, ingressType, publicIP, ipPoolStr, targetVMStr, targetIP string
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create an ingress rule",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			networkID, err := c.ResolveNetwork(ctx, networkStr, tenantID)
+			if err != nil {
+				return err
+			}
+			poolID, err := c.ResolveIPPool(ctx, ipPoolStr)
+			if err != nil {
+				return err
+			}
+			// target-vm is stored as a string UUID in config; resolve or pass-through
+			targetVMID := targetVMStr
+			if _, parseErr := uuid.Parse(targetVMStr); parseErr != nil {
+				return fmt.Errorf("--target-vm must be a valid UUID: %w", parseErr)
+			}
+			ing, err := c.CreateIngress(ctx, tenantID, networkID, network.IngressSpec{
+				Type:     ingressType,
+				PublicIP: publicIP,
+				IPPoolID: poolID,
+				Config: network.IngressConfig{
+					TargetVMID: targetVMID,
+					TargetIP:   targetIP,
+				},
+			})
+			if err != nil {
+				return err
+			}
+			return app.printTable(
+				[]string{"ID", "NETWORK_ID", "TYPE", "PUBLIC_IP", "TARGET_IP"},
+				[][]string{{ing.ID.String(), ing.NetworkID.String(), ing.Type, ing.PublicIP, ing.Config.TargetIP}},
+			)
+		},
+	}
+	cmd.Flags().StringVar(&networkStr, "network", "", "Network (UUID or name) (required)")
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (UUID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization for tenant name resolution")
+	cmd.Flags().StringVar(&ingressType, "type", "direct_ip", "Ingress type (direct_ip)")
+	cmd.Flags().StringVar(&publicIP, "public-ip", "", "Public IP for DNAT (required)")
+	cmd.Flags().StringVar(&ipPoolStr, "ip-pool", "", "IP pool (UUID or name) (required)")
+	cmd.Flags().StringVar(&targetVMStr, "target-vm", "", "Target VM UUID (required)")
+	cmd.Flags().StringVar(&targetIP, "target-ip", "", "Target private IP (required)")
+	_ = cmd.MarkFlagRequired("network")
+	_ = cmd.MarkFlagRequired("tenant")
+	_ = cmd.MarkFlagRequired("public-ip")
+	_ = cmd.MarkFlagRequired("ip-pool")
+	_ = cmd.MarkFlagRequired("target-vm")
+	_ = cmd.MarkFlagRequired("target-ip")
+	return cmd
+}
+
+func (app *cli) newIngressDeleteCmd() *cobra.Command {
+	var networkStr, tenant, org string
+	cmd := &cobra.Command{
+		Use:   "delete <id>",
+		Short: "Delete an ingress rule",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			networkID, err := c.ResolveNetwork(ctx, networkStr, tenantID)
+			if err != nil {
+				return err
+			}
+			ingressID, err := uuid.Parse(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid ingress ID: %w", err)
+			}
+			if err := c.DeleteIngress(ctx, tenantID, networkID, ingressID); err != nil {
+				return err
+			}
+			return app.printStatus("Deleted", "ingress", ingressID.String())
+		},
+	}
+	cmd.Flags().StringVar(&networkStr, "network", "", "Network (UUID or name) (required)")
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (UUID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization for tenant name resolution")
+	_ = cmd.MarkFlagRequired("network")
+	_ = cmd.MarkFlagRequired("tenant")
+	return cmd
 }

@@ -22,18 +22,22 @@ type ResourceDelta struct {
 	Volumes   int
 	Snapshots int
 	Networks  int
+	Egresses  int
+	Ingresses int
 }
 
 // Usage is the current committed usage for a tenant.
 type Usage struct {
-	TenantID      uuid.UUID
-	VcpusUsed     int
-	RAMMBUsed     int
-	VolumeGBUsed  int
-	VMsCount      int
-	VolumesCount  int
+	TenantID       uuid.UUID
+	VcpusUsed      int
+	RAMMBUsed      int
+	VolumeGBUsed   int
+	VMsCount       int
+	VolumesCount   int
 	SnapshotsCount int
-	NetworksCount int
+	NetworksCount  int
+	EgressesCount  int
+	IngressesCount int
 }
 
 // Limits holds the quota limits for a tenant or org.
@@ -45,6 +49,8 @@ type Limits struct {
 	Volumes   int
 	Snapshots int
 	Networks  int
+	Egresses  int
+	Ingresses int
 }
 
 // ErrQuotaExceeded is returned when a Check or Reserve operation would exceed a limit.
@@ -60,11 +66,16 @@ var ErrNotFound = errors.New("not found")
 type ResourceType string
 
 const (
-	ResourceTypeVM       ResourceType = "vm"
-	ResourceTypeVolume   ResourceType = "volume"
-	ResourceTypeSnapshot ResourceType = "snapshot"
-	ResourceTypeNetwork  ResourceType = "network"
+	ResourceTypeVM            ResourceType = "vm"
+	ResourceTypeVolume        ResourceType = "volume"
+	ResourceTypeSnapshot      ResourceType = "snapshot"
+	ResourceTypeNetwork       ResourceType = "network"
+	ResourceTypeEgress        ResourceType = "egress"
+	ResourceTypeIngress       ResourceType = "ingress"
 )
+
+// EgressIngress drift resource type constant (used by reconciler).
+const ResourceTypeEgressIngress = "egress_ingress_state"
 
 // Service defines quota check, reservation, and usage tracking operations.
 type Service interface {

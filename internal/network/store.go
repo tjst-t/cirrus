@@ -585,8 +585,26 @@ func (s *Store) CreateEgress(ctx context.Context, networkID uuid.UUID, spec Egre
 		return nil, fmt.Errorf("egress: create: unsupported type %q: %w", spec.Type, ErrInvalidState)
 	}
 
+	// Fetch tenant_id for quota tracking.
+	var tenantID uuid.UUID
+	if err := s.pool.QueryRow(ctx, `SELECT tenant_id FROM networks WHERE id = $1`, networkID).Scan(&tenantID); err != nil {
+		return nil, wrapErr("egress: create: get tenant", err)
+	}
+
+	egressID := uuid.New()
+
+	// Reserve quota.
+	if s.quotaSvc != nil {
+		if err := s.quotaSvc.Reserve(ctx, tenantID, quota.ResourceTypeEgress, egressID, quota.ResourceDelta{Egresses: 1}); err != nil {
+			return nil, wrapErr("egress: create: quota reserve", err)
+		}
+	}
+
 	configJSON, err := json.Marshal(spec.Config)
 	if err != nil {
+		if s.quotaSvc != nil {
+			_ = s.quotaSvc.Release(ctx, quota.ResourceTypeEgress, egressID)
+		}
 		return nil, fmt.Errorf("egress: create: marshal config: %w", err)
 	}
 
@@ -594,13 +612,22 @@ func (s *Store) CreateEgress(ctx context.Context, networkID uuid.UUID, spec Egre
 	e.NetworkID = networkID
 	e.Type = spec.Type
 	err = s.pool.QueryRow(ctx,
-		`INSERT INTO egresses (network_id, type, config)
-		 VALUES ($1, $2, $3)
+		`INSERT INTO egresses (id, network_id, type, config)
+		 VALUES ($1, $2, $3, $4)
 		 RETURNING id, network_id, type, config`,
-		networkID, spec.Type, configJSON,
+		egressID, networkID, spec.Type, configJSON,
 	).Scan(&e.ID, &e.NetworkID, &e.Type, &configJSON)
 	if err != nil {
+		if s.quotaSvc != nil {
+			_ = s.quotaSvc.Release(ctx, quota.ResourceTypeEgress, egressID)
+		}
 		return nil, wrapErr("egress: create", err)
+	}
+
+	if s.quotaSvc != nil {
+		if err := s.quotaSvc.Commit(ctx, quota.ResourceTypeEgress, egressID); err != nil {
+			s.logger.Warn("quota commit failed after egress creation", "egress_id", egressID, "error", err)
+		}
 	}
 
 	if err := json.Unmarshal(configJSON, &e.Config); err != nil {
@@ -648,12 +675,23 @@ func (s *Store) ListEgresses(ctx context.Context, networkID uuid.UUID) ([]Egress
 }
 
 func (s *Store) DeleteEgress(ctx context.Context, id uuid.UUID) error {
+	// Fetch tenant_id for quota tracking before deletion.
+	var tenantID uuid.UUID
+	_ = s.pool.QueryRow(ctx,
+		`SELECT n.tenant_id FROM egresses e JOIN networks n ON n.id = e.network_id WHERE e.id = $1`, id,
+	).Scan(&tenantID)
+
 	tag, err := s.pool.Exec(ctx, `DELETE FROM egresses WHERE id = $1`, id)
 	if err != nil {
 		return wrapErr("egress: delete", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("egress: delete: %w", ErrNotFound)
+	}
+	if s.quotaSvc != nil && tenantID != uuid.Nil {
+		if err := s.quotaSvc.Decommit(ctx, tenantID, quota.ResourceDelta{Egresses: 1}); err != nil {
+			s.logger.Warn("quota decommit failed after egress deletion", "egress_id", id, "error", err)
+		}
 	}
 	return nil
 }
@@ -734,21 +772,49 @@ func (s *Store) CreateIngress(ctx context.Context, networkID uuid.UUID, spec Ing
 		return nil, fmt.Errorf("ingress: create: public_ip %s is not within pool CIDR %s: %w", spec.PublicIP, poolCIDR, ErrInvalidState)
 	}
 
+	// Fetch tenant_id for quota tracking.
+	var tenantID uuid.UUID
+	if err := s.pool.QueryRow(ctx, `SELECT tenant_id FROM networks WHERE id = $1`, networkID).Scan(&tenantID); err != nil {
+		return nil, wrapErr("ingress: create: get tenant", err)
+	}
+
+	ingressID := uuid.New()
+
+	// Reserve quota.
+	if s.quotaSvc != nil {
+		if err := s.quotaSvc.Reserve(ctx, tenantID, quota.ResourceTypeIngress, ingressID, quota.ResourceDelta{Ingresses: 1}); err != nil {
+			return nil, wrapErr("ingress: create: quota reserve", err)
+		}
+	}
+
 	configJSON, err := json.Marshal(spec.Config)
 	if err != nil {
+		if s.quotaSvc != nil {
+			_ = s.quotaSvc.Release(ctx, quota.ResourceTypeIngress, ingressID)
+		}
 		return nil, fmt.Errorf("ingress: create: marshal config: %w", err)
 	}
 
 	var ing Ingress
 	err = s.pool.QueryRow(ctx,
-		`INSERT INTO ingresses (network_id, type, public_ip, ip_pool_id, config)
-		 VALUES ($1, $2, $3::inet, $4, $5)
+		`INSERT INTO ingresses (id, network_id, type, public_ip, ip_pool_id, config)
+		 VALUES ($1, $2, $3, $4::inet, $5, $6)
 		 RETURNING id, network_id, type, host(public_ip), ip_pool_id, config, created_at`,
-		networkID, spec.Type, spec.PublicIP, spec.IPPoolID, configJSON,
+		ingressID, networkID, spec.Type, spec.PublicIP, spec.IPPoolID, configJSON,
 	).Scan(&ing.ID, &ing.NetworkID, &ing.Type, &ing.PublicIP, &ing.IPPoolID, &configJSON, &ing.CreatedAt)
 	if err != nil {
+		if s.quotaSvc != nil {
+			_ = s.quotaSvc.Release(ctx, quota.ResourceTypeIngress, ingressID)
+		}
 		return nil, wrapErr("ingress: create", err)
 	}
+
+	if s.quotaSvc != nil {
+		if err := s.quotaSvc.Commit(ctx, quota.ResourceTypeIngress, ingressID); err != nil {
+			s.logger.Warn("quota commit failed after ingress creation", "ingress_id", ingressID, "error", err)
+		}
+	}
+
 	if err := json.Unmarshal(configJSON, &ing.Config); err != nil {
 		return nil, fmt.Errorf("ingress: create: unmarshal config: %w", err)
 	}
@@ -796,12 +862,23 @@ func (s *Store) ListIngresses(ctx context.Context, networkID uuid.UUID) ([]Ingre
 }
 
 func (s *Store) DeleteIngress(ctx context.Context, id uuid.UUID) error {
+	// Fetch tenant_id for quota tracking before deletion.
+	var tenantID uuid.UUID
+	_ = s.pool.QueryRow(ctx,
+		`SELECT n.tenant_id FROM ingresses i JOIN networks n ON n.id = i.network_id WHERE i.id = $1`, id,
+	).Scan(&tenantID)
+
 	tag, err := s.pool.Exec(ctx, `DELETE FROM ingresses WHERE id = $1`, id)
 	if err != nil {
 		return wrapErr("ingress: delete", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("ingress: delete: %w", ErrNotFound)
+	}
+	if s.quotaSvc != nil && tenantID != uuid.Nil {
+		if err := s.quotaSvc.Decommit(ctx, tenantID, quota.ResourceDelta{Ingresses: 1}); err != nil {
+			s.logger.Warn("quota decommit failed after ingress deletion", "ingress_id", id, "error", err)
+		}
 	}
 	return nil
 }

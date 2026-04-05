@@ -2,8 +2,12 @@ package reconcile
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tjst-t/cirrus/internal/host"
 	"github.com/tjst-t/cirrus/internal/network"
@@ -18,6 +22,7 @@ type NetworkReconciler struct {
 	handler   *DriftHandler
 	logger    *slog.Logger
 	interval  time.Duration
+	pool      *pgxpool.Pool
 }
 
 // NewNetworkReconciler creates a new NetworkReconciler.
@@ -32,6 +37,12 @@ func NewNetworkReconciler(stateCtrl *network.StateController, hostSvc host.Servi
 		logger:    logger.With("component", "network-reconciler"),
 		interval:  interval,
 	}
+}
+
+// WithPool sets the DB pool for egress/ingress reconciliation.
+func (r *NetworkReconciler) WithPool(pool *pgxpool.Pool) *NetworkReconciler {
+	r.pool = pool
+	return r
 }
 
 // Run starts the reconcile loop. Blocks until ctx is cancelled.
@@ -111,6 +122,11 @@ func (r *NetworkReconciler) reconcileOnce(ctx context.Context) {
 		"total_remote_ports", totalRemote,
 		"drift_events", driftCount,
 	)
+
+	// Also reconcile egress/ingress state for GW nodes.
+	if err := r.reconcileEgressIngress(ctx); err != nil {
+		r.logger.Error("reconcile: egress/ingress check failed", "error", err)
+	}
 }
 
 // checkConsistency validates internal consistency of a host's desired state and
@@ -189,4 +205,57 @@ func (r *NetworkReconciler) checkConsistency(ctx context.Context, state *pb.Host
 	}
 
 	return drift
+}
+
+// gwNetworkRow holds data for the egress/ingress reconcile check.
+type gwNetworkRow struct {
+	networkID     uuid.UUID
+	lastHeartbeat *time.Time
+}
+
+// reconcileEgressIngress checks active GW node networks for stale heartbeats and
+// fires DriftEvents when GW host state is uncertain.
+func (r *NetworkReconciler) reconcileEgressIngress(ctx context.Context) error {
+	if r.pool == nil {
+		return nil
+	}
+
+	// Query networks that have a gateway_node_id AND have at least one egress or ingress.
+	rows, err := r.pool.Query(ctx, `
+		SELECT n.id, h.last_heartbeat
+		FROM networks n
+		JOIN gateway_nodes gn ON gn.id = n.gateway_node_id
+		JOIN hosts h ON h.id = gn.host_id
+		WHERE (
+			EXISTS (SELECT 1 FROM egresses e WHERE e.network_id = n.id)
+			OR EXISTS (SELECT 1 FROM ingresses i WHERE i.network_id = n.id)
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("reconcile egress/ingress: query: %w", err)
+	}
+	defer rows.Close()
+
+	staleThreshold := time.Now().Add(-r.interval * 2)
+
+	for rows.Next() {
+		var row gwNetworkRow
+		if err := rows.Scan(&row.networkID, &row.lastHeartbeat); err != nil {
+			return fmt.Errorf("reconcile egress/ingress: scan: %w", err)
+		}
+
+		if row.lastHeartbeat == nil || row.lastHeartbeat.Before(staleThreshold) {
+			r.handler.Handle(ctx, DriftEvent{
+				Layer:      DriftLayerNetwork,
+				Type:       DriftTypeStateMismatch,
+				Severity:   DriftSeverityMedium,
+				Resource:   string(DriftLayerNetwork),
+				ResourceID: row.networkID.String(),
+				Expected:   "GW node heartbeat fresh",
+				Actual:     "GW node heartbeat stale; egress/ingress state uncertain",
+				DetectedBy: "network_reconciler",
+			})
+		}
+	}
+	return rows.Err()
 }
