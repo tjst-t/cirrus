@@ -59,6 +59,19 @@ func (sc *StateController) ComputeHostNetworkState(ctx context.Context, hostID u
 		return &pb.HostNetworkState{}, nil
 	}
 
+	// For gateway hosts, also collect network IDs from ingress/egress rules
+	// so that remote port routing (for DNAT forwarding) is included even when
+	// the gateway host has no local VMs.
+	if gw != nil && len(networkIDs) == 0 {
+		gwNetIDs, err := sc.getGatewayNetworkIDs(ctx, gw.ID)
+		if err != nil {
+			return nil, fmt.Errorf("compute state: gw network ids: %w", err)
+		}
+		for _, id := range gwNetIDs {
+			networkIDs[id] = true
+		}
+	}
+
 	var policies []*pb.PolicyRule
 	var remotePorts []*pb.RemotePort
 	var dnsRecords []*pb.DnsRecord
@@ -289,6 +302,30 @@ func (sc *StateController) getGatewayNodeForHost(ctx context.Context, hostID uui
 		return nil, err
 	}
 	return &gw, nil
+}
+
+// getGatewayNetworkIDs returns the network IDs of all networks that have ingress or
+// egress rules assigned to this gateway node. Used to ensure remote port routing
+// is included for gateway hosts that have no local VMs.
+func (sc *StateController) getGatewayNetworkIDs(ctx context.Context, gwID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := sc.pool.Query(ctx, `
+		SELECT DISTINCT n.id
+		FROM networks n
+		WHERE n.gateway_node_id = $1
+	`, gwID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 // computeIngressRules returns all IngressRules for the networks assigned to this GW node.

@@ -778,6 +778,22 @@ func (s *Store) CreateIngress(ctx context.Context, networkID uuid.UUID, spec Ing
 		return nil, fmt.Errorf("ingress: create: public_ip %s is not within pool CIDR %s: %w", spec.PublicIP, poolCIDR, ErrInvalidState)
 	}
 
+	// Resolve target_ip from the VM's port if not provided.
+	if spec.Config.TargetVMID != "" && spec.Config.TargetIP == "" {
+		vmUUID, err := uuid.Parse(spec.Config.TargetVMID)
+		if err != nil {
+			return nil, fmt.Errorf("ingress: create: invalid target_vm_id: %w", ErrInvalidState)
+		}
+		port, err := s.GetPortByVMID(ctx, vmUUID)
+		if err != nil {
+			return nil, fmt.Errorf("ingress: create: resolve target VM port: %w", err)
+		}
+		spec.Config.TargetIP = port.IPAddress
+	}
+	if spec.Config.TargetIP == "" {
+		return nil, fmt.Errorf("ingress: create: target_ip is required (provide target_vm_id or target_ip): %w", ErrInvalidState)
+	}
+
 	// Fetch tenant_id for quota tracking.
 	var tenantID uuid.UUID
 	if err := s.pool.QueryRow(ctx, `SELECT tenant_id FROM networks WHERE id = $1`, networkID).Scan(&tenantID); err != nil {
