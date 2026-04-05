@@ -349,6 +349,18 @@ func (m *MockClient) SetInterfaceExternalIDs(port string, externalIDs map[string
 	return nil
 }
 
+// FindPortByExternalID returns the port name whose external_ids:iface-id matches portID.
+func (m *MockClient) FindPortByExternalID(portID string) (string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for portName, ids := range m.extIDs {
+		if ids["iface-id"] == portID {
+			return portName, nil
+		}
+	}
+	return "", nil
+}
+
 // GetFlows returns all flow entries for the specified table.
 func (m *MockClient) GetFlows(table int) ([]netagent.FlowEntry, error) {
 	m.mu.RLock()

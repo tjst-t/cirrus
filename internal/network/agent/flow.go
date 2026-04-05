@@ -75,6 +75,16 @@ func GenerateFlows(ctx *FlowContext) []FlowEntry {
 	flows = append(flows, generateEncapOutputFlows()...)
 	flows = append(flows, generateLocalOutputFlows()...)
 
+	// Default route: traffic to unknown destinations (external IPs) goes to
+	// TableEgress for SNAT. On gateway hosts this triggers the SNAT flow;
+	// on non-gateway hosts the table-miss drop handles it.
+	flows = append(flows, FlowEntry{
+		Table:    TableDstGroupResolution,
+		Priority: 10,
+		Match:    "ip",
+		Actions:  fmt.Sprintf("resubmit(,%d)", TableEgress),
+	})
+
 	return flows
 }
 
@@ -175,16 +185,18 @@ func generateInputClassificationFlows(p PortInfo, ctx *FlowContext) []FlowEntry 
 
 func generateConntrackFlows(ctx *FlowContext) []FlowEntry {
 	return []FlowEntry{
-		// Established → skip to local output (ip required for ct_state match)
+		// Established → skip to local output (bypass policy for existing connections)
 		{Table: TableConntrack, Priority: 100, Match: "ip,ct_state=+est+trk", Actions: fmt.Sprintf("resubmit(,%d)", TableLocalOutput)},
 		// Related → skip to local output
 		{Table: TableConntrack, Priority: 100, Match: "ip,ct_state=+rel+trk", Actions: fmt.Sprintf("resubmit(,%d)", TableLocalOutput)},
 		// Invalid → drop
 		{Table: TableConntrack, Priority: 100, Match: "ip,ct_state=+inv+trk", Actions: "drop"},
-		// Untracked → send to conntrack zone, then re-enter this table
-		{Table: TableConntrack, Priority: 50, Match: "ip", Actions: fmt.Sprintf("ct(table=%d)", TableConntrack)},
-		// New connection → policy pipeline
-		{Table: TableConntrack, Priority: 10, Match: "ip,ct_state=+new+trk", Actions: fmt.Sprintf("resubmit(,%d)", TableDstGroupResolution)},
+		// New tracked connection → destination group resolution (policy pipeline)
+		// Priority=100 so it wins over the untracked catch-all below.
+		{Table: TableConntrack, Priority: 100, Match: "ip,ct_state=+new+trk", Actions: fmt.Sprintf("resubmit(,%d)", TableDstGroupResolution)},
+		// Untracked IP → send through conntrack, re-enter this table with ct_state set.
+		// Priority=10 so all tracked-state flows above take precedence.
+		{Table: TableConntrack, Priority: 10, Match: "ip", Actions: fmt.Sprintf("ct(table=%d)", TableConntrack)},
 	}
 }
 

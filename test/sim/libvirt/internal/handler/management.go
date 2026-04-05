@@ -16,9 +16,10 @@ import (
 
 // Management handles the /sim/ REST API endpoints.
 type Management struct {
-	store  *state.Store
-	server *rpc.Server
-	logger *slog.Logger
+	store        *state.Store
+	server       *rpc.Server
+	logger       *slog.Logger
+	singleHostID string // when set, unknown host IDs in URL fall back to this (HostInstance mode)
 }
 
 // NewManagement creates a new management API handler.
@@ -28,6 +29,25 @@ func NewManagement(store *state.Store, server *rpc.Server, logger *slog.Logger) 
 		server: server,
 		logger: logger,
 	}
+}
+
+// SetSingleHostID enables single-host fallback mode: any unknown host_id in URL
+// parameters will resolve to the given hostID. Used by HostInstance so that the
+// worker's controller-assigned UUID is accepted without re-registering the host.
+func (m *Management) SetSingleHostID(hostID string) {
+	m.singleHostID = hostID
+}
+
+// resolveHostID returns hostID if it exists in the store; in single-host mode it
+// falls back to singleHostID when the requested ID is unknown.
+func (m *Management) resolveHostID(hostID string) string {
+	if m.singleHostID == "" {
+		return hostID
+	}
+	if _, err := m.store.GetHost(hostID); err != nil {
+		return m.singleHostID
+	}
+	return hostID
 }
 
 // RegisterRoutes registers all management API routes on the given mux.
@@ -129,7 +149,7 @@ func (m *Management) handleListHosts(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Management) handleGetHost(w http.ResponseWriter, r *http.Request) {
-	hostID := r.PathValue("host_id")
+	hostID := m.resolveHostID(r.PathValue("host_id"))
 	host, err := m.store.GetHost(hostID)
 	if err != nil {
 		m.writeError(w, http.StatusNotFound, err.Error())
@@ -271,7 +291,7 @@ func (m *Management) handleListAllDomains(w http.ResponseWriter, r *http.Request
 }
 
 func (m *Management) handleListHostDomains(w http.ResponseWriter, r *http.Request) {
-	hostID := r.PathValue("host_id")
+	hostID := m.resolveHostID(r.PathValue("host_id"))
 	doms, err := m.store.ListDomains(hostID)
 	if err != nil {
 		m.writeError(w, http.StatusNotFound, err.Error())
@@ -298,7 +318,7 @@ type DefineDomainRequest struct {
 }
 
 func (m *Management) handleDefineDomain(w http.ResponseWriter, r *http.Request) {
-	hostID := r.PathValue("host_id")
+	hostID := m.resolveHostID(r.PathValue("host_id"))
 	var req DefineDomainRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		m.writeError(w, http.StatusBadRequest, "invalid request body")
@@ -325,6 +345,13 @@ func (m *Management) handleDefineDomain(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	dom, _ := m.store.GetDomain(hostID, d.UUIDString())
+	// Create network namespace + veth pair for the VM simulation.
+	if dom != nil {
+		if err := m.server.CreateVMNetns(r.Context(), dom.UUIDString(), dom.InterfaceIDs); err != nil {
+			m.logger.Warn("failed to create VM namespace", "uuid", dom.UUIDString(), "error", err)
+			// Non-fatal: namespace is best-effort for traffic testing
+		}
+	}
 	m.writeJSON(w, http.StatusCreated, DomainInfo{
 		Name:         dom.Name,
 		UUID:         dom.UUIDString(),
@@ -337,7 +364,7 @@ func (m *Management) handleDefineDomain(w http.ResponseWriter, r *http.Request) 
 }
 
 func (m *Management) handleUndefineDomain(w http.ResponseWriter, r *http.Request) {
-	hostID := r.PathValue("host_id")
+	hostID := m.resolveHostID(r.PathValue("host_id"))
 	domUUID := r.PathValue("uuid")
 	// Destroy first if running, then undefine.
 	_ = m.store.DestroyDomain(hostID, domUUID)
@@ -345,11 +372,13 @@ func (m *Management) handleUndefineDomain(w http.ResponseWriter, r *http.Request
 		m.writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
+	// Tear down network namespace + veth pair (best-effort, domain already removed from store).
+	_ = m.server.DestroyVMNetns(r.Context(), domUUID, nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (m *Management) handleStartDomain(w http.ResponseWriter, r *http.Request) {
-	hostID := r.PathValue("host_id")
+	hostID := m.resolveHostID(r.PathValue("host_id"))
 	domUUID := r.PathValue("uuid")
 	if err := m.store.StartDomain(hostID, domUUID); err != nil {
 		m.writeError(w, http.StatusBadRequest, err.Error())
@@ -359,7 +388,7 @@ func (m *Management) handleStartDomain(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Management) handleStopDomain(w http.ResponseWriter, r *http.Request) {
-	hostID := r.PathValue("host_id")
+	hostID := m.resolveHostID(r.PathValue("host_id"))
 	domUUID := r.PathValue("uuid")
 	if err := m.store.ShutdownDomain(hostID, domUUID); err != nil {
 		m.writeError(w, http.StatusBadRequest, err.Error())
@@ -369,7 +398,7 @@ func (m *Management) handleStopDomain(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Management) handleDestroyDomain(w http.ResponseWriter, r *http.Request) {
-	hostID := r.PathValue("host_id")
+	hostID := m.resolveHostID(r.PathValue("host_id"))
 	domUUID := r.PathValue("uuid")
 	if err := m.store.DestroyDomain(hostID, domUUID); err != nil {
 		m.writeError(w, http.StatusBadRequest, err.Error())

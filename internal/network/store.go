@@ -379,12 +379,17 @@ func (s *Store) CreatePort(ctx context.Context, spec PortSpec) (*Port, error) {
 		return nil, fmt.Errorf("network: create port: generate mac: %w", err)
 	}
 
+	var groupID *uuid.UUID
+	if spec.GroupID != uuid.Nil {
+		groupID = &spec.GroupID
+	}
+
 	var p Port
 	err = s.pool.QueryRow(ctx,
 		`INSERT INTO ports (network_id, group_id, tenant_id, host_id, vm_id, mac_address, ip_address, vm_name, status, created_at)
 		 VALUES ($1, $2, $3, $4, $5, $6::macaddr, $7::inet, $8, 'active', NOW())
 		 RETURNING id, tenant_id, network_id, group_id, vm_id, vm_name, mac_address::TEXT, host(ip_address), host_id, role, status, created_at`,
-		spec.NetworkID, spec.GroupID, spec.TenantID, spec.HostID, spec.VMID, mac, vmIP, spec.VMName,
+		spec.NetworkID, groupID, spec.TenantID, spec.HostID, spec.VMID, mac, vmIP, spec.VMName,
 	).Scan(&p.ID, &p.TenantID, &p.NetworkID, &p.GroupID, &p.VMID, &p.VMName, &p.MACAddress, &p.IPAddress, &p.HostID, &p.Role, &p.Status, &p.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("network: create port: %w", err)

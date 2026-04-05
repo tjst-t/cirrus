@@ -40,6 +40,18 @@ func (s *Server) SetNetnsManager(m netns.Manager) {
 	s.netns = m
 }
 
+// CreateVMNetns creates the network namespace and veth pair for a VM.
+// Called by the management handler when a domain is defined+started via the HTTP API.
+func (s *Server) CreateVMNetns(ctx context.Context, uuid string, interfaceIDs []string) error {
+	return s.netns.CreateVM(ctx, uuid, interfaceIDs)
+}
+
+// DestroyVMNetns tears down the network namespace and veth pair for a VM.
+// Called by the management handler when a domain is undefined via the HTTP API.
+func (s *Server) DestroyVMNetns(ctx context.Context, uuid string, interfaceIDs []string) error {
+	return s.netns.DestroyVM(ctx, uuid, interfaceIDs)
+}
+
 // SetFaultEngine sets the fault injection engine for RPC-level fault injection.
 func (s *Server) SetFaultEngine(e *fault.Engine) {
 	s.faultEngine = e

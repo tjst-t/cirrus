@@ -342,6 +342,7 @@ func (o *Orchestrator) buildVM(ctx context.Context, vmID uuid.UUID, spec CreateV
 	// 4. Create root volume (idempotent)
 	volSpec := storage.CreateVolumeSpec{
 		TenantID: spec.TenantID,
+		Name:     vmName,
 		SizeGB:   flv.DiskGB,
 	}
 	if spec.VolumeTypeID != nil {

@@ -77,6 +77,7 @@ func (s *WorkerServer) CreateVM(ctx context.Context, req *pb.CreateVMRequest) (*
 	}
 
 	spec := hypervisor.VMSpec{
+		UUID:       req.VmId,
 		Name:       req.Name,
 		VCPUs:      req.Vcpus,
 		RAMMB:      req.RamMb,

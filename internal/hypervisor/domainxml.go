@@ -9,6 +9,9 @@ import (
 // domainXMLTemplate is a minimal libvirt domain XML template for KVM VMs.
 var domainXMLTemplate = template.Must(template.New("domain").Parse(`<domain type='kvm'>
   <name>{{.Name}}</name>
+{{- if .UUID}}
+  <uuid>{{.UUID}}</uuid>
+{{- end}}
   <memory unit='MiB'>{{.RAMMB}}</memory>
   <vcpu>{{.VCPUs}}</vcpu>
   <os>

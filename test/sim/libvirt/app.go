@@ -189,6 +189,11 @@ func NewHostInstance(cfg HostInstanceConfig, logger *slog.Logger) *HostInstance 
 		logger.Error("failed to pre-register host", "host_id", cfg.HostID, "error", err)
 	}
 
+	// Enable single-host fallback: unknown host_id in URL resolves to the
+	// single managed host. This lets the worker use its controller-assigned
+	// UUID in management API calls without re-registering the host.
+	mgmt.SetSingleHostID(cfg.HostID)
+
 	return &HostInstance{
 		httpServer: &http.Server{
 			Addr:              fmt.Sprintf(":%s", cfg.MgmtPort),

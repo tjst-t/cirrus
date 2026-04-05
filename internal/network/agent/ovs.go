@@ -172,16 +172,28 @@ func (p *Pipeline) applyEgressRules(egressRules []*pb.EgressRule, gatewayInfo *p
 func (p *Pipeline) resolveLocalPorts(ports []*pb.PortState) ([]PortInfo, error) {
 	var result []PortInfo
 	for _, port := range ports {
-		// Port name in OVS follows the convention: first 14 chars of port ID
+		// Port name in OVS follows the convention: first 14 chars of port ID.
+		// Fall back to looking up by external_ids:iface-id for sim environments
+		// where ports are named by VM UUID rather than port UUID.
 		portName := ovsPortName(port.PortId)
 		ofPort, err := p.client.GetOfPort(portName)
 		if err != nil {
-			p.logger.Warn("port not found in OVS, skipping",
-				"port_id", port.PortId,
-				"ovs_port", portName,
-				"error", err,
-			)
-			continue
+			// Try finding the port by external_ids:iface-id
+			if altName, ferr := p.client.FindPortByExternalID(port.PortId); ferr == nil && altName != "" {
+				if altPort, aerr := p.client.GetOfPort(altName); aerr == nil {
+					ofPort = altPort
+					portName = altName
+					err = nil
+				}
+			}
+			if err != nil {
+				p.logger.Warn("port not found in OVS, skipping",
+					"port_id", port.PortId,
+					"ovs_port", portName,
+					"error", err,
+				)
+				continue
+			}
 		}
 
 		result = append(result, PortInfo{

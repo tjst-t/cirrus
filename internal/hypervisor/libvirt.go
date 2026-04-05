@@ -100,6 +100,24 @@ func (d *LibvirtDriver) GetHostInfo(ctx context.Context) (*HostInfo, error) {
 	return &info, nil
 }
 
+// simDomainState maps libvirt integer states to VMState strings.
+func simDomainState(s int32) VMState {
+	switch s {
+	case 1: // VIR_DOMAIN_RUNNING
+		return StateRunning
+	case 3: // VIR_DOMAIN_PAUSED
+		return StatePaused
+	case 4: // VIR_DOMAIN_SHUTDOWN
+		return StateShutdown
+	case 5: // VIR_DOMAIN_SHUTOFF
+		return StateShutoff
+	case 6: // VIR_DOMAIN_CRASHED
+		return StateCrashed
+	default:
+		return StateShutoff
+	}
+}
+
 func (d *LibvirtDriver) ListVMs(ctx context.Context) ([]VMInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", d.baseURL+"/sim/domains", nil)
 	if err != nil {
@@ -117,9 +135,19 @@ func (d *LibvirtDriver) ListVMs(ctx context.Context) ([]VMInfo, error) {
 		return nil, fmt.Errorf("libvirt: list vms: HTTP %d: %s", resp.StatusCode, body)
 	}
 
-	var vms []VMInfo
-	if err := json.NewDecoder(resp.Body).Decode(&vms); err != nil {
+	var raw []simDomainInfo
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
 		return nil, fmt.Errorf("libvirt: decode vms: %w", err)
+	}
+
+	vms := make([]VMInfo, 0, len(raw))
+	for _, d := range raw {
+		vms = append(vms, VMInfo{
+			ID:    d.UUID,
+			State: simDomainState(d.State),
+			Vcpus: int32(d.VCPUs),
+			RAMMb: d.MemoryKiB / 1024,
+		})
 	}
 	return vms, nil
 }

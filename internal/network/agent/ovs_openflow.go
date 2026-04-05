@@ -108,6 +108,22 @@ func (c *ExecOVSClient) GetOfPort(port string) (int, error) {
 	return 0, fmt.Errorf("ofport not ready for port %s", port)
 }
 
+func (c *ExecOVSClient) FindPortByExternalID(portID string) (string, error) {
+	// Use ovs-vsctl to find Interface whose external_ids:iface-id matches portID.
+	out, err := c.run("ovs-vsctl", "--format=csv", "--columns=name",
+		"find", "Interface", fmt.Sprintf("external_ids:iface-id=%s", portID))
+	if err != nil {
+		return "", nil // not found is not an error
+	}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		name := strings.TrimSpace(line)
+		if name != "" && name != "name" {
+			return name, nil
+		}
+	}
+	return "", nil
+}
+
 func (c *ExecOVSClient) GetFlows(table int) ([]FlowEntry, error) {
 	out, err := c.run("ovs-ofctl", "dump-flows", c.bridge, fmt.Sprintf("table=%d", table))
 	if err != nil {

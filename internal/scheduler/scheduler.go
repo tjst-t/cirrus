@@ -135,7 +135,7 @@ func (s *DefaultScheduler) Schedule(ctx context.Context, spec ScheduleSpec) (*Sc
 		}
 
 		var bestBackend *storage.Backend
-		var bestFree int64
+		bestFree := int64(-1)
 		for _, b := range backends {
 			if b.State != storage.BackendStateActive {
 				continue
@@ -143,7 +143,8 @@ func (s *DefaultScheduler) Schedule(ctx context.Context, spec ScheduleSpec) (*Sc
 			if !capsMatch(b.Capabilities, spec.RequiredBackendCapabilities) {
 				continue
 			}
-			// Score by free capacity (simple heuristic; we don't track used capacity here).
+			// Score by free capacity. Use -1 as sentinel so backends with 0
+			// total_capacity_gb (unknown/unlimited) are still eligible.
 			if b.TotalCapacityGB > bestFree {
 				bestFree = b.TotalCapacityGB
 				bc := b

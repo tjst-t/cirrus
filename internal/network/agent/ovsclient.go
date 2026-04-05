@@ -40,6 +40,10 @@ type OVSClient interface {
 	// GetOfPort returns the OpenFlow port number for the named port.
 	GetOfPort(port string) (int, error)
 
+	// FindPortByExternalID returns the OVS port name whose external_ids:iface-id
+	// matches the given portID. Returns ("", nil) if not found.
+	FindPortByExternalID(portID string) (string, error)
+
 	// GetFlows returns all flow entries for the specified table.
 	GetFlows(table int) ([]FlowEntry, error)
 

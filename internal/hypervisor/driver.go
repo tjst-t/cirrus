@@ -15,7 +15,7 @@ const (
 
 // VMInfo holds summary information about a running VM.
 type VMInfo struct {
-	ID    string  `json:"id"`
+	ID    string  `json:"uuid"`
 	Name  string  `json:"name"`
 	State VMState `json:"state"`
 	Vcpus int32   `json:"vcpus"`
@@ -57,6 +57,7 @@ type CloudInitSpec struct {
 
 // VMSpec is the full specification for defining a VM.
 type VMSpec struct {
+	UUID        string // controller-assigned VM UUID; included in domain XML so reconciler can find the domain
 	Name        string
 	VCPUs       int32
 	RAMMB       int64

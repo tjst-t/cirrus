@@ -49,34 +49,40 @@ func (sc *StateController) ComputeHostNetworkState(ctx context.Context, hostID u
 		return nil, fmt.Errorf("compute state: local ports: %w", err)
 	}
 
-	if len(networkIDs) == 0 {
-		return &pb.HostNetworkState{}, nil
-	}
-
-	netIDs := make([]uuid.UUID, 0, len(networkIDs))
-	for id := range networkIDs {
-		netIDs = append(netIDs, id)
-	}
-
-	// 2-4 in parallel could be optimized, but sequential is fine for now
-	policies, err := sc.getPolicies(ctx, netIDs)
-	if err != nil {
-		return nil, fmt.Errorf("compute state: policies: %w", err)
-	}
-
-	remotePorts, err := sc.getRemotePorts(ctx, netIDs, hostID)
-	if err != nil {
-		return nil, fmt.Errorf("compute state: remote ports: %w", err)
-	}
-
-	dnsRecords, err := sc.getDNSRecords(ctx, netIDs)
-	if err != nil {
-		return nil, fmt.Errorf("compute state: dns records: %w", err)
-	}
-
+	// Check if this host is a gateway node before potentially returning early.
 	gw, err := sc.getGatewayNodeForHost(ctx, hostID)
 	if err != nil {
 		return nil, fmt.Errorf("compute state: gw node: %w", err)
+	}
+
+	if len(networkIDs) == 0 && gw == nil {
+		return &pb.HostNetworkState{}, nil
+	}
+
+	var policies []*pb.PolicyRule
+	var remotePorts []*pb.RemotePort
+	var dnsRecords []*pb.DnsRecord
+
+	if len(networkIDs) > 0 {
+		netIDs := make([]uuid.UUID, 0, len(networkIDs))
+		for id := range networkIDs {
+			netIDs = append(netIDs, id)
+		}
+
+		policies, err = sc.getPolicies(ctx, netIDs)
+		if err != nil {
+			return nil, fmt.Errorf("compute state: policies: %w", err)
+		}
+
+		remotePorts, err = sc.getRemotePorts(ctx, netIDs, hostID)
+		if err != nil {
+			return nil, fmt.Errorf("compute state: remote ports: %w", err)
+		}
+
+		dnsRecords, err = sc.getDNSRecords(ctx, netIDs)
+		if err != nil {
+			return nil, fmt.Errorf("compute state: dns records: %w", err)
+		}
 	}
 
 	var egressRules []*pb.EgressRule

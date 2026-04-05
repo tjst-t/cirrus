@@ -5,7 +5,13 @@ echo "=== Worker starting: HOST_ID=${HOST_ID} ==="
 
 # Start OVS
 mkdir -p /var/run/openvswitch /var/log/openvswitch /etc/openvswitch
+# Recreate the DB on each start to get a clean OVS state
+rm -f /etc/openvswitch/conf.db
 ovsdb-tool create /etc/openvswitch/conf.db /usr/share/openvswitch/vswitch.ovsschema
+# Kill any stale OVS processes from a previous run
+kill $(cat /var/run/openvswitch/ovsdb-server.pid 2>/dev/null) 2>/dev/null || true
+kill $(cat /var/run/openvswitch/ovs-vswitchd.pid 2>/dev/null) 2>/dev/null || true
+sleep 0.5
 ovsdb-server --remote=punix:/var/run/openvswitch/db.sock \
   --remote=db:Open_vSwitch,Open_vSwitch,manager_options \
   --pidfile --detach --log-file=/var/log/openvswitch/ovsdb-server.log

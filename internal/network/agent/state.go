@@ -17,6 +17,11 @@ type StateCache struct {
 	remotePorts map[string]*pb.RemotePort   // "network_id:ip" -> RemotePort
 	dnsRecords  map[string]*pb.DnsRecord    // "network_id:name" -> DnsRecord
 
+	// Gateway state (GW-role hosts only)
+	egressRules  []*pb.EgressRule
+	ingressRules []*pb.IngressRule
+	gatewayInfo  *pb.GatewayInfo
+
 	// Reverse lookups
 	ipToPort  map[string]*pb.PortState // VM IP -> PortState
 	macToPort map[string]*pb.PortState // MAC -> PortState
@@ -76,6 +81,9 @@ func (s *StateCache) ApplyFull(update *pb.HostNetworkStateUpdate) {
 	for _, dns := range state.DnsRecords {
 		s.addDnsRecord(dns)
 	}
+	s.egressRules = state.EgressRules
+	s.ingressRules = state.IngressRules
+	s.gatewayInfo = state.GatewayInfo
 
 	s.version = update.GetVersion()
 }
@@ -285,7 +293,11 @@ func (s *StateCache) Snapshot() *pb.HostNetworkState {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	state := &pb.HostNetworkState{}
+	state := &pb.HostNetworkState{
+		EgressRules:  s.egressRules,
+		IngressRules: s.ingressRules,
+		GatewayInfo:  s.gatewayInfo,
+	}
 	for _, p := range s.ports {
 		state.Ports = append(state.Ports, p)
 	}

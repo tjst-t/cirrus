@@ -68,9 +68,9 @@ func (s *GRPCStateServer) WatchHostNetworkState(req *pb.WatchHostNetworkStateReq
 	ctx := stream.Context()
 	s.logger.Info("network state watcher connected", "host_id", hostID)
 
-	// Register watcher
+	// Register watcher, cancelling any previous watcher for this host.
 	s.mu.Lock()
-	if existing, ok := s.watchers[hostID.String()]; ok {
+	if existing, ok := s.watchers[hostID.String()]; ok && existing.cancel != nil {
 		existing.cancel()
 	}
 	s.watchers[hostID.String()] = &hostWatcher{hostID: hostID}
@@ -102,6 +102,8 @@ func (s *GRPCStateServer) WatchHostNetworkState(req *pb.WatchHostNetworkStateReq
 		"policies", len(state.Policies),
 		"remote_ports", len(state.RemotePorts),
 		"dns_records", len(state.DnsRecords),
+		"egress_rules", len(state.EgressRules),
+		"has_gateway_info", state.GatewayInfo != nil,
 	)
 
 	lastState := state
