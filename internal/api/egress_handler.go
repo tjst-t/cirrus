@@ -51,12 +51,12 @@ func (h *egressHandlers) networkFromEgressURL(w http.ResponseWriter, r *http.Req
 func (h *egressHandlers) createEgress(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 
-	net, ok := h.networkFromEgressURL(w, r)
+	n, ok := h.networkFromEgressURL(w, r)
 	if !ok {
 		return
 	}
 
-	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionCreateEgress, identity.Resource{TenantID: &net.TenantID}); err != nil || decision == identity.Deny {
+	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionCreateEgress, identity.Resource{TenantID: &n.TenantID}); err != nil || decision == identity.Deny {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
@@ -70,7 +70,7 @@ func (h *egressHandlers) createEgress(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type is required"})
 		return
 	}
-	if spec.Type != "nat_gateway" {
+	if spec.Type != network.EgressTypeNATGateway {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported egress type; only nat_gateway is supported"})
 		return
 	}
@@ -79,7 +79,7 @@ func (h *egressHandlers) createEgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	e, err := h.svc.CreateEgress(r.Context(), net.ID, spec)
+	e, err := h.svc.CreateEgress(r.Context(), n.ID, spec)
 	if err != nil {
 		if errors.Is(err, network.ErrInvalidState) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -95,17 +95,17 @@ func (h *egressHandlers) createEgress(w http.ResponseWriter, r *http.Request) {
 func (h *egressHandlers) listEgresses(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 
-	net, ok := h.networkFromEgressURL(w, r)
+	n, ok := h.networkFromEgressURL(w, r)
 	if !ok {
 		return
 	}
 
-	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionListEgresses, identity.Resource{TenantID: &net.TenantID}); err != nil || decision == identity.Deny {
+	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionListEgresses, identity.Resource{TenantID: &n.TenantID}); err != nil || decision == identity.Deny {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
 
-	egresses, err := h.svc.ListEgresses(r.Context(), net.ID)
+	egresses, err := h.svc.ListEgresses(r.Context(), n.ID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list egresses"})
 		return
@@ -119,8 +119,13 @@ func (h *egressHandlers) listEgresses(w http.ResponseWriter, r *http.Request) {
 func (h *egressHandlers) getEgress(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 
-	net, ok := h.networkFromEgressURL(w, r)
+	n, ok := h.networkFromEgressURL(w, r)
 	if !ok {
+		return
+	}
+
+	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionGetEgress, identity.Resource{TenantID: &n.TenantID}); err != nil || decision == identity.Deny {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
 
@@ -140,13 +145,8 @@ func (h *egressHandlers) getEgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if e.NetworkID != net.ID {
+	if e.NetworkID != n.ID {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "egress not found"})
-		return
-	}
-
-	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionGetEgress, identity.Resource{TenantID: &net.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
 
@@ -156,8 +156,13 @@ func (h *egressHandlers) getEgress(w http.ResponseWriter, r *http.Request) {
 func (h *egressHandlers) deleteEgress(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 
-	net, ok := h.networkFromEgressURL(w, r)
+	n, ok := h.networkFromEgressURL(w, r)
 	if !ok {
+		return
+	}
+
+	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionDeleteEgress, identity.Resource{TenantID: &n.TenantID}); err != nil || decision == identity.Deny {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
 
@@ -167,6 +172,7 @@ func (h *egressHandlers) deleteEgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Verify egress belongs to this network before deleting.
 	e, err := h.svc.GetEgress(r.Context(), egressID)
 	if err != nil {
 		if errors.Is(err, network.ErrNotFound) {
@@ -176,14 +182,8 @@ func (h *egressHandlers) deleteEgress(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get egress"})
 		return
 	}
-
-	if e.NetworkID != net.ID {
+	if e.NetworkID != n.ID {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "egress not found"})
-		return
-	}
-
-	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionDeleteEgress, identity.Resource{TenantID: &net.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
 

@@ -72,24 +72,25 @@ func (sc *StateController) ComputeHostNetworkState(ctx context.Context, hostID u
 		return nil, fmt.Errorf("compute state: dns records: %w", err)
 	}
 
-	egressRules, gatewayInfo, err := sc.computeEgressRules(ctx, hostID)
+	gw, err := sc.getGatewayNodeForHost(ctx, hostID)
 	if err != nil {
-		return nil, fmt.Errorf("compute state: egress rules: %w", err)
+		return nil, fmt.Errorf("compute state: gw node: %w", err)
 	}
 
-	ingressRules, err := sc.computeIngressRules(ctx, hostID)
-	if err != nil {
-		return nil, fmt.Errorf("compute state: ingress rules: %w", err)
-	}
+	var egressRules []*pb.EgressRule
+	var ingressRules []*pb.IngressRule
+	var gatewayInfo *pb.GatewayInfo
+	if gw != nil {
+		gatewayInfo = &pb.GatewayInfo{ExternalIp: gw.ExternalIP, InternalIp: gw.InternalIP}
 
-	// If egress didn't set gatewayInfo (parallel story), use ingress's computation.
-	if gatewayInfo == nil && len(ingressRules) > 0 {
-		gw, gwErr := sc.getGatewayNodeForHost(ctx, hostID)
-		if gwErr == nil && gw != nil {
-			gatewayInfo = &pb.GatewayInfo{
-				ExternalIp: gw.ExternalIP,
-				InternalIp: gw.InternalIP,
-			}
+		egressRules, err = sc.computeEgressRules(ctx, gw)
+		if err != nil {
+			return nil, fmt.Errorf("compute state: egress rules: %w", err)
+		}
+
+		ingressRules, err = sc.computeIngressRules(ctx, gw)
+		if err != nil {
+			return nil, fmt.Errorf("compute state: ingress rules: %w", err)
 		}
 	}
 
@@ -280,166 +281,78 @@ func (sc *StateController) getGatewayNodeForHost(ctx context.Context, hostID uui
 	return &gw, nil
 }
 
-// computeIngressRules determines if this host is a GW node and, if so, returns
-// all IngressRules for the networks assigned to it.
-func (sc *StateController) computeIngressRules(ctx context.Context, hostID uuid.UUID) ([]*pb.IngressRule, error) {
-	gw, err := sc.getGatewayNodeForHost(ctx, hostID)
+// computeIngressRules returns all IngressRules for the networks assigned to this GW node.
+// gw must be non-nil; callers must check before calling.
+func (sc *StateController) computeIngressRules(ctx context.Context, gw *GatewayNode) ([]*pb.IngressRule, error) {
+	rows, err := sc.pool.Query(ctx, `
+		SELECT i.id, i.network_id, i.type, host(i.public_ip), i.config
+		FROM ingresses i
+		JOIN networks n ON n.id = i.network_id
+		WHERE n.gateway_node_id = $1 AND i.type = $2
+	`, gw.ID, IngressTypeDirectIP)
 	if err != nil {
-		return nil, fmt.Errorf("compute ingress: get gw node: %w", err)
+		return nil, fmt.Errorf("compute ingress: query: %w", err)
 	}
-	if gw == nil {
-		// Not a GW node
-		return nil, nil
-	}
-
-	// Find all networks assigned to this GW node
-	netRows, err := sc.pool.Query(ctx, `
-		SELECT n.id FROM networks n WHERE n.gateway_node_id = $1
-	`, gw.ID)
-	if err != nil {
-		return nil, fmt.Errorf("compute ingress: list networks: %w", err)
-	}
-	defer netRows.Close()
-
-	var netIDs []uuid.UUID
-	for netRows.Next() {
-		var id uuid.UUID
-		if err := netRows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("compute ingress: scan network: %w", err)
-		}
-		netIDs = append(netIDs, id)
-	}
-	if err := netRows.Err(); err != nil {
-		return nil, fmt.Errorf("compute ingress: iter networks: %w", err)
-	}
+	defer rows.Close()
 
 	var ingressRules []*pb.IngressRule
-	for _, netID := range netIDs {
-		iRows, err := sc.pool.Query(ctx, `
-			SELECT i.id, i.network_id, i.type, host(i.public_ip), i.config
-			FROM ingresses i
-			WHERE i.network_id = $1 AND i.type = 'direct_ip'
-		`, netID)
-		if err != nil {
-			return nil, fmt.Errorf("compute ingress: list ingresses for network %s: %w", netID, err)
+	for rows.Next() {
+		var iID, iNetID uuid.UUID
+		var iType, publicIP string
+		var configJSON []byte
+		if err := rows.Scan(&iID, &iNetID, &iType, &publicIP, &configJSON); err != nil {
+			return nil, fmt.Errorf("compute ingress: scan: %w", err)
 		}
-
-		for iRows.Next() {
-			var iID, iNetID uuid.UUID
-			var iType, publicIP string
-			var configJSON []byte
-			if err := iRows.Scan(&iID, &iNetID, &iType, &publicIP, &configJSON); err != nil {
-				iRows.Close()
-				return nil, fmt.Errorf("compute ingress: scan ingress: %w", err)
-			}
-			var cfg IngressConfig
-			if err := json.Unmarshal(configJSON, &cfg); err != nil {
-				iRows.Close()
-				return nil, fmt.Errorf("compute ingress: unmarshal config: %w", err)
-			}
-			ingressRules = append(ingressRules, &pb.IngressRule{
-				IngressId: iID.String(),
-				NetworkId: iNetID.String(),
-				Type:      iType,
-				PublicIp:  publicIP,
-				TargetIp:  cfg.TargetIP,
-			})
+		var cfg IngressConfig
+		if err := json.Unmarshal(configJSON, &cfg); err != nil {
+			return nil, fmt.Errorf("compute ingress: unmarshal config: %w", err)
 		}
-		iRows.Close()
-		if err := iRows.Err(); err != nil {
-			return nil, fmt.Errorf("compute ingress: iter ingresses: %w", err)
-		}
+		ingressRules = append(ingressRules, &pb.IngressRule{
+			IngressId: iID.String(),
+			NetworkId: iNetID.String(),
+			Type:      iType,
+			PublicIp:  publicIP,
+			TargetIp:  cfg.TargetIP,
+		})
 	}
-
-	return ingressRules, nil
+	return ingressRules, rows.Err()
 }
 
-// computeEgressRules determines if this host is a GW node and, if so, returns
-// all EgressRules and GatewayInfo for the networks assigned to it.
-func (sc *StateController) computeEgressRules(ctx context.Context, hostID uuid.UUID) ([]*pb.EgressRule, *pb.GatewayInfo, error) {
-	// Check if this host is an active GW node
-	var gwID uuid.UUID
-	var externalIP, internalIP string
-	err := sc.pool.QueryRow(ctx, `
-		SELECT gn.id, host(gn.external_ip), host(gn.internal_ip)
-		FROM gateway_nodes gn
-		JOIN hosts h ON h.id = gn.host_id
-		WHERE h.id = $1 AND 'gateway' = ANY(h.node_roles) AND gn.status = 'active'
-		LIMIT 1
-	`, hostID).Scan(&gwID, &externalIP, &internalIP)
+// computeEgressRules returns all EgressRules for the networks assigned to this GW node.
+// gw must be non-nil; callers must check before calling.
+func (sc *StateController) computeEgressRules(ctx context.Context, gw *GatewayNode) ([]*pb.EgressRule, error) {
+	rows, err := sc.pool.Query(ctx, `
+		SELECT e.id, e.network_id, e.type, e.config, n.cidr::TEXT
+		FROM egresses e
+		JOIN networks n ON n.id = e.network_id
+		WHERE n.gateway_node_id = $1 AND e.type = $2
+	`, gw.ID, EgressTypeNATGateway)
 	if err != nil {
-		// Not a GW node (or no rows) — not an error condition
-		return nil, nil, nil
+		return nil, fmt.Errorf("compute egress: query: %w", err)
 	}
-
-	gatewayInfo := &pb.GatewayInfo{
-		ExternalIp: externalIP,
-		InternalIp: internalIP,
-	}
-
-	// Find all networks assigned to this GW node
-	netRows, err := sc.pool.Query(ctx, `
-		SELECT n.id, n.cidr::TEXT FROM networks n WHERE n.gateway_node_id = $1
-	`, gwID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("compute egress: list networks: %w", err)
-	}
-	defer netRows.Close()
-
-	type netInfo struct {
-		id   uuid.UUID
-		cidr string
-	}
-	var nets []netInfo
-	for netRows.Next() {
-		var ni netInfo
-		if err := netRows.Scan(&ni.id, &ni.cidr); err != nil {
-			return nil, nil, fmt.Errorf("compute egress: scan network: %w", err)
-		}
-		nets = append(nets, ni)
-	}
-	if err := netRows.Err(); err != nil {
-		return nil, nil, fmt.Errorf("compute egress: iter networks: %w", err)
-	}
+	defer rows.Close()
 
 	var egressRules []*pb.EgressRule
-	for _, ni := range nets {
-		eRows, err := sc.pool.Query(ctx, `
-			SELECT e.id, e.type, e.config FROM egresses e
-			WHERE e.network_id = $1 AND e.type = 'nat_gateway'
-		`, ni.id)
-		if err != nil {
-			return nil, nil, fmt.Errorf("compute egress: list egresses for network %s: %w", ni.id, err)
+	for rows.Next() {
+		var eID, eNetID uuid.UUID
+		var eType, cidr string
+		var configJSON []byte
+		if err := rows.Scan(&eID, &eNetID, &eType, &configJSON, &cidr); err != nil {
+			return nil, fmt.Errorf("compute egress: scan: %w", err)
 		}
-
-		for eRows.Next() {
-			var eID uuid.UUID
-			var eType string
-			var configJSON []byte
-			if err := eRows.Scan(&eID, &eType, &configJSON); err != nil {
-				eRows.Close()
-				return nil, nil, fmt.Errorf("compute egress: scan egress: %w", err)
-			}
-			var cfg EgressConfig
-			if err := json.Unmarshal(configJSON, &cfg); err != nil {
-				eRows.Close()
-				return nil, nil, fmt.Errorf("compute egress: unmarshal config: %w", err)
-			}
-			egressRules = append(egressRules, &pb.EgressRule{
-				EgressId:    eID.String(),
-				NetworkId:   ni.id.String(),
-				Type:        eType,
-				PublicIp:    cfg.PublicIP,
-				NetworkCidr: ni.cidr,
-			})
+		var cfg EgressConfig
+		if err := json.Unmarshal(configJSON, &cfg); err != nil {
+			return nil, fmt.Errorf("compute egress: unmarshal config: %w", err)
 		}
-		eRows.Close()
-		if err := eRows.Err(); err != nil {
-			return nil, nil, fmt.Errorf("compute egress: iter egresses: %w", err)
-		}
+		egressRules = append(egressRules, &pb.EgressRule{
+			EgressId:    eID.String(),
+			NetworkId:   eNetID.String(),
+			Type:        eType,
+			PublicIp:    cfg.PublicIP,
+			NetworkCidr: cidr,
+		})
 	}
-
-	return egressRules, gatewayInfo, nil
+	return egressRules, rows.Err()
 }
 
 // gatewayIPFromVM computes the gateway IP (.2) from the VM IP (.1) in a /30 block.

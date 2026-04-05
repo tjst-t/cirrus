@@ -6,6 +6,12 @@ import (
 	"github.com/google/uuid"
 )
 
+// Egress and Ingress type constants.
+const (
+	EgressTypeNATGateway = "nat_gateway"
+	IngressTypeDirectIP  = "direct_ip"
+)
+
 // NetworkStatus represents the lifecycle state of a network.
 type NetworkStatus string
 

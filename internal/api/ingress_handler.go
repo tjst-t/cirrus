@@ -156,6 +156,10 @@ func (h *ingressHandlers) getIngress(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get ingress"})
 		return
 	}
+	if ingress.NetworkID != networkID {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "ingress not found"})
+		return
+	}
 
 	writeJSON(w, http.StatusOK, ingress)
 }

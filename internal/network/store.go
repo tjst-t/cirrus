@@ -581,7 +581,7 @@ func (s *Store) GetNetworkGatewayNode(ctx context.Context, networkID uuid.UUID) 
 // --- Egresses ---
 
 func (s *Store) CreateEgress(ctx context.Context, networkID uuid.UUID, spec EgressSpec) (*Egress, error) {
-	if spec.Type != "nat_gateway" {
+	if spec.Type != EgressTypeNATGateway {
 		return nil, fmt.Errorf("egress: create: unsupported type %q: %w", spec.Type, ErrInvalidState)
 	}
 
@@ -675,20 +675,21 @@ func (s *Store) ListEgresses(ctx context.Context, networkID uuid.UUID) ([]Egress
 }
 
 func (s *Store) DeleteEgress(ctx context.Context, id uuid.UUID) error {
-	// Fetch tenant_id for quota tracking before deletion.
+	// Delete and fetch tenant_id atomically via CTE to avoid a separate round-trip.
 	var tenantID uuid.UUID
-	_ = s.pool.QueryRow(ctx,
-		`SELECT n.tenant_id FROM egresses e JOIN networks n ON n.id = e.network_id WHERE e.id = $1`, id,
-	).Scan(&tenantID)
-
-	tag, err := s.pool.Exec(ctx, `DELETE FROM egresses WHERE id = $1`, id)
+	err := s.pool.QueryRow(ctx, `
+		WITH deleted AS (
+			DELETE FROM egresses WHERE id = $1 RETURNING network_id
+		)
+		SELECT n.tenant_id FROM deleted d JOIN networks n ON n.id = d.network_id
+	`, id).Scan(&tenantID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("egress: delete: %w", ErrNotFound)
+		}
 		return wrapErr("egress: delete", err)
 	}
-	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("egress: delete: %w", ErrNotFound)
-	}
-	if s.quotaSvc != nil && tenantID != uuid.Nil {
+	if s.quotaSvc != nil {
 		if err := s.quotaSvc.Decommit(ctx, tenantID, quota.ResourceDelta{Egresses: 1}); err != nil {
 			s.logger.Warn("quota decommit failed after egress deletion", "egress_id", id, "error", err)
 		}
@@ -756,7 +757,7 @@ func (s *Store) DeleteIPPool(ctx context.Context, id uuid.UUID) error {
 // --- Ingresses ---
 
 func (s *Store) CreateIngress(ctx context.Context, networkID uuid.UUID, spec IngressSpec) (*Ingress, error) {
-	if spec.Type != "direct_ip" {
+	if spec.Type != IngressTypeDirectIP {
 		return nil, fmt.Errorf("ingress: create: unsupported type %q: %w", spec.Type, ErrInvalidState)
 	}
 
@@ -862,20 +863,21 @@ func (s *Store) ListIngresses(ctx context.Context, networkID uuid.UUID) ([]Ingre
 }
 
 func (s *Store) DeleteIngress(ctx context.Context, id uuid.UUID) error {
-	// Fetch tenant_id for quota tracking before deletion.
+	// Delete and fetch tenant_id atomically via CTE to avoid a separate round-trip.
 	var tenantID uuid.UUID
-	_ = s.pool.QueryRow(ctx,
-		`SELECT n.tenant_id FROM ingresses i JOIN networks n ON n.id = i.network_id WHERE i.id = $1`, id,
-	).Scan(&tenantID)
-
-	tag, err := s.pool.Exec(ctx, `DELETE FROM ingresses WHERE id = $1`, id)
+	err := s.pool.QueryRow(ctx, `
+		WITH deleted AS (
+			DELETE FROM ingresses WHERE id = $1 RETURNING network_id
+		)
+		SELECT n.tenant_id FROM deleted d JOIN networks n ON n.id = d.network_id
+	`, id).Scan(&tenantID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("ingress: delete: %w", ErrNotFound)
+		}
 		return wrapErr("ingress: delete", err)
 	}
-	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("ingress: delete: %w", ErrNotFound)
-	}
-	if s.quotaSvc != nil && tenantID != uuid.Nil {
+	if s.quotaSvc != nil {
 		if err := s.quotaSvc.Decommit(ctx, tenantID, quota.ResourceDelta{Ingresses: 1}); err != nil {
 			s.logger.Warn("quota decommit failed after ingress deletion", "ingress_id", id, "error", err)
 		}
@@ -885,7 +887,7 @@ func (s *Store) DeleteIngress(ctx context.Context, id uuid.UUID) error {
 
 // ipInCIDR returns true if ip is within the given cidr string (e.g. "203.0.113.0/24").
 func ipInCIDR(ipStr, cidrStr string) bool {
-	_, network, err := net.ParseCIDR(cidrStr)
+	_, ipNet, err := net.ParseCIDR(cidrStr)
 	if err != nil {
 		return false
 	}
@@ -893,5 +895,5 @@ func ipInCIDR(ipStr, cidrStr string) bool {
 	if ip == nil {
 		return false
 	}
-	return network.Contains(ip)
+	return ipNet.Contains(ip)
 }
