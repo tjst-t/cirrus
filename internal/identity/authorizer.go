@@ -103,6 +103,14 @@ const (
 
 	ActionGetQuota Action = "get_quota"
 	ActionSetQuota Action = "set_quota"
+
+	// Gateway node actions (infra_admin)
+	ActionCreateGatewayNode       Action = "create_gateway_node"
+	ActionListGatewayNodes        Action = "list_gateway_nodes"
+	ActionGetGatewayNode          Action = "get_gateway_node"
+	ActionDeleteGatewayNode       Action = "delete_gateway_node"
+	ActionAssignGatewayNode       Action = "assign_gateway_node"
+	ActionGetNetworkGatewayNode   Action = "get_network_gateway_node"
 )
 
 // Resource represents the target resource of an authorization check.

@@ -87,9 +87,12 @@ type HostNetworkStateUpdate struct {
 	RemovedDnsNames      []string `protobuf:"bytes,5,rep,name=removed_dns_names,json=removedDnsNames,proto3" json:"removed_dns_names,omitempty"`
 	RemovedRemotePortIps []string `protobuf:"bytes,6,rep,name=removed_remote_port_ips,json=removedRemotePortIps,proto3" json:"removed_remote_port_ips,omitempty"`
 	// Monotonically increasing version for ordering and staleness detection.
-	Version       uint64 `protobuf:"varint,7,opt,name=version,proto3" json:"version,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Version uint64 `protobuf:"varint,7,opt,name=version,proto3" json:"version,omitempty"`
+	// For delta updates: IDs of removed egress/ingress rules.
+	RemovedEgressIds  []string `protobuf:"bytes,8,rep,name=removed_egress_ids,json=removedEgressIds,proto3" json:"removed_egress_ids,omitempty"`
+	RemovedIngressIds []string `protobuf:"bytes,9,rep,name=removed_ingress_ids,json=removedIngressIds,proto3" json:"removed_ingress_ids,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *HostNetworkStateUpdate) Reset() {
@@ -171,6 +174,20 @@ func (x *HostNetworkStateUpdate) GetVersion() uint64 {
 	return 0
 }
 
+func (x *HostNetworkStateUpdate) GetRemovedEgressIds() []string {
+	if x != nil {
+		return x.RemovedEgressIds
+	}
+	return nil
+}
+
+func (x *HostNetworkStateUpdate) GetRemovedIngressIds() []string {
+	if x != nil {
+		return x.RemovedIngressIds
+	}
+	return nil
+}
+
 // HostNetworkState is the complete or partial network state for a single host.
 type HostNetworkState struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -178,6 +195,9 @@ type HostNetworkState struct {
 	Policies      []*PolicyRule          `protobuf:"bytes,2,rep,name=policies,proto3" json:"policies,omitempty"`
 	RemotePorts   []*RemotePort          `protobuf:"bytes,3,rep,name=remote_ports,json=remotePorts,proto3" json:"remote_ports,omitempty"`
 	DnsRecords    []*DnsRecord           `protobuf:"bytes,4,rep,name=dns_records,json=dnsRecords,proto3" json:"dns_records,omitempty"`
+	EgressRules   []*EgressRule          `protobuf:"bytes,5,rep,name=egress_rules,json=egressRules,proto3" json:"egress_rules,omitempty"`    // only populated for GW-role hosts
+	IngressRules  []*IngressRule         `protobuf:"bytes,6,rep,name=ingress_rules,json=ingressRules,proto3" json:"ingress_rules,omitempty"` // only populated for GW-role hosts
+	GatewayInfo   *GatewayInfo           `protobuf:"bytes,7,opt,name=gateway_info,json=gatewayInfo,proto3" json:"gateway_info,omitempty"`    // only populated for GW-role hosts
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -240,6 +260,242 @@ func (x *HostNetworkState) GetDnsRecords() []*DnsRecord {
 	return nil
 }
 
+func (x *HostNetworkState) GetEgressRules() []*EgressRule {
+	if x != nil {
+		return x.EgressRules
+	}
+	return nil
+}
+
+func (x *HostNetworkState) GetIngressRules() []*IngressRule {
+	if x != nil {
+		return x.IngressRules
+	}
+	return nil
+}
+
+func (x *HostNetworkState) GetGatewayInfo() *GatewayInfo {
+	if x != nil {
+		return x.GatewayInfo
+	}
+	return nil
+}
+
+// EgressRule describes an Egress rule for a GW node (NAT Gateway SNAT).
+type EgressRule struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	EgressId      string                 `protobuf:"bytes,1,opt,name=egress_id,json=egressId,proto3" json:"egress_id,omitempty"`
+	NetworkId     string                 `protobuf:"bytes,2,opt,name=network_id,json=networkId,proto3" json:"network_id,omitempty"`
+	Type          string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`                                  // "nat_gateway"
+	PublicIp      string                 `protobuf:"bytes,4,opt,name=public_ip,json=publicIp,proto3" json:"public_ip,omitempty"`          // The public IP for SNAT (from config JSONB)
+	NetworkCidr   string                 `protobuf:"bytes,5,opt,name=network_cidr,json=networkCidr,proto3" json:"network_cidr,omitempty"` // The tenant network CIDR to SNAT
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EgressRule) Reset() {
+	*x = EgressRule{}
+	mi := &file_network_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EgressRule) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EgressRule) ProtoMessage() {}
+
+func (x *EgressRule) ProtoReflect() protoreflect.Message {
+	mi := &file_network_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EgressRule.ProtoReflect.Descriptor instead.
+func (*EgressRule) Descriptor() ([]byte, []int) {
+	return file_network_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *EgressRule) GetEgressId() string {
+	if x != nil {
+		return x.EgressId
+	}
+	return ""
+}
+
+func (x *EgressRule) GetNetworkId() string {
+	if x != nil {
+		return x.NetworkId
+	}
+	return ""
+}
+
+func (x *EgressRule) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *EgressRule) GetPublicIp() string {
+	if x != nil {
+		return x.PublicIp
+	}
+	return ""
+}
+
+func (x *EgressRule) GetNetworkCidr() string {
+	if x != nil {
+		return x.NetworkCidr
+	}
+	return ""
+}
+
+// IngressRule describes an Ingress rule for a GW node (Direct IP DNAT).
+type IngressRule struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	IngressId        string                 `protobuf:"bytes,1,opt,name=ingress_id,json=ingressId,proto3" json:"ingress_id,omitempty"`
+	NetworkId        string                 `protobuf:"bytes,2,opt,name=network_id,json=networkId,proto3" json:"network_id,omitempty"`
+	Type             string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`                                                   // "direct_ip"
+	PublicIp         string                 `protobuf:"bytes,4,opt,name=public_ip,json=publicIp,proto3" json:"public_ip,omitempty"`                           // The public IP that external traffic arrives on
+	TargetIp         string                 `protobuf:"bytes,5,opt,name=target_ip,json=targetIp,proto3" json:"target_ip,omitempty"`                           // The VM private IP to DNAT to
+	RemovedEgressIds []string               `protobuf:"bytes,6,rep,name=removed_egress_ids,json=removedEgressIds,proto3" json:"removed_egress_ids,omitempty"` // for delta updates (reuse field)
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *IngressRule) Reset() {
+	*x = IngressRule{}
+	mi := &file_network_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IngressRule) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IngressRule) ProtoMessage() {}
+
+func (x *IngressRule) ProtoReflect() protoreflect.Message {
+	mi := &file_network_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IngressRule.ProtoReflect.Descriptor instead.
+func (*IngressRule) Descriptor() ([]byte, []int) {
+	return file_network_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *IngressRule) GetIngressId() string {
+	if x != nil {
+		return x.IngressId
+	}
+	return ""
+}
+
+func (x *IngressRule) GetNetworkId() string {
+	if x != nil {
+		return x.NetworkId
+	}
+	return ""
+}
+
+func (x *IngressRule) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *IngressRule) GetPublicIp() string {
+	if x != nil {
+		return x.PublicIp
+	}
+	return ""
+}
+
+func (x *IngressRule) GetTargetIp() string {
+	if x != nil {
+		return x.TargetIp
+	}
+	return ""
+}
+
+func (x *IngressRule) GetRemovedEgressIds() []string {
+	if x != nil {
+		return x.RemovedEgressIds
+	}
+	return nil
+}
+
+// GatewayInfo tells a GW-role host its external IP for SNAT/DNAT.
+type GatewayInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ExternalIp    string                 `protobuf:"bytes,1,opt,name=external_ip,json=externalIp,proto3" json:"external_ip,omitempty"`
+	InternalIp    string                 `protobuf:"bytes,2,opt,name=internal_ip,json=internalIp,proto3" json:"internal_ip,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GatewayInfo) Reset() {
+	*x = GatewayInfo{}
+	mi := &file_network_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GatewayInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GatewayInfo) ProtoMessage() {}
+
+func (x *GatewayInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_network_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GatewayInfo.ProtoReflect.Descriptor instead.
+func (*GatewayInfo) Descriptor() ([]byte, []int) {
+	return file_network_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *GatewayInfo) GetExternalIp() string {
+	if x != nil {
+		return x.ExternalIp
+	}
+	return ""
+}
+
+func (x *GatewayInfo) GetInternalIp() string {
+	if x != nil {
+		return x.InternalIp
+	}
+	return ""
+}
+
 // PortState describes a local VM port on this host.
 type PortState struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -260,7 +516,7 @@ type PortState struct {
 
 func (x *PortState) Reset() {
 	*x = PortState{}
-	mi := &file_network_proto_msgTypes[3]
+	mi := &file_network_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -272,7 +528,7 @@ func (x *PortState) String() string {
 func (*PortState) ProtoMessage() {}
 
 func (x *PortState) ProtoReflect() protoreflect.Message {
-	mi := &file_network_proto_msgTypes[3]
+	mi := &file_network_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -285,7 +541,7 @@ func (x *PortState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PortState.ProtoReflect.Descriptor instead.
 func (*PortState) Descriptor() ([]byte, []int) {
-	return file_network_proto_rawDescGZIP(), []int{3}
+	return file_network_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *PortState) GetPortId() string {
@@ -382,7 +638,7 @@ type PolicyRule struct {
 
 func (x *PolicyRule) Reset() {
 	*x = PolicyRule{}
-	mi := &file_network_proto_msgTypes[4]
+	mi := &file_network_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -394,7 +650,7 @@ func (x *PolicyRule) String() string {
 func (*PolicyRule) ProtoMessage() {}
 
 func (x *PolicyRule) ProtoReflect() protoreflect.Message {
-	mi := &file_network_proto_msgTypes[4]
+	mi := &file_network_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -407,7 +663,7 @@ func (x *PolicyRule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolicyRule.ProtoReflect.Descriptor instead.
 func (*PolicyRule) Descriptor() ([]byte, []int) {
-	return file_network_proto_rawDescGZIP(), []int{4}
+	return file_network_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *PolicyRule) GetPolicyId() string {
@@ -480,7 +736,7 @@ type RemotePort struct {
 
 func (x *RemotePort) Reset() {
 	*x = RemotePort{}
-	mi := &file_network_proto_msgTypes[5]
+	mi := &file_network_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -492,7 +748,7 @@ func (x *RemotePort) String() string {
 func (*RemotePort) ProtoMessage() {}
 
 func (x *RemotePort) ProtoReflect() protoreflect.Message {
-	mi := &file_network_proto_msgTypes[5]
+	mi := &file_network_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -505,7 +761,7 @@ func (x *RemotePort) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemotePort.ProtoReflect.Descriptor instead.
 func (*RemotePort) Descriptor() ([]byte, []int) {
-	return file_network_proto_rawDescGZIP(), []int{5}
+	return file_network_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *RemotePort) GetNetworkId() string {
@@ -555,7 +811,7 @@ type DnsRecord struct {
 
 func (x *DnsRecord) Reset() {
 	*x = DnsRecord{}
-	mi := &file_network_proto_msgTypes[6]
+	mi := &file_network_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -567,7 +823,7 @@ func (x *DnsRecord) String() string {
 func (*DnsRecord) ProtoMessage() {}
 
 func (x *DnsRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_network_proto_msgTypes[6]
+	mi := &file_network_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -580,7 +836,7 @@ func (x *DnsRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DnsRecord.ProtoReflect.Descriptor instead.
 func (*DnsRecord) Descriptor() ([]byte, []int) {
-	return file_network_proto_rawDescGZIP(), []int{6}
+	return file_network_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *DnsRecord) GetName() string {
@@ -611,7 +867,7 @@ const file_network_proto_rawDesc = "" +
 	"\rnetwork.proto\x12\x11cirrus.network.v1\"f\n" +
 	"\x1cWatchHostNetworkStateRequest\x12\x17\n" +
 	"\ahost_id\x18\x01 \x01(\tR\x06hostId\x12-\n" +
-	"\x12registration_token\x18\x02 \x01(\tR\x11registrationToken\"\xbc\x02\n" +
+	"\x12registration_token\x18\x02 \x01(\tR\x11registrationToken\"\x9a\x03\n" +
 	"\x16HostNetworkStateUpdate\x12\x12\n" +
 	"\x04full\x18\x01 \x01(\bR\x04full\x129\n" +
 	"\x05state\x18\x02 \x01(\v2#.cirrus.network.v1.HostNetworkStateR\x05state\x12(\n" +
@@ -619,13 +875,40 @@ const file_network_proto_rawDesc = "" +
 	"\x12removed_policy_ids\x18\x04 \x03(\tR\x10removedPolicyIds\x12*\n" +
 	"\x11removed_dns_names\x18\x05 \x03(\tR\x0fremovedDnsNames\x125\n" +
 	"\x17removed_remote_port_ips\x18\x06 \x03(\tR\x14removedRemotePortIps\x12\x18\n" +
-	"\aversion\x18\a \x01(\x04R\aversion\"\x82\x02\n" +
+	"\aversion\x18\a \x01(\x04R\aversion\x12,\n" +
+	"\x12removed_egress_ids\x18\b \x03(\tR\x10removedEgressIds\x12.\n" +
+	"\x13removed_ingress_ids\x18\t \x03(\tR\x11removedIngressIds\"\xcc\x03\n" +
 	"\x10HostNetworkState\x122\n" +
 	"\x05ports\x18\x01 \x03(\v2\x1c.cirrus.network.v1.PortStateR\x05ports\x129\n" +
 	"\bpolicies\x18\x02 \x03(\v2\x1d.cirrus.network.v1.PolicyRuleR\bpolicies\x12@\n" +
 	"\fremote_ports\x18\x03 \x03(\v2\x1d.cirrus.network.v1.RemotePortR\vremotePorts\x12=\n" +
 	"\vdns_records\x18\x04 \x03(\v2\x1c.cirrus.network.v1.DnsRecordR\n" +
-	"dnsRecords\"\xbf\x02\n" +
+	"dnsRecords\x12@\n" +
+	"\fegress_rules\x18\x05 \x03(\v2\x1d.cirrus.network.v1.EgressRuleR\vegressRules\x12C\n" +
+	"\ringress_rules\x18\x06 \x03(\v2\x1e.cirrus.network.v1.IngressRuleR\fingressRules\x12A\n" +
+	"\fgateway_info\x18\a \x01(\v2\x1e.cirrus.network.v1.GatewayInfoR\vgatewayInfo\"\x9c\x01\n" +
+	"\n" +
+	"EgressRule\x12\x1b\n" +
+	"\tegress_id\x18\x01 \x01(\tR\begressId\x12\x1d\n" +
+	"\n" +
+	"network_id\x18\x02 \x01(\tR\tnetworkId\x12\x12\n" +
+	"\x04type\x18\x03 \x01(\tR\x04type\x12\x1b\n" +
+	"\tpublic_ip\x18\x04 \x01(\tR\bpublicIp\x12!\n" +
+	"\fnetwork_cidr\x18\x05 \x01(\tR\vnetworkCidr\"\xc7\x01\n" +
+	"\vIngressRule\x12\x1d\n" +
+	"\n" +
+	"ingress_id\x18\x01 \x01(\tR\tingressId\x12\x1d\n" +
+	"\n" +
+	"network_id\x18\x02 \x01(\tR\tnetworkId\x12\x12\n" +
+	"\x04type\x18\x03 \x01(\tR\x04type\x12\x1b\n" +
+	"\tpublic_ip\x18\x04 \x01(\tR\bpublicIp\x12\x1b\n" +
+	"\ttarget_ip\x18\x05 \x01(\tR\btargetIp\x12,\n" +
+	"\x12removed_egress_ids\x18\x06 \x03(\tR\x10removedEgressIds\"O\n" +
+	"\vGatewayInfo\x12\x1f\n" +
+	"\vexternal_ip\x18\x01 \x01(\tR\n" +
+	"externalIp\x12\x1f\n" +
+	"\vinternal_ip\x18\x02 \x01(\tR\n" +
+	"internalIp\"\xbf\x02\n" +
 	"\tPortState\x12\x17\n" +
 	"\aport_id\x18\x01 \x01(\tR\x06portId\x12\x13\n" +
 	"\x05vm_id\x18\x02 \x01(\tR\x04vmId\x12\x17\n" +
@@ -686,29 +969,35 @@ func file_network_proto_rawDescGZIP() []byte {
 	return file_network_proto_rawDescData
 }
 
-var file_network_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_network_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_network_proto_goTypes = []any{
 	(*WatchHostNetworkStateRequest)(nil), // 0: cirrus.network.v1.WatchHostNetworkStateRequest
 	(*HostNetworkStateUpdate)(nil),       // 1: cirrus.network.v1.HostNetworkStateUpdate
 	(*HostNetworkState)(nil),             // 2: cirrus.network.v1.HostNetworkState
-	(*PortState)(nil),                    // 3: cirrus.network.v1.PortState
-	(*PolicyRule)(nil),                   // 4: cirrus.network.v1.PolicyRule
-	(*RemotePort)(nil),                   // 5: cirrus.network.v1.RemotePort
-	(*DnsRecord)(nil),                    // 6: cirrus.network.v1.DnsRecord
+	(*EgressRule)(nil),                   // 3: cirrus.network.v1.EgressRule
+	(*IngressRule)(nil),                  // 4: cirrus.network.v1.IngressRule
+	(*GatewayInfo)(nil),                  // 5: cirrus.network.v1.GatewayInfo
+	(*PortState)(nil),                    // 6: cirrus.network.v1.PortState
+	(*PolicyRule)(nil),                   // 7: cirrus.network.v1.PolicyRule
+	(*RemotePort)(nil),                   // 8: cirrus.network.v1.RemotePort
+	(*DnsRecord)(nil),                    // 9: cirrus.network.v1.DnsRecord
 }
 var file_network_proto_depIdxs = []int32{
 	2, // 0: cirrus.network.v1.HostNetworkStateUpdate.state:type_name -> cirrus.network.v1.HostNetworkState
-	3, // 1: cirrus.network.v1.HostNetworkState.ports:type_name -> cirrus.network.v1.PortState
-	4, // 2: cirrus.network.v1.HostNetworkState.policies:type_name -> cirrus.network.v1.PolicyRule
-	5, // 3: cirrus.network.v1.HostNetworkState.remote_ports:type_name -> cirrus.network.v1.RemotePort
-	6, // 4: cirrus.network.v1.HostNetworkState.dns_records:type_name -> cirrus.network.v1.DnsRecord
-	0, // 5: cirrus.network.v1.NetworkStateService.WatchHostNetworkState:input_type -> cirrus.network.v1.WatchHostNetworkStateRequest
-	1, // 6: cirrus.network.v1.NetworkStateService.WatchHostNetworkState:output_type -> cirrus.network.v1.HostNetworkStateUpdate
-	6, // [6:7] is the sub-list for method output_type
-	5, // [5:6] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	6, // 1: cirrus.network.v1.HostNetworkState.ports:type_name -> cirrus.network.v1.PortState
+	7, // 2: cirrus.network.v1.HostNetworkState.policies:type_name -> cirrus.network.v1.PolicyRule
+	8, // 3: cirrus.network.v1.HostNetworkState.remote_ports:type_name -> cirrus.network.v1.RemotePort
+	9, // 4: cirrus.network.v1.HostNetworkState.dns_records:type_name -> cirrus.network.v1.DnsRecord
+	3, // 5: cirrus.network.v1.HostNetworkState.egress_rules:type_name -> cirrus.network.v1.EgressRule
+	4, // 6: cirrus.network.v1.HostNetworkState.ingress_rules:type_name -> cirrus.network.v1.IngressRule
+	5, // 7: cirrus.network.v1.HostNetworkState.gateway_info:type_name -> cirrus.network.v1.GatewayInfo
+	0, // 8: cirrus.network.v1.NetworkStateService.WatchHostNetworkState:input_type -> cirrus.network.v1.WatchHostNetworkStateRequest
+	1, // 9: cirrus.network.v1.NetworkStateService.WatchHostNetworkState:output_type -> cirrus.network.v1.HostNetworkStateUpdate
+	9, // [9:10] is the sub-list for method output_type
+	8, // [8:9] is the sub-list for method input_type
+	8, // [8:8] is the sub-list for extension type_name
+	8, // [8:8] is the sub-list for extension extendee
+	0, // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_network_proto_init() }
@@ -722,7 +1011,7 @@ func file_network_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_network_proto_rawDesc), len(file_network_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

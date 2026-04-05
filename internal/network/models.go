@@ -104,3 +104,20 @@ type PolicySpec struct {
 	Priority   int       `json:"priority,omitempty"`
 	Action     string    `json:"action,omitempty"`
 }
+
+// GatewayNode represents a host with gateway capability.
+type GatewayNode struct {
+	ID         uuid.UUID `json:"id"`
+	HostID     uuid.UUID `json:"host_id"`
+	ExternalIP string    `json:"external_ip"` // Public-facing IP for SNAT/DNAT
+	InternalIP string    `json:"internal_ip"` // Fabric IP for Geneve tunnel
+	Status     string    `json:"status"`      // "active", "draining", "retired"
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// GatewayNodeSpec is the input for creating a gateway node.
+type GatewayNodeSpec struct {
+	HostID     uuid.UUID `json:"host_id"`
+	ExternalIP string    `json:"external_ip"`
+	InternalIP string    `json:"internal_ip"`
+}

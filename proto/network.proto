@@ -39,6 +39,10 @@ message HostNetworkStateUpdate {
 
   // Monotonically increasing version for ordering and staleness detection.
   uint64 version = 7;
+
+  // For delta updates: IDs of removed egress/ingress rules.
+  repeated string removed_egress_ids = 8;
+  repeated string removed_ingress_ids = 9;
 }
 
 // HostNetworkState is the complete or partial network state for a single host.
@@ -47,6 +51,34 @@ message HostNetworkState {
   repeated PolicyRule policies = 2;
   repeated RemotePort remote_ports = 3;
   repeated DnsRecord dns_records = 4;
+  repeated EgressRule egress_rules = 5;    // only populated for GW-role hosts
+  repeated IngressRule ingress_rules = 6;  // only populated for GW-role hosts
+  GatewayInfo gateway_info = 7;            // only populated for GW-role hosts
+}
+
+// EgressRule describes an Egress rule for a GW node (NAT Gateway SNAT).
+message EgressRule {
+  string egress_id = 1;
+  string network_id = 2;
+  string type = 3;           // "nat_gateway"
+  string public_ip = 4;      // The public IP for SNAT (from config JSONB)
+  string network_cidr = 5;   // The tenant network CIDR to SNAT
+}
+
+// IngressRule describes an Ingress rule for a GW node (Direct IP DNAT).
+message IngressRule {
+  string ingress_id = 1;
+  string network_id = 2;
+  string type = 3;           // "direct_ip"
+  string public_ip = 4;      // The public IP that external traffic arrives on
+  string target_ip = 5;      // The VM private IP to DNAT to
+  repeated string removed_egress_ids = 6;  // for delta updates (reuse field)
+}
+
+// GatewayInfo tells a GW-role host its external IP for SNAT/DNAT.
+message GatewayInfo {
+  string external_ip = 1;
+  string internal_ip = 2;
 }
 
 // PortState describes a local VM port on this host.

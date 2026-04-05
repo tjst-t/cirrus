@@ -154,6 +154,15 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		r.Delete("/vms/{vm_id}", vh.deleteVM)
 		r.Post("/vms/{vm_id}/actions", vh.vmAction)
 		r.Post("/admin/vms/{vm_id}/repair", vh.repairVM)
+
+		// Gateway nodes (infra_admin)
+		gwh := &gatewayHandlers{svc: networkSvc, authz: authz}
+		r.Post("/admin/gateway-nodes", gwh.createGatewayNode)
+		r.Get("/admin/gateway-nodes", gwh.listGatewayNodes)
+		r.Get("/admin/gateway-nodes/{id}", gwh.getGatewayNode)
+		r.Delete("/admin/gateway-nodes/{id}", gwh.deleteGatewayNode)
+		r.Put("/admin/networks/{network_id}/gateway", gwh.assignGatewayNode)
+		r.Get("/admin/networks/{network_id}/gateway", gwh.getNetworkGatewayNode)
 	})
 
 	return r

@@ -440,3 +440,138 @@ func (s *Store) DeletePort(ctx context.Context, id uuid.UUID) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM ports WHERE id = $1`, id)
 	return err
 }
+
+// --- Gateway Nodes ---
+
+func (s *Store) CreateGatewayNode(ctx context.Context, spec GatewayNodeSpec) (*GatewayNode, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("gateway_node: create: begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var gw GatewayNode
+	err = tx.QueryRow(ctx,
+		`INSERT INTO gateway_nodes (host_id, external_ip, internal_ip, status)
+		 VALUES ($1, $2::inet, $3::inet, 'active')
+		 RETURNING id, host_id, host(external_ip), host(internal_ip), status, created_at`,
+		spec.HostID, spec.ExternalIP, spec.InternalIP,
+	).Scan(&gw.ID, &gw.HostID, &gw.ExternalIP, &gw.InternalIP, &gw.Status, &gw.CreatedAt)
+	if err != nil {
+		return nil, wrapErr("gateway_node: create", err)
+	}
+
+	// Add 'gateway' to node_roles if not already present
+	_, err = tx.Exec(ctx,
+		`UPDATE hosts SET node_roles = array_append(node_roles, 'gateway')
+		 WHERE id = $1 AND NOT ('gateway' = ANY(node_roles))`,
+		spec.HostID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("gateway_node: create: update host roles: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("gateway_node: create: commit: %w", err)
+	}
+	return &gw, nil
+}
+
+func (s *Store) GetGatewayNode(ctx context.Context, id uuid.UUID) (*GatewayNode, error) {
+	var gw GatewayNode
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, host_id, host(external_ip), host(internal_ip), status, created_at
+		 FROM gateway_nodes WHERE id = $1`, id,
+	).Scan(&gw.ID, &gw.HostID, &gw.ExternalIP, &gw.InternalIP, &gw.Status, &gw.CreatedAt)
+	if err != nil {
+		return nil, wrapErr("gateway_node: get", err)
+	}
+	return &gw, nil
+}
+
+func (s *Store) ListGatewayNodes(ctx context.Context) ([]GatewayNode, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, host_id, host(external_ip), host(internal_ip), status, created_at
+		 FROM gateway_nodes ORDER BY created_at`)
+	if err != nil {
+		return nil, fmt.Errorf("gateway_node: list: %w", err)
+	}
+	defer rows.Close()
+
+	var nodes []GatewayNode
+	for rows.Next() {
+		var gw GatewayNode
+		if err := rows.Scan(&gw.ID, &gw.HostID, &gw.ExternalIP, &gw.InternalIP, &gw.Status, &gw.CreatedAt); err != nil {
+			return nil, fmt.Errorf("gateway_node: list scan: %w", err)
+		}
+		nodes = append(nodes, gw)
+	}
+	return nodes, rows.Err()
+}
+
+func (s *Store) DeleteGatewayNode(ctx context.Context, id uuid.UUID) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("gateway_node: delete: begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	// Fetch host_id before deleting
+	var hostID uuid.UUID
+	err = tx.QueryRow(ctx, `DELETE FROM gateway_nodes WHERE id = $1 RETURNING host_id`, id).Scan(&hostID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("gateway_node: delete: %w", ErrNotFound)
+		}
+		return wrapErr("gateway_node: delete", err)
+	}
+
+	// Check if host still has another gateway_node entry before removing role
+	var count int
+	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM gateway_nodes WHERE host_id = $1`, hostID).Scan(&count); err != nil {
+		return fmt.Errorf("gateway_node: delete: count remaining: %w", err)
+	}
+	if count == 0 {
+		// Remove 'gateway' from node_roles
+		_, err = tx.Exec(ctx,
+			`UPDATE hosts SET node_roles = array_remove(node_roles, 'gateway') WHERE id = $1`,
+			hostID,
+		)
+		if err != nil {
+			return fmt.Errorf("gateway_node: delete: update host roles: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("gateway_node: delete: commit: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) AssignGatewayNode(ctx context.Context, networkID uuid.UUID, gatewayNodeID uuid.UUID) error {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE networks SET gateway_node_id = $1 WHERE id = $2`,
+		gatewayNodeID, networkID,
+	)
+	if err != nil {
+		return wrapErr("gateway_node: assign", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("gateway_node: assign: %w", ErrNotFound)
+	}
+	return nil
+}
+
+func (s *Store) GetNetworkGatewayNode(ctx context.Context, networkID uuid.UUID) (*GatewayNode, error) {
+	var gw GatewayNode
+	err := s.pool.QueryRow(ctx,
+		`SELECT gn.id, gn.host_id, host(gn.external_ip), host(gn.internal_ip), gn.status, gn.created_at
+		 FROM gateway_nodes gn
+		 JOIN networks n ON n.gateway_node_id = gn.id
+		 WHERE n.id = $1`, networkID,
+	).Scan(&gw.ID, &gw.HostID, &gw.ExternalIP, &gw.InternalIP, &gw.Status, &gw.CreatedAt)
+	if err != nil {
+		return nil, wrapErr("gateway_node: get network gateway", err)
+	}
+	return &gw, nil
+}

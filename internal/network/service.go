@@ -32,4 +32,12 @@ type Service interface {
 	GetPortByVMID(ctx context.Context, vmID uuid.UUID) (*Port, error)
 	ListPorts(ctx context.Context, networkID uuid.UUID) ([]Port, error)
 	DeletePort(ctx context.Context, id uuid.UUID) error
+
+	// Gateway Nodes (admin operations)
+	CreateGatewayNode(ctx context.Context, spec GatewayNodeSpec) (*GatewayNode, error)
+	GetGatewayNode(ctx context.Context, id uuid.UUID) (*GatewayNode, error)
+	ListGatewayNodes(ctx context.Context) ([]GatewayNode, error)
+	DeleteGatewayNode(ctx context.Context, id uuid.UUID) error
+	AssignGatewayNode(ctx context.Context, networkID uuid.UUID, gatewayNodeID uuid.UUID) error
+	GetNetworkGatewayNode(ctx context.Context, networkID uuid.UUID) (*GatewayNode, error)
 }
