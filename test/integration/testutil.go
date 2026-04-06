@@ -137,20 +137,34 @@ func (e *TestEnv) CreatePort(t *testing.T, spec network.PortSpec) *network.Port 
 }
 
 // ExecInWorker runs a command inside a worker container.
+// Supports both Docker Compose v1 naming ({project}_{service}_1) and
+// v2 naming ({project}-{service}-1), trying v1 first.
 func (e *TestEnv) ExecInWorker(t *testing.T, workerName, command string) string {
 	t.Helper()
-	// Determine the compose project name
 	project := os.Getenv("COMPOSE_PROJECT_NAME")
 	if project == "" {
 		project = "integration"
 	}
-	containerName := fmt.Sprintf("%s-%s-1", project, workerName)
-
-	out, err := exec.Command("docker", "exec", containerName, "sh", "-c", command).CombinedOutput()
-	if err != nil {
-		t.Logf("exec in %s failed: %v\noutput: %s", workerName, err, string(out))
+	// Try Docker Compose v1 name first (underscores), then v2 (hyphens).
+	candidates := []string{
+		fmt.Sprintf("%s_%s_1", project, workerName),
+		fmt.Sprintf("%s-%s-1", project, workerName),
 	}
-	return strings.TrimSpace(string(out))
+	for _, containerName := range candidates {
+		out, err := exec.Command("docker", "exec", containerName, "sh", "-c", command).CombinedOutput()
+		if err == nil {
+			return strings.TrimSpace(string(out))
+		}
+		// Only try next candidate if the container was not found.
+		if strings.Contains(string(out), "No such container") {
+			continue
+		}
+		// Container found but command failed — return output and log.
+		t.Logf("exec in %s (%s) failed: %v\noutput: %s", workerName, containerName, err, string(out))
+		return strings.TrimSpace(string(out))
+	}
+	t.Logf("exec in %s: container not found (tried %v)", workerName, candidates)
+	return ""
 }
 
 // WaitForFlows polls a worker's OVS bridge until flows appear in the given table,
