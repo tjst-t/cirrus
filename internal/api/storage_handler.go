@@ -245,13 +245,14 @@ func (h *storageHandlers) createVolume(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "size_gb must be a positive integer"})
 		return
 	}
-	v, err := h.svc.CreateVolume(r.Context(), storage.CreateVolumeSpec{
+	createdBy := callerID(user)
+	resp, err := h.svc.CreateVolume(r.Context(), storage.CreateVolumeSpec{
 		TenantID:     *tenantID,
 		Name:         req.Name,
 		VolumeTypeID: req.VolumeTypeID,
 		SizeGB:       req.SizeGB,
 		AZID:         req.AZID,
-	})
+	}, createdBy)
 	if err != nil {
 		if errors.Is(err, storage.ErrNoMatchingBackend) {
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "no storage backend available for this volume type"})
@@ -264,7 +265,7 @@ func (h *storageHandlers) createVolume(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusCreated, v)
+	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": resp.JobID.String()})
 }
 
 func (h *storageHandlers) listVolumes(w http.ResponseWriter, r *http.Request) {
@@ -385,7 +386,9 @@ func (h *storageHandlers) deleteVolume(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid volume_id"})
 		return
 	}
-	if err := h.svc.DeleteVolume(r.Context(), *tenantID, id); err != nil {
+	createdBy := callerID(user)
+	resp, err := h.svc.DeleteVolume(r.Context(), *tenantID, id, createdBy)
+	if err != nil {
 		switch {
 		case errors.Is(err, storage.ErrVolumeNotFound):
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "volume not found"})
@@ -396,5 +399,5 @@ func (h *storageHandlers) deleteVolume(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": resp.JobID.String()})
 }

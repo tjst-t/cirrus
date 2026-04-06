@@ -314,7 +314,7 @@ func TestCreateVolume_PicksFirstMatchingBackend(t *testing.T) {
 	}
 	svc := newTestService(store)
 
-	v, err := svc.CreateVolume(context.Background(), CreateVolumeSpec{
+	v, err := svc.SyncCreateVolume(context.Background(), CreateVolumeSpec{
 		TenantID:     uuid.New(),
 		Name:         "vol1",
 		SizeGB:       10,
@@ -336,7 +336,7 @@ func TestCreateVolume_SkipsDrainingBackend(t *testing.T) {
 	store := &fakeStore{backends: []Backend{b1, b2}}
 	svc := newTestService(store)
 
-	v, err := svc.CreateVolume(context.Background(), CreateVolumeSpec{
+	v, err := svc.SyncCreateVolume(context.Background(), CreateVolumeSpec{
 		TenantID: uuid.New(), Name: "vol1", SizeGB: 10,
 	})
 	if err != nil {
@@ -358,7 +358,7 @@ func TestCreateVolume_NoMatchingBackend(t *testing.T) {
 		{ID: vtID, RequiredCapabilities: json.RawMessage(caps)},
 	}
 
-	_, err := svc.CreateVolume(context.Background(), CreateVolumeSpec{
+	_, err := svc.SyncCreateVolume(context.Background(), CreateVolumeSpec{
 		TenantID: uuid.New(), Name: "vol1", SizeGB: 10, VolumeTypeID: &vtID,
 	})
 	if err == nil {
@@ -387,7 +387,7 @@ func TestCreateVolume_UsesAZFilter(t *testing.T) {
 	}
 	svc := newTestService(store)
 
-	v, err := svc.CreateVolume(context.Background(), CreateVolumeSpec{
+	v, err := svc.SyncCreateVolume(context.Background(), CreateVolumeSpec{
 		TenantID: uuid.New(), Name: "vol1", SizeGB: 10, AZID: &azID,
 	})
 	if err != nil {

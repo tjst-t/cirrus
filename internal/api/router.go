@@ -11,6 +11,7 @@ import (
 	"github.com/tjst-t/cirrus/internal/flavor"
 	"github.com/tjst-t/cirrus/internal/host"
 	"github.com/tjst-t/cirrus/internal/identity"
+	"github.com/tjst-t/cirrus/internal/jobqueue"
 	"github.com/tjst-t/cirrus/internal/network"
 	"github.com/tjst-t/cirrus/internal/quota"
 	"github.com/tjst-t/cirrus/internal/storage"
@@ -19,7 +20,7 @@ import (
 
 // NewRouter creates the HTTP router with all middleware and routes.
 // debug controls whether internal error details are included in 500 responses.
-func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authenticator, authz identity.Authorizer, identitySvc identity.Service, hostSvc host.Service, topologySvc topology.Service, networkSvc network.Service, azSvc az.Service, storageSvc storage.Service, flavorSvc flavor.Service, computeSvc compute.Service, quotaSvc quota.Service, debug bool) http.Handler {
+func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authenticator, authz identity.Authorizer, identitySvc identity.Service, hostSvc host.Service, topologySvc topology.Service, networkSvc network.Service, azSvc az.Service, storageSvc storage.Service, flavorSvc flavor.Service, computeSvc compute.Service, quotaSvc quota.Service, jobQueue jobqueue.Queue, debug bool) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(RequestID)
@@ -145,6 +146,10 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		r.Delete("/admin/flavors/{flavor_id}", fh.deleteFlavor)
 		r.Get("/flavors", fh.listFlavors)
 		r.Get("/flavors/{flavor_id}", fh.getFlavor)
+
+		// Jobs
+		jh := &jobHandlers{queue: jobQueue, authz: authz}
+		r.Get("/jobs/{job_id}", jh.getJob)
 
 		// VMs
 		vh := &vmHandlers{svc: computeSvc, authz: authz, debug: debug}

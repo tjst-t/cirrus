@@ -5,10 +5,26 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/tjst-t/cirrus/internal/jobqueue"
 )
+
+// CreateVolumeResponse holds the result of an async volume creation request.
+type CreateVolumeResponse struct {
+	JobID uuid.UUID
+}
+
+// DeleteVolumeResponse holds the result of an async volume deletion request.
+type DeleteVolumeResponse struct {
+	JobID uuid.UUID
+}
 
 // Service provides volume and backend management operations.
 type Service interface {
+	// RegisterHandlers registers the storage job handlers with the given dispatcher.
+	// Must be called before the dispatcher is started.
+	RegisterHandlers(d *jobqueue.Dispatcher)
+
 	// Backend management (infra admin)
 	RegisterBackend(ctx context.Context, spec RegisterBackendSpec) (*Backend, error)
 	GetBackend(ctx context.Context, id uuid.UUID) (*Backend, error)
@@ -20,12 +36,25 @@ type Service interface {
 	GetVolumeType(ctx context.Context, id uuid.UUID) (*VolumeType, error)
 	ListVolumeTypes(ctx context.Context) ([]VolumeType, error)
 
-	// Volume lifecycle (tenant)
-	CreateVolume(ctx context.Context, spec CreateVolumeSpec) (*Volume, error)
+	// CreateVolume enqueues an async volume creation job. Returns job info for polling.
+	// Use SyncCreateVolume for internal synchronous creation (e.g., inside VM build jobs).
+	CreateVolume(ctx context.Context, spec CreateVolumeSpec, createdBy string) (*CreateVolumeResponse, error)
+
+	// SyncCreateVolume creates a volume synchronously. Used internally by the compute
+	// orchestrator when building VMs.
+	SyncCreateVolume(ctx context.Context, spec CreateVolumeSpec) (*Volume, error)
+
 	GetVolume(ctx context.Context, tenantID, volumeID uuid.UUID) (*Volume, error)
-	ListVolumes(ctx context.Context, tenantID uuid.UUID) ([]Volume, error)
 	ListVolumesPage(ctx context.Context, tenantID uuid.UUID, afterCreatedAt time.Time, afterID uuid.UUID, limit int) ([]Volume, error)
-	DeleteVolume(ctx context.Context, tenantID, volumeID uuid.UUID) error
+
+	// DeleteVolume enqueues an async volume deletion job. Returns job info for polling.
+	// Use SyncDeleteVolume for internal synchronous deletion (e.g., inside VM teardown jobs).
+	DeleteVolume(ctx context.Context, tenantID, volumeID uuid.UUID, createdBy string) (*DeleteVolumeResponse, error)
+
+	// SyncDeleteVolume deletes a volume synchronously. Used internally by the compute
+	// orchestrator when tearing down VMs.
+	SyncDeleteVolume(ctx context.Context, tenantID, volumeID uuid.UUID) error
+
 	ResizeVolume(ctx context.Context, tenantID, volumeID uuid.UUID, newSizeGB int64) (*Volume, error)
 
 	// Export/unexport (called by Compute orchestrator during VM create/delete)

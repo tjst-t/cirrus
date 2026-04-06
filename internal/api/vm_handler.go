@@ -70,12 +70,14 @@ func (h *vmHandlers) createVM(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.VolumeTypeID != nil {
 		vtID, err := uuid.Parse(*req.VolumeTypeID)
-		if err == nil {
-			spec.VolumeTypeID = &vtID
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid volume_type_id: must be a valid UUID"})
+			return
 		}
+		spec.VolumeTypeID = &vtID
 	}
 
-	vm, err := h.svc.CreateVM(r.Context(), spec)
+	resp, err := h.svc.CreateVM(r.Context(), spec)
 	if err != nil {
 		if errQuotaExceeded(err) {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
@@ -85,7 +87,7 @@ func (h *vmHandlers) createVM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusAccepted, vm)
+	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": resp.JobID.String()})
 }
 
 func (h *vmHandlers) listVMs(w http.ResponseWriter, r *http.Request) {
@@ -278,7 +280,8 @@ func (h *vmHandlers) deleteVM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.svc.DeleteVM(r.Context(), tenantID, vmID); err != nil {
+	resp, err := h.svc.DeleteVM(r.Context(), tenantID, vmID)
+	if err != nil {
 		if errors.Is(err, compute.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "vm not found"})
 			return
@@ -290,5 +293,5 @@ func (h *vmHandlers) deleteVM(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w, err, h.debug)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": resp.JobID.String()})
 }

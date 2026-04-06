@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/tjst-t/cirrus/internal/flavor"
 	"github.com/tjst-t/cirrus/internal/host"
+	"github.com/tjst-t/cirrus/internal/jobqueue"
 	"github.com/tjst-t/cirrus/internal/scheduler"
 	"github.com/tjst-t/cirrus/internal/storage"
 	"github.com/tjst-t/cirrus/internal/topology"
@@ -94,16 +95,20 @@ func (f *fakeStorageSvc) GetVolumeType(ctx context.Context, id uuid.UUID) (*stor
 func (f *fakeStorageSvc) ListVolumeTypes(ctx context.Context) ([]storage.VolumeType, error) {
 	return nil, nil
 }
-func (f *fakeStorageSvc) CreateVolume(ctx context.Context, spec storage.CreateVolumeSpec) (*storage.Volume, error) {
+func (f *fakeStorageSvc) CreateVolume(ctx context.Context, spec storage.CreateVolumeSpec, createdBy string) (*storage.CreateVolumeResponse, error) {
+	return &storage.CreateVolumeResponse{}, nil
+}
+func (f *fakeStorageSvc) SyncCreateVolume(ctx context.Context, spec storage.CreateVolumeSpec) (*storage.Volume, error) {
 	return nil, nil
 }
 func (f *fakeStorageSvc) GetVolume(ctx context.Context, tenantID, volumeID uuid.UUID) (*storage.Volume, error) {
 	return nil, nil
 }
-func (f *fakeStorageSvc) ListVolumes(ctx context.Context, tenantID uuid.UUID) ([]storage.Volume, error) {
-	return nil, nil
+func (f *fakeStorageSvc) RegisterHandlers(_ *jobqueue.Dispatcher) {}
+func (f *fakeStorageSvc) DeleteVolume(ctx context.Context, tenantID, volumeID uuid.UUID, createdBy string) (*storage.DeleteVolumeResponse, error) {
+	return &storage.DeleteVolumeResponse{}, nil
 }
-func (f *fakeStorageSvc) DeleteVolume(ctx context.Context, tenantID, volumeID uuid.UUID) error {
+func (f *fakeStorageSvc) SyncDeleteVolume(ctx context.Context, tenantID, volumeID uuid.UUID) error {
 	return nil
 }
 func (f *fakeStorageSvc) ResizeVolume(ctx context.Context, tenantID, volumeID uuid.UUID, newSizeGB int64) (*storage.Volume, error) {

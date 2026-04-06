@@ -82,6 +82,15 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // writeInternalError writes a 500 response. In debug mode the actual error
 // message is included; otherwise a generic message is returned to avoid
 // leaking internal details to API clients.
+// callerID returns the external identity of the authenticated user,
+// or an empty string if no user is present.
+func callerID(user *identity.User) string {
+	if user != nil {
+		return user.ExternalID
+	}
+	return ""
+}
+
 func writeInternalError(w http.ResponseWriter, err error, debug bool) {
 	msg := "internal server error"
 	if debug {

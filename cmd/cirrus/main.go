@@ -24,6 +24,7 @@ import (
 	"github.com/tjst-t/cirrus/internal/config"
 	"github.com/tjst-t/cirrus/internal/controller"
 	"github.com/tjst-t/cirrus/internal/controller/reconcile"
+	"github.com/tjst-t/cirrus/internal/jobqueue"
 	"github.com/tjst-t/cirrus/internal/scheduler"
 	"github.com/tjst-t/cirrus/internal/flavor"
 	"github.com/tjst-t/cirrus/internal/host"
@@ -126,6 +127,14 @@ func runController(cfg *config.ControllerConfig) error {
 	}
 	logger.Info("migrations applied")
 
+	// Job queue store (needed for recovery before dispatcher starts).
+	jobQueue := jobqueue.NewStore(pool)
+
+	// Recover any jobs that were left in status=running from a previous crash.
+	if err := jobQueue.RecoverAllRunningJobs(ctx, logger); err != nil {
+		return fmt.Errorf("controller: job recovery: %w", err)
+	}
+
 	// Identity service
 	identitySvc := identity.NewStore(pool)
 
@@ -178,7 +187,10 @@ func runController(cfg *config.ControllerConfig) error {
 		},
 	}
 	storageStore := storage.NewStore(pool)
-	storageSvc := storage.NewService(storageStore, storageDrivers, quotaSvc, logger)
+
+	dispatcher := jobqueue.NewDispatcher(jobQueue, 4, logger)
+
+	storageSvc := storage.NewService(storageStore, storageDrivers, quotaSvc, jobQueue, logger)
 
 	// Flavor service
 	flavorSvc := flavor.NewService(pool)
@@ -194,10 +206,16 @@ func runController(cfg *config.ControllerConfig) error {
 	defer workerPool.Close()
 
 	// Compute orchestrator
-	computeSvc := compute.NewOrchestrator(pool, flavorSvc, networkSvc, storageSvc, sched, workerPool, quotaSvc, logger)
+	computeSvc := compute.NewOrchestrator(pool, flavorSvc, networkSvc, storageSvc, sched, workerPool, quotaSvc, jobQueue, logger)
+
+	// Register job handlers with the dispatcher.
+	// Both interfaces now declare RegisterHandlers, so these compile-time assertions
+	// fail loudly if the concrete types are ever removed from the interface.
+	computeSvc.RegisterHandlers(dispatcher)
+	storageSvc.RegisterHandlers(dispatcher)
 
 	// HTTP API
-	router := api.NewRouter(pool, logger, authn, authz, identitySvc, hostSvc, topologySvc, networkSvc, azSvc, storageSvc, flavorSvc, computeSvc, quotaSvc, cfg.Debug)
+	router := api.NewRouter(pool, logger, authn, authz, identitySvc, hostSvc, topologySvc, networkSvc, azSvc, storageSvc, flavorSvc, computeSvc, quotaSvc, jobQueue, cfg.Debug)
 	httpSrv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.APIPort),
 		Handler: router,
@@ -249,6 +267,12 @@ func runController(cfg *config.ControllerConfig) error {
 	)
 
 	g, gCtx := errgroup.WithContext(ctx)
+
+	// Job dispatcher
+	g.Go(func() error {
+		dispatcher.Start(gCtx)
+		return nil
+	})
 
 	g.Go(func() error {
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

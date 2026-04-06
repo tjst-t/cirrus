@@ -13,12 +13,31 @@ import (
 
 	"github.com/tjst-t/cirrus/internal/controller"
 	"github.com/tjst-t/cirrus/internal/flavor"
+	"github.com/tjst-t/cirrus/internal/jobqueue"
 	"github.com/tjst-t/cirrus/internal/network"
 	"github.com/tjst-t/cirrus/internal/quota"
 	"github.com/tjst-t/cirrus/internal/scheduler"
 	"github.com/tjst-t/cirrus/internal/storage"
 	pb "github.com/tjst-t/cirrus/proto/agentpb"
 )
+
+// Job type constants for the compute domain.
+const (
+	JobTypeVMCreate = "vm_create"
+	JobTypeVMDelete = "vm_delete"
+)
+
+// VMCreatePayload is the JSON payload stored in the job for vm_create jobs.
+type VMCreatePayload struct {
+	Spec CreateVMSpec `json:"spec"`
+	VMID uuid.UUID    `json:"vm_id"`
+}
+
+// VMDeletePayload is the JSON payload stored in the job for vm_delete jobs.
+type VMDeletePayload struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	VMID     uuid.UUID `json:"vm_id"`
+}
 
 // Orchestrator implements Service and manages the async VM creation/deletion pipeline.
 type Orchestrator struct {
@@ -29,6 +48,7 @@ type Orchestrator struct {
 	scheduler  scheduler.Scheduler
 	workers    *controller.WorkerClientPool
 	quotaSvc   quota.Service
+	queue      jobqueue.Queue
 	logger     *slog.Logger
 }
 
@@ -41,6 +61,7 @@ func NewOrchestrator(
 	sched scheduler.Scheduler,
 	workers *controller.WorkerClientPool,
 	quotaSvc quota.Service,
+	queue jobqueue.Queue,
 	logger *slog.Logger,
 ) *Orchestrator {
 	return &Orchestrator{
@@ -51,12 +72,83 @@ func NewOrchestrator(
 		scheduler:  sched,
 		workers:    workers,
 		quotaSvc:   quotaSvc,
+		queue:      queue,
 		logger:     logger,
 	}
 }
 
-// CreateVM inserts a VM record in "pending" status, then launches a goroutine to build it.
-func (o *Orchestrator) CreateVM(ctx context.Context, spec CreateVMSpec) (*VM, error) {
+// RegisterHandlers registers vm_create and vm_delete job handlers with the dispatcher.
+func (o *Orchestrator) RegisterHandlers(d *jobqueue.Dispatcher) {
+	d.Register(JobTypeVMCreate, o.handleVMCreate)
+	d.Register(JobTypeVMDelete, o.handleVMDelete)
+}
+
+func (o *Orchestrator) handleVMCreate(ctx context.Context, job *jobqueue.Job) error {
+	var p VMCreatePayload
+	if err := json.Unmarshal(job.Payload, &p); err != nil {
+		return fmt.Errorf("compute: vm_create handler: unmarshal payload: %w", err)
+	}
+
+	flv, err := o.flavorSvc.Get(ctx, p.Spec.FlavorID)
+	if err != nil {
+		return fmt.Errorf("compute: vm_create handler: resolve flavor: %w", err)
+	}
+
+	if err := o.buildVM(ctx, p.VMID, p.Spec, flv); err != nil {
+		o.logger.Error("VM build failed", "vm_id", p.VMID, "job_id", job.ID, "error", err)
+		if o.quotaSvc != nil {
+			_ = o.quotaSvc.Release(context.Background(), quota.ResourceTypeVM, p.VMID)
+		}
+		_ = o.setVMStatus(context.Background(), p.VMID, VMStatusError, err.Error())
+		return err
+	}
+	if o.quotaSvc != nil {
+		if err := o.quotaSvc.Commit(context.Background(), quota.ResourceTypeVM, p.VMID); err != nil {
+			o.logger.Warn("quota commit failed after VM build", "vm_id", p.VMID, "error", err)
+		}
+	}
+	return nil
+}
+
+func (o *Orchestrator) handleVMDelete(ctx context.Context, job *jobqueue.Job) error {
+	var p VMDeletePayload
+	if err := json.Unmarshal(job.Payload, &p); err != nil {
+		return fmt.Errorf("compute: vm_delete handler: unmarshal payload: %w", err)
+	}
+
+	vm, err := o.getVM(ctx, p.TenantID, p.VMID)
+	if err != nil {
+		return fmt.Errorf("compute: vm_delete handler: get vm: %w", err)
+	}
+
+	// Capture flavor for quota decommit after teardown.
+	var vmFlavor *flavor.Flavor
+	if vm.FlavorID != nil {
+		if flv, err := o.flavorSvc.Get(ctx, *vm.FlavorID); err == nil {
+			vmFlavor = flv
+		}
+	}
+
+	if err := o.teardownVM(ctx, vm); err != nil {
+		_ = o.setVMStatus(context.Background(), p.VMID, VMStatusError, err.Error())
+		return err
+	}
+	_ = o.deleteVMRecord(context.Background(), p.VMID)
+	if o.quotaSvc != nil && vmFlavor != nil {
+		if err := o.quotaSvc.Decommit(context.Background(), vm.TenantID, quota.ResourceDelta{
+			Vcpus: vmFlavor.VCPUs,
+			RAMMB: int(vmFlavor.RAMMB),
+			VMs:   1,
+		}); err != nil {
+			o.logger.Warn("quota decommit failed after VM teardown", "vm_id", p.VMID, "error", err)
+		}
+	}
+	return nil
+}
+
+// CreateVM inserts a VM record in "pending" status, enqueues a vm_create job, and returns
+// both the VM record and the job ID.
+func (o *Orchestrator) CreateVM(ctx context.Context, spec CreateVMSpec) (*CreateVMResponse, error) {
 	// Resolve flavor up-front to compute the quota delta.
 	flv, err := o.flavorSvc.Get(ctx, spec.FlavorID)
 	if err != nil {
@@ -94,25 +186,39 @@ func (o *Orchestrator) CreateVM(ctx context.Context, spec CreateVMSpec) (*VM, er
 		return nil, fmt.Errorf("compute: create vm: insert: %w", err)
 	}
 
-	// Launch the async build goroutine. Use a detached context so the build
-	// continues even after the HTTP request context is cancelled.
-	go func() {
-		buildCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
-		if err := o.buildVM(buildCtx, vm.ID, spec, flv); err != nil {
-			o.logger.Error("VM build failed", "vm_id", vm.ID, "error", err)
-			if o.quotaSvc != nil {
-				_ = o.quotaSvc.Release(context.Background(), quota.ResourceTypeVM, vm.ID)
-			}
-			_ = o.setVMStatus(context.Background(), vm.ID, VMStatusError, err.Error())
-		} else if o.quotaSvc != nil {
-			if err := o.quotaSvc.Commit(context.Background(), quota.ResourceTypeVM, vm.ID); err != nil {
-				o.logger.Warn("quota commit failed after VM build", "vm_id", vm.ID, "error", err)
-			}
+	if o.queue == nil {
+		_ = o.setVMStatus(context.Background(), vm.ID, VMStatusError, "jobqueue not configured")
+		if o.quotaSvc != nil {
+			_ = o.quotaSvc.Release(context.Background(), quota.ResourceTypeVM, vm.ID)
 		}
-	}()
+		return nil, fmt.Errorf("compute: create vm: jobqueue not configured")
+	}
 
-	return vm, nil
+	// Enqueue the vm_create job. The dispatcher will pick it up and call handleVMCreate.
+	payload, err := json.Marshal(VMCreatePayload{Spec: spec, VMID: vm.ID})
+	if err != nil {
+		_ = o.setVMStatus(context.Background(), vm.ID, VMStatusError, "failed to marshal vm_create payload")
+		if o.quotaSvc != nil {
+			_ = o.quotaSvc.Release(context.Background(), quota.ResourceTypeVM, vm.ID)
+		}
+		return nil, fmt.Errorf("compute: create vm: marshal payload: %w", err)
+	}
+	tenantID := spec.TenantID
+	job, err := o.queue.Enqueue(ctx, jobqueue.EnqueueParams{
+		Type:      JobTypeVMCreate,
+		Payload:   payload,
+		TenantID:  &tenantID,
+		CreatedBy: nil,
+	})
+	if err != nil {
+		// If we fail to enqueue, set VM to error so it is not orphaned.
+		_ = o.setVMStatus(context.Background(), vm.ID, VMStatusError, "failed to enqueue vm_create job")
+		if o.quotaSvc != nil {
+			_ = o.quotaSvc.Release(context.Background(), quota.ResourceTypeVM, vm.ID)
+		}
+		return nil, fmt.Errorf("compute: create vm: enqueue job: %w", err)
+	}
+	return &CreateVMResponse{VM: vm, JobID: job.ID}, nil
 }
 
 // GetVM returns a VM by ID for the given tenant.
@@ -125,51 +231,42 @@ func (o *Orchestrator) ListVMs(ctx context.Context, tenantID uuid.UUID) ([]VM, e
 	return o.listVMs(ctx, tenantID)
 }
 
-// DeleteVM marks the VM as "deleting" and launches an async cleanup goroutine.
+// DeleteVM marks the VM as "deleting" and enqueues a vm_delete job.
 // Only allowed when status is stopped or error.
-func (o *Orchestrator) DeleteVM(ctx context.Context, tenantID, vmID uuid.UUID) error {
+func (o *Orchestrator) DeleteVM(ctx context.Context, tenantID, vmID uuid.UUID) (*DeleteVMResponse, error) {
 	vm, err := o.getVM(ctx, tenantID, vmID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if vm.IsTransitional() {
-		return ErrConflict
+		return nil, ErrConflict
 	}
 	if !vm.CanDelete() {
-		return ErrConflict
+		return nil, ErrConflict
 	}
 	if err := o.setVMStatus(ctx, vmID, VMStatusDeleting, ""); err != nil {
-		return fmt.Errorf("compute: delete vm: %w", err)
+		return nil, fmt.Errorf("compute: delete vm: %w", err)
 	}
 
-	// Capture flavor for quota decommit after teardown.
-	var vmFlavor *flavor.Flavor
-	if vm.FlavorID != nil {
-		if flv, err := o.flavorSvc.Get(ctx, *vm.FlavorID); err == nil {
-			vmFlavor = flv
-		}
+	if o.queue == nil {
+		return nil, fmt.Errorf("compute: delete vm: jobqueue not configured")
 	}
 
-	go func() {
-		delCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
-		if err := o.teardownVM(delCtx, vm); err != nil {
-			_ = o.setVMStatus(context.Background(), vmID, VMStatusError, err.Error())
-		} else {
-			_ = o.deleteVMRecord(context.Background(), vmID)
-			if o.quotaSvc != nil && vmFlavor != nil {
-				if err := o.quotaSvc.Decommit(context.Background(), vm.TenantID, quota.ResourceDelta{
-					Vcpus: vmFlavor.VCPUs,
-					RAMMB: int(vmFlavor.RAMMB),
-					VMs:   1,
-				}); err != nil {
-					o.logger.Warn("quota decommit failed after VM teardown", "vm_id", vmID, "error", err)
-				}
-			}
-		}
-	}()
-
-	return nil
+	// Enqueue the vm_delete job.
+	payload, err := json.Marshal(VMDeletePayload{TenantID: tenantID, VMID: vmID})
+	if err != nil {
+		return nil, fmt.Errorf("compute: delete vm: marshal payload: %w", err)
+	}
+	job, err := o.queue.Enqueue(ctx, jobqueue.EnqueueParams{
+		Type:      JobTypeVMDelete,
+		Payload:   payload,
+		TenantID:  &tenantID,
+		CreatedBy: nil,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("compute: delete vm: enqueue job: %w", err)
+	}
+	return &DeleteVMResponse{JobID: job.ID}, nil
 }
 
 // StartVM starts a stopped VM.
@@ -319,7 +416,7 @@ func (o *Orchestrator) buildVM(ctx context.Context, vmID uuid.UUID, spec CreateV
 	}
 	hostID := result.HostID
 
-	// Persist host assignment immediately (for observability)
+	// 2. Persist host assignment immediately (for observability)
 	if err := o.setVMHost(ctx, vmID, hostID); err != nil {
 		return fmt.Errorf("persist host: %w", err)
 	}
@@ -358,7 +455,7 @@ func (o *Orchestrator) buildVM(ctx context.Context, vmID uuid.UUID, spec CreateV
 	if spec.VolumeTypeID != nil {
 		volSpec.VolumeTypeID = spec.VolumeTypeID
 	}
-	vol, err := o.storageSvc.CreateVolume(ctx, volSpec)
+	vol, err := o.storageSvc.SyncCreateVolume(ctx, volSpec)
 	if err != nil {
 		return fmt.Errorf("create volume: %w", err)
 	}
@@ -368,7 +465,7 @@ func (o *Orchestrator) buildVM(ctx context.Context, vmID uuid.UUID, spec CreateV
 			if unexErr := o.storageSvc.UnexportVolume(context.Background(), vol.ID); unexErr != nil {
 				o.logger.Warn("buildVM cleanup: unexport volume failed", "volume_id", vol.ID, "error", unexErr)
 			}
-			if delErr := o.storageSvc.DeleteVolume(context.Background(), spec.TenantID, vol.ID); delErr != nil {
+			if delErr := o.storageSvc.SyncDeleteVolume(context.Background(), spec.TenantID, vol.ID); delErr != nil {
 				o.logger.Warn("buildVM cleanup: delete volume failed", "volume_id", vol.ID, "error", delErr)
 			}
 		}
@@ -500,7 +597,7 @@ func (o *Orchestrator) teardownVM(ctx context.Context, vm *VM) error {
 			errs = append(errs, fmt.Errorf("unexport volume %s: %w", vid, err))
 		}
 		// Delete even if unexport failed — best effort; reconciler handles drift.
-		if err := o.storageSvc.DeleteVolume(ctx, vm.TenantID, vid); err != nil {
+		if err := o.storageSvc.SyncDeleteVolume(ctx, vm.TenantID, vid); err != nil {
 			o.logger.Warn("teardownVM: delete volume failed", "volume_id", vid, "error", err)
 			errs = append(errs, fmt.Errorf("delete volume %s: %w", vid, err))
 		}

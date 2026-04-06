@@ -96,6 +96,16 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 - `missed_heartbeat_count` カラム（DB 永続カウンタ）で heartbeat 途絶を検出
 - 状態: `registering` → `active` → `draining`/`maintenance`/`faulty`; `maintenance` → `retiring`（終端）
 
+### JobQueue (`internal/jobqueue`)
+
+- PostgreSQL バックの非同期ジョブキュー（`jobs` テーブル）
+- `Queue` インターフェース: `Enqueue` / `Dequeue` (FOR UPDATE SKIP LOCKED CTE) / `Complete` / `Fail` / `ListStuck` / `Get`
+- `Dispatcher`: N 本の worker goroutine がポーリング、`HandlerFunc` レジストリでジョブタイプ → ハンドラを解決
+- 起動時リカバリ: `RecoverAllRunningJobs` が `status=running` を `pending` にリセット
+- **ジョブタイプ**: `vm_create`, `vm_delete`（compute）、`volume_create`, `volume_delete`（storage）
+- **認可**: `GET /api/v1/jobs/{id}` — tenant_member は自分のジョブのみ、tenant_admin はテナント内全ジョブ、infra_admin は全ジョブ
+- **将来拡張**: `parent_job_id` / `depends_on` によるサブジョブ依存グラフ（docs/todo.md 参照）
+
 ### State (`internal/state`)
 
 - PostgreSQL アクセス、golang-migrate マイグレーション（`internal/state/migrations/`）
@@ -125,6 +135,22 @@ HTTP Request
   → Service (internal/{domain}/service_impl.go)
   → Store (internal/{domain}/store.go)
   → PostgreSQL
+```
+
+### Async Job Flow (S045〜)
+
+```
+POST /vms (or /volumes)
+  → Handler enqueues job (jobs テーブル, status=pending)
+  → 202 Accepted + {"job_id": "..."}
+
+Dispatcher (background, 4 workers)
+  → Dequeue: SELECT … FOR UPDATE SKIP LOCKED
+  → HandlerFunc(ctx, job) — vm_create / volume_create など
+  → Complete (status=completed) or Fail (status=failed)
+
+クライアント
+  → GET /api/v1/jobs/{id} でステータスをポーリング
 ```
 
 ### Reconciler Loop

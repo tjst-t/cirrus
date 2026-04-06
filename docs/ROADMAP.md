@@ -4,13 +4,13 @@
 
 ## Progress
 
-- Total: 45 Sprints | Done: 21 | In Progress: 0 | Remaining: 24
-- [█████████░░░░░░░░░░░] 47%
+- Total: 45 Sprints | Done: 22 | In Progress: 0 | Remaining: 23
+- [█████████░░░░░░░░░░░] 49%
 
 ## Execution Order
 
 S001 → S002 → S003 → S004 → S005 → S006 → S007 → S008 → S009 → S010 → S011 → S012 → S013 → S014 → S015 → S016 → S017 → S018 → S019 → S020 → S021 → S045 → S042 → S043 → S044 → S022 → S023 → S024 → S025 → S026 → S027 → S028 → S029 → S030 → S031 → S032 → S033 → S034 → S035 → S036 → S037 → S038 → S039 → S040 → S041
-                                                                                                                                                   ↑ next
+                                                                                                                                                           ↑ next
 
 ---
 
@@ -1119,26 +1119,32 @@ NAT Gateway に加えて VPN（IPsec/WireGuard）と Direct Connect（VLAN trunk
 
 ---
 
-## Sprint S045: 非同期ジョブキュー基盤 [ ]
+## Sprint S045: 非同期ジョブキュー基盤 [DONE]
 
 Controller 再起動後も非同期ジョブが安全にリカバリできる。`jobs` テーブルをジョブキューとして使い、pending/running 状態のジョブを起動時に自動再実行する。
 
-### Story S045-1: ジョブキュー DB 基盤 [ ]
+**設計方針（S045）**:
+- 各 API は `202 Accepted` + `job_id` を返す（完全非同期化）
+- 1 API 操作 = 1 ジョブ。VM 作成ジョブはハンドラ内部でボリューム作成を同期実行する
+- ジョブ認可: tenant_member は自分が作成したジョブのみ参照可、tenant_admin はテナント内全ジョブ参照可、infra_admin は全ジョブ参照可
+- 将来拡張: `parent_job_id` / `depends_on` を追加してサブジョブ依存グラフに移行する（docs/todo.md 参照）
 
-- [ ] **Task S045-1-1**: マイグレーション: `jobs` テーブル（id, type, status, payload JSONB, created_at, updated_at, started_at, completed_at, error）
-- [ ] **Task S045-1-2**: `internal/jobqueue/` パッケージ: JobQueue インターフェース、Enqueue/Dequeue/Complete/Fail/ListStuck
-- [ ] **Task S045-1-3**: Controller 起動時に status=running のジョブを pending に戻してリカバリ
+### Story S045-1: ジョブキュー DB 基盤 [x]
 
-### Story S045-2: 既存パイプラインの移行 [ ]
+- [x] **Task S045-1-1**: マイグレーション: `jobs` テーブル（id, type, status, payload JSONB, tenant_id, created_by, created_at, updated_at, started_at, completed_at, error）
+- [x] **Task S045-1-2**: `internal/jobqueue/` パッケージ: JobQueue インターフェース、Enqueue/Dequeue/Complete/Fail/ListStuck
+- [x] **Task S045-1-3**: Controller 起動時に status=running のジョブを pending に戻してリカバリ
 
-- [ ] **Task S045-2-1**: VM 作成/削除パイプライン（`orchestrator.go`）を JobQueue 経由に移行
-- [ ] **Task S045-2-2**: ボリューム作成/削除パイプライン（`storage/service_impl.go`）を JobQueue 経由に移行
-- [ ] **Task S045-2-3**: ジョブステータスを API で確認できるエンドポイント（GET /api/v1/jobs/{id}）
+### Story S045-2: 既存パイプラインの移行 [x]
 
-### Story S045-3: テスト [ ]
+- [x] **Task S045-2-1**: VM 作成/削除パイプライン（`orchestrator.go`）を JobQueue 経由に移行。API は `202 Accepted` + `job_id` を返す
+- [x] **Task S045-2-2**: ボリューム作成/削除パイプライン（`storage/service_impl.go`）を JobQueue 経由に移行。API は `202 Accepted` + `job_id` を返す
+- [x] **Task S045-2-3**: `GET /api/v1/jobs/{id}` エンドポイント。認可: tenant_member は自分のジョブのみ、tenant_admin はテナント内全ジョブ、infra_admin は全ジョブ参照可
 
-- [ ] **Task S045-3-1**: Controller 再起動シミュレーション: 実行中ジョブが再起動後にリカバリされること確認
-- [ ] **Task S045-3-2**: Quota/リソース整合性: ジョブ失敗・再試行後に使用量が正しいこと確認
+### Story S045-3: テスト [x]
+
+- [x] **Task S045-3-1**: Controller 再起動シミュレーション: 実行中ジョブが再起動後にリカバリされること確認
+- [x] **Task S045-3-2**: Quota/リソース整合性: ジョブ失敗・再試行後に使用量が正しいこと確認
 
 ---
 

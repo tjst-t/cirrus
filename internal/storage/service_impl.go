@@ -9,8 +9,26 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/tjst-t/cirrus/internal/jobqueue"
 	"github.com/tjst-t/cirrus/internal/quota"
 )
+
+// Job type constants for the storage domain.
+const (
+	JobTypeVolumeCreate = "volume_create"
+	JobTypeVolumeDelete = "volume_delete"
+)
+
+// VolumeCreatePayload is the JSON payload for volume_create jobs.
+type VolumeCreatePayload struct {
+	Spec CreateVolumeSpec `json:"spec"`
+}
+
+// VolumeDeletePayload is the JSON payload for volume_delete jobs.
+type VolumeDeletePayload struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+	VolumeID uuid.UUID `json:"volume_id"`
+}
 
 // DriverRegistry maps driver name → factory function.
 // Populated by the application wiring (e.g. controller main).
@@ -52,12 +70,36 @@ type serviceImpl struct {
 	store    storageStore
 	drivers  DriverRegistry
 	quotaSvc quota.Service
+	queue    jobqueue.Queue
 	logger   *slog.Logger
 }
 
 // NewService creates a new storage Service.
-func NewService(store *Store, drivers DriverRegistry, quotaSvc quota.Service, logger *slog.Logger) Service {
-	return &serviceImpl{store: store, drivers: drivers, quotaSvc: quotaSvc, logger: logger}
+func NewService(store *Store, drivers DriverRegistry, quotaSvc quota.Service, queue jobqueue.Queue, logger *slog.Logger) Service {
+	return &serviceImpl{store: store, drivers: drivers, quotaSvc: quotaSvc, queue: queue, logger: logger}
+}
+
+// RegisterHandlers registers volume_create and volume_delete job handlers with the dispatcher.
+func (s *serviceImpl) RegisterHandlers(d *jobqueue.Dispatcher) {
+	d.Register(JobTypeVolumeCreate, s.handleVolumeCreate)
+	d.Register(JobTypeVolumeDelete, s.handleVolumeDelete)
+}
+
+func (s *serviceImpl) handleVolumeCreate(ctx context.Context, job *jobqueue.Job) error {
+	var p VolumeCreatePayload
+	if err := json.Unmarshal(job.Payload, &p); err != nil {
+		return fmt.Errorf("storage: volume_create handler: unmarshal payload: %w", err)
+	}
+	_, err := s.syncCreateVolume(ctx, p.Spec)
+	return err
+}
+
+func (s *serviceImpl) handleVolumeDelete(ctx context.Context, job *jobqueue.Job) error {
+	var p VolumeDeletePayload
+	if err := json.Unmarshal(job.Payload, &p); err != nil {
+		return fmt.Errorf("storage: volume_delete handler: unmarshal payload: %w", err)
+	}
+	return s.syncDeleteVolume(ctx, p.TenantID, p.VolumeID)
 }
 
 // --- Backend ---
@@ -128,7 +170,35 @@ func (s *serviceImpl) ListVolumeTypes(ctx context.Context) ([]VolumeType, error)
 
 // --- Volume ---
 
-func (s *serviceImpl) CreateVolume(ctx context.Context, spec CreateVolumeSpec) (*Volume, error) {
+// CreateVolume enqueues a volume_create job and returns the job ID.
+func (s *serviceImpl) CreateVolume(ctx context.Context, spec CreateVolumeSpec, createdBy string) (*CreateVolumeResponse, error) {
+	if s.queue == nil {
+		return nil, fmt.Errorf("storage service: create volume: jobqueue not configured")
+	}
+	payload, err := json.Marshal(VolumeCreatePayload{Spec: spec})
+	if err != nil {
+		return nil, fmt.Errorf("storage service: create volume: marshal payload: %w", err)
+	}
+	tenantID := spec.TenantID
+	job, err := s.queue.Enqueue(ctx, jobqueue.EnqueueParams{
+		Type:      JobTypeVolumeCreate,
+		Payload:   payload,
+		TenantID:  &tenantID,
+		CreatedBy: &createdBy,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("storage service: create volume: enqueue job: %w", err)
+	}
+	return &CreateVolumeResponse{JobID: job.ID}, nil
+}
+
+// SyncCreateVolume creates a volume synchronously. Used by the compute orchestrator.
+func (s *serviceImpl) SyncCreateVolume(ctx context.Context, spec CreateVolumeSpec) (*Volume, error) {
+	return s.syncCreateVolume(ctx, spec)
+}
+
+// syncCreateVolume is the internal synchronous volume creation logic.
+func (s *serviceImpl) syncCreateVolume(ctx context.Context, spec CreateVolumeSpec) (*Volume, error) {
 	// Resolve required capabilities from volume type.
 	var requiredCaps []string
 	if spec.VolumeTypeID != nil {
@@ -263,15 +333,47 @@ func (s *serviceImpl) GetVolume(ctx context.Context, tenantID, volumeID uuid.UUI
 	return v, nil
 }
 
-func (s *serviceImpl) ListVolumes(ctx context.Context, tenantID uuid.UUID) ([]Volume, error) {
-	return s.store.ListVolumesByTenant(ctx, tenantID)
-}
-
 func (s *serviceImpl) ListVolumesPage(ctx context.Context, tenantID uuid.UUID, afterCreatedAt time.Time, afterID uuid.UUID, limit int) ([]Volume, error) {
 	return s.store.ListVolumesByTenantPage(ctx, tenantID, afterCreatedAt, afterID, limit)
 }
 
-func (s *serviceImpl) DeleteVolume(ctx context.Context, tenantID, volumeID uuid.UUID) error {
+// DeleteVolume enqueues a volume_delete job and returns the job ID.
+func (s *serviceImpl) DeleteVolume(ctx context.Context, tenantID, volumeID uuid.UUID, createdBy string) (*DeleteVolumeResponse, error) {
+	// Validate the volume exists and is deletable before enqueueing.
+	v, err := s.GetVolume(ctx, tenantID, volumeID)
+	if err != nil {
+		return nil, err
+	}
+	if v.State == VolumeStateInUse {
+		return nil, ErrVolumeInUse
+	}
+
+	if s.queue == nil {
+		return nil, fmt.Errorf("storage service: delete volume: jobqueue not configured")
+	}
+	payload, err := json.Marshal(VolumeDeletePayload{TenantID: tenantID, VolumeID: volumeID})
+	if err != nil {
+		return nil, fmt.Errorf("storage service: delete volume: marshal payload: %w", err)
+	}
+	job, err := s.queue.Enqueue(ctx, jobqueue.EnqueueParams{
+		Type:      JobTypeVolumeDelete,
+		Payload:   payload,
+		TenantID:  &tenantID,
+		CreatedBy: &createdBy,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("storage service: delete volume: enqueue job: %w", err)
+	}
+	return &DeleteVolumeResponse{JobID: job.ID}, nil
+}
+
+// SyncDeleteVolume deletes a volume synchronously. Used by the compute orchestrator.
+func (s *serviceImpl) SyncDeleteVolume(ctx context.Context, tenantID, volumeID uuid.UUID) error {
+	return s.syncDeleteVolume(ctx, tenantID, volumeID)
+}
+
+// syncDeleteVolume is the internal synchronous volume deletion logic.
+func (s *serviceImpl) syncDeleteVolume(ctx context.Context, tenantID, volumeID uuid.UUID) error {
 	v, err := s.GetVolume(ctx, tenantID, volumeID)
 	if err != nil {
 		return err
