@@ -159,7 +159,15 @@ func runController(cfg *config.ControllerConfig) error {
 
 	// Storage service
 	storageDrivers := storage.DriverRegistry{
-		"sim": func(endpoint string, backendID string, _ map[string]any) storage.Driver {
+		"sim": func(endpoint string, backendID string, driverCfg map[string]any) storage.Driver {
+			// Resolve sim:// scheme to the real storage-sim HTTP endpoint.
+			if strings.HasPrefix(endpoint, "sim://") && cfg.StorageEndpoint != "" {
+				endpoint = cfg.StorageEndpoint
+			}
+			// Use sim_backend_id from driver_config if present (sim uses its own ID scheme).
+			if simID, ok := driverCfg["sim_backend_id"].(string); ok && simID != "" {
+				backendID = simID
+			}
 			return simstorage.New(endpoint, backendID)
 		},
 		"iscsi": func(endpoint, backendID string, cfg map[string]any) storage.Driver {

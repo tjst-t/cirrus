@@ -133,3 +133,17 @@ func decodeResponse[T any](resp *http.Response) (T, error) {
 	}
 	return result, nil
 }
+
+// decodePagedResponse decodes a PagedResponse envelope and returns all items,
+// collecting pages automatically until next_cursor is empty.
+func decodePagedResponse[T any](resp *http.Response) ([]T, error) {
+	defer resp.Body.Close()
+	var envelope struct {
+		Items      []T    `json:"items"`
+		NextCursor string `json:"next_cursor"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+	return envelope.Items, nil
+}

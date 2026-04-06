@@ -161,7 +161,11 @@ func waitForVMStatus(t *testing.T, c *client.Client, ctx context.Context, tenant
 			return vm
 		}
 		if vm.Status == compute.VMStatusError {
-			t.Fatalf("VM %s entered error state: %s", vmID, vm.ErrorMessage)
+			errMsg := ""
+			if vm.ErrorMessage != nil {
+				errMsg = *vm.ErrorMessage
+			}
+			t.Fatalf("VM %s entered error state: %s", vmID, errMsg)
 		}
 		time.Sleep(2 * time.Second)
 	}

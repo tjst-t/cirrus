@@ -77,6 +77,17 @@ func (s *DefaultScheduler) Schedule(ctx context.Context, spec ScheduleSpec) (*Sc
 			hostIDSet[id] = struct{}{}
 		}
 	}
+	// When no storage topology is configured and no persistent volume is required,
+	// fall back to all registered hosts (useful in dev/sim environments).
+	if len(hostIDSet) == 0 && spec.VolumeTypeID == nil {
+		allHosts, err := s.hostSvc.ListHosts(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("scheduler: fallback list hosts: %w", err)
+		}
+		for _, h := range allHosts {
+			hostIDSet[h.ID] = struct{}{}
+		}
+	}
 	if len(hostIDSet) == 0 {
 		return nil, ErrNoSuitableHost
 	}
@@ -102,7 +113,9 @@ func (s *DefaultScheduler) Schedule(ctx context.Context, spec ScheduleSpec) (*Sc
 			if err != nil {
 				continue
 			}
-			if alloc.Vcpus < float64(spec.Flavor.VCPUs) || alloc.MemoryMB < float64(spec.Flavor.RAMMB) {
+			// Skip resource check when physical resources are not yet reported
+			// (e.g. sim workers that haven't sent a resource report yet).
+			if alloc.PhysicalKnown && (alloc.Vcpus < float64(spec.Flavor.VCPUs) || alloc.MemoryMB < float64(spec.Flavor.RAMMB)) {
 				continue
 			}
 			// Score = normalized free resource fraction (vCPU fraction + RAM fraction) / 2

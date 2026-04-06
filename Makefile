@@ -282,7 +282,7 @@ _seed-topology:
 	  curl -sf -X POST \
 	    -H "Authorization: Bearer $$TOKEN" \
 	    -H "Content-Type: application/json" \
-	    -d "{\"name\":\"sim-backend\",\"driver\":\"sim\",\"endpoint\":\"sim://local\",\"storage_domain_id\":\"$$SD_ID\",\"capacity_gb\":1000}" \
+	    -d "{\"name\":\"sim-backend\",\"driver\":\"sim\",\"endpoint\":\"sim://local\",\"storage_domain_id\":\"$$SD_ID\",\"capacity_gb\":1000,\"driver_config\":{\"sim_backend_id\":\"ceph-pool-ssd\"}}" \
 	    http://localhost:$$API_PORT/api/v1/admin/storage-backends >/dev/null 2>&1 || true; \
 	  curl -sf -X POST \
 	    -H "Authorization: Bearer $$TOKEN" \

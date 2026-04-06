@@ -367,8 +367,9 @@ func (s *Store) GetAllocatable(ctx context.Context, hostID uuid.UUID) (*Allocata
 	}
 
 	allocatable := &AllocatableResources{
-		Vcpus:    float64(physical.Vcpus)*overcommit.Vcpus - float64(used.UsedVcpus),
-		MemoryMB: float64(physical.MemoryMB)*overcommit.MemoryMB - float64(used.UsedRAMMB),
+		Vcpus:         float64(physical.Vcpus)*overcommit.Vcpus - float64(used.UsedVcpus),
+		MemoryMB:      float64(physical.MemoryMB)*overcommit.MemoryMB - float64(used.UsedRAMMB),
+		PhysicalKnown: physical.Vcpus > 0 || physical.MemoryMB > 0,
 	}
 
 	return allocatable, nil

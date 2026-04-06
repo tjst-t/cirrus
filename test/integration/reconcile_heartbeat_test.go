@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,34 +19,87 @@ import (
 	"github.com/tjst-t/cirrus/internal/compute"
 )
 
-// simLibvirtURL returns the libvirt-sim management API base URL.
-// Reads LIBVIRT_SIM_URL (default http://localhost:8100).
-func simLibvirtURL() string {
-	if u := os.Getenv("LIBVIRT_SIM_URL"); u != "" {
-		return u
+// simLibvirtURLs returns all libvirt-sim management API base URLs.
+// Reads LIBVIRT_SIM_URLS (comma-separated) for multiple worker sims, or
+// LIBVIRT_SIM_URL for a single URL; defaults to http://localhost:8100.
+func simLibvirtURLs() []string {
+	if v := os.Getenv("LIBVIRT_SIM_URLS"); v != "" {
+		var urls []string
+		for _, u := range strings.Split(v, ",") {
+			u = strings.TrimSpace(u)
+			if u != "" {
+				urls = append(urls, u)
+			}
+		}
+		if len(urls) > 0 {
+			return urls
+		}
 	}
-	return "http://localhost:8100"
+	if u := os.Getenv("LIBVIRT_SIM_URL"); u != "" {
+		return []string{u}
+	}
+	return []string{"http://localhost:8100"}
 }
 
-// simDestroyDomain calls POST /sim/hosts/{host_id}/domains/{uuid}/destroy on
-// the libvirt-sim to forcefully stop a VM without going through the Cirrus API.
-// This injects a state mismatch that HeartbeatReconciler should detect.
-func simDestroyDomain(t *testing.T, simURL, hostID, domainUUID string) {
+// simFindAndDestroyDomain searches all libvirt-sim instances for a domain with the given
+// UUID and destroys it. Each worker container runs its own sim instance, so we check all
+// known sim URLs. The cirrus host UUID does not map 1:1 to the sim host ID.
+func simFindAndDestroyDomain(t *testing.T, _ string, domainUUID string) {
 	t.Helper()
-	url := fmt.Sprintf("%s/sim/hosts/%s/domains/%s/destroy", simURL, hostID, domainUUID)
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, nil)
+	simURLs := simLibvirtURLs()
+	for _, simURL := range simURLs {
+		if simTryDestroyDomain(t, simURL, domainUUID) {
+			return
+		}
+	}
+	t.Fatalf("sim: domain %s not found on any sim instance (checked %v)", domainUUID, simURLs)
+}
+
+// simTryDestroyDomain searches one sim instance for the domain and destroys it if found.
+// Returns true if the domain was found and destroyed.
+func simTryDestroyDomain(t *testing.T, simURL, domainUUID string) bool {
+	t.Helper()
+	// List all sim hosts in this instance.
+	resp, err := http.Get(simURL + "/sim/hosts")
 	if err != nil {
-		t.Fatalf("sim destroy: create request: %v", err)
+		return false // sim instance unreachable
 	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("sim destroy: %v", err)
+	defer resp.Body.Close()
+	var hosts []struct {
+		HostID string `json:"host_id"`
 	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("sim destroy: unexpected status %d", resp.StatusCode)
+	if err := json.NewDecoder(resp.Body).Decode(&hosts); err != nil {
+		return false
 	}
-	t.Logf("sim: force-destroyed domain %s on host %s", domainUUID, hostID)
+	for _, h := range hosts {
+		domainsURL := fmt.Sprintf("%s/sim/hosts/%s/domains", simURL, h.HostID)
+		dr, err := http.Get(domainsURL)
+		if err != nil {
+			continue
+		}
+		var domains []struct {
+			UUID string `json:"uuid"`
+		}
+		_ = json.NewDecoder(dr.Body).Decode(&domains)
+		dr.Body.Close()
+		for _, d := range domains {
+			if strings.EqualFold(d.UUID, domainUUID) {
+				destroyURL := fmt.Sprintf("%s/sim/hosts/%s/domains/%s/destroy", simURL, h.HostID, domainUUID)
+				req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, destroyURL, nil)
+				dr2, err := http.DefaultClient.Do(req)
+				if err != nil {
+					t.Fatalf("sim destroy: %v", err)
+				}
+				dr2.Body.Close()
+				if dr2.StatusCode != http.StatusNoContent {
+					t.Fatalf("sim destroy: unexpected status %d", dr2.StatusCode)
+				}
+				t.Logf("sim: force-destroyed domain %s on sim=%s host=%s", domainUUID, simURL, h.HostID)
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // simListHostDomains returns the domain list for a host from libvirt-sim.
@@ -53,22 +107,6 @@ type simDomainInfo struct {
 	UUID   string `json:"uuid"`
 	HostID string `json:"host_id"`
 	State  int32  `json:"state"`
-}
-
-func simGetHostIDForVM(t *testing.T, db interface {
-	QueryRow(ctx context.Context, sql string, args ...any) interface {
-		Scan(dest ...any) error
-	}
-}, vmID uuid.UUID) string {
-	t.Helper()
-	var hostID uuid.UUID
-	// Query vms table for host_id
-	row := db.QueryRow(context.Background(),
-		`SELECT host_id FROM vms WHERE id = $1`, vmID)
-	if err := row.Scan(&hostID); err != nil {
-		t.Fatalf("get host_id for vm %s: %v", vmID, err)
-	}
-	return hostID.String()
 }
 
 // waitForDriftEvent polls drift_events until an event matching the given criteria appears,
@@ -127,7 +165,6 @@ func TestReconcileHeartbeat_DriftEvent(t *testing.T) {
 	env := NewTestEnv(t)
 	c := client.New(endpoint, token)
 	ctx := context.Background()
-	simURL := simLibvirtURL()
 
 	// Step 1: find a flavor and create a VM.
 	flavors, err := c.ListFlavors(ctx)
@@ -167,7 +204,7 @@ func TestReconcileHeartbeat_DriftEvent(t *testing.T) {
 
 	// Step 4: force-destroy the domain via cirrus-sim (bypasses Cirrus API).
 	// The DB still thinks the VM is "running".
-	simDestroyDomain(t, simURL, hostID.String(), vm.ID.String())
+	simFindAndDestroyDomain(t, "", vm.ID.String())
 	t.Logf("domain destroyed in sim; DB still shows running")
 
 	// Step 5: wait for HeartbeatReconciler to fire a drift event.

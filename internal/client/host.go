@@ -53,7 +53,7 @@ func (c *Client) ListHosts(ctx context.Context) ([]host.Host, error) {
 	if err != nil {
 		return nil, err
 	}
-	return decodeResponse[[]host.Host](resp)
+	return decodePagedResponse[host.Host](resp)
 }
 
 // ListHostsByState returns hosts filtered by operational state.
@@ -62,7 +62,7 @@ func (c *Client) ListHostsByState(ctx context.Context, state string) ([]host.Hos
 	if err != nil {
 		return nil, err
 	}
-	return decodeResponse[[]host.Host](resp)
+	return decodePagedResponse[host.Host](resp)
 }
 
 // GetHost returns a host by ID.

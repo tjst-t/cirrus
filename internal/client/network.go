@@ -27,7 +27,7 @@ func (c *Client) ListNetworks(ctx context.Context, tenantID uuid.UUID) ([]networ
 	if err != nil {
 		return nil, err
 	}
-	return decodeResponse[[]network.Network](resp)
+	return decodePagedResponse[network.Network](resp)
 }
 
 func (c *Client) GetNetwork(ctx context.Context, id uuid.UUID) (*network.Network, error) {

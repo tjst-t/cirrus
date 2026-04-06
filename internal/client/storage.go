@@ -158,7 +158,7 @@ func (c *Client) ListVolumes(ctx context.Context, tenantID uuid.UUID) ([]storage
 	if err != nil {
 		return nil, err
 	}
-	return decodeResponse[[]storage.Volume](resp)
+	return decodePagedResponse[storage.Volume](resp)
 }
 
 func (c *Client) GetVolume(ctx context.Context, tenantID, volumeID uuid.UUID) (*storage.Volume, error) {

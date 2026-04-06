@@ -29,7 +29,7 @@ type VM struct {
 	NetworkID    *uuid.UUID `json:"network_id,omitempty"`
 	HostID       *uuid.UUID `json:"host_id,omitempty"`
 	Status       VMStatus   `json:"status"`
-	ErrorMessage string     `json:"error_message,omitempty"`
+	ErrorMessage *string    `json:"error_message,omitempty"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 }

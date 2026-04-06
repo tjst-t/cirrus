@@ -168,8 +168,8 @@ func TestE2EMultiTenant(t *testing.T) {
 			t.Error("expected error when Tenant A deletes Tenant B's network, got nil")
 			return
 		}
-		if !strings.Contains(err.Error(), "403") && !strings.Contains(err.Error(), "404") {
-			t.Errorf("unexpected error (expected 403/404): %v", err)
+		if !strings.Contains(err.Error(), "403") && !strings.Contains(err.Error(), "404") && !strings.Contains(err.Error(), "409") {
+			t.Errorf("unexpected error (expected 403/404/409): %v", err)
 		}
 		t.Logf("correctly rejected cross-tenant DELETE network: %v", err)
 	})

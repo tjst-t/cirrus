@@ -258,7 +258,7 @@ func TestSchedule_InsufficientResources(t *testing.T) {
 				ResourcePhysical: mustJSON(host.PhysicalResources{Vcpus: 2, MemoryMB: 4096})},
 		},
 		allocatable: map[uuid.UUID]*host.AllocatableResources{
-			hostID: {Vcpus: 0, MemoryMB: 0}, // fully used
+			hostID: {Vcpus: 0, MemoryMB: 0, PhysicalKnown: true}, // fully used
 		},
 	}
 	storageSvc := &fakeStorageSvc{

@@ -79,7 +79,7 @@ func (c *Client) ListOrganizations(ctx context.Context) ([]identity.Organization
 	if err != nil {
 		return nil, err
 	}
-	return decodeResponse[[]identity.Organization](resp)
+	return decodePagedResponse[identity.Organization](resp)
 }
 
 // GetOrganization returns an organization by ID.
@@ -106,7 +106,7 @@ func (c *Client) ListTenants(ctx context.Context, orgID uuid.UUID) ([]identity.T
 	if err != nil {
 		return nil, err
 	}
-	return decodeResponse[[]identity.Tenant](resp)
+	return decodePagedResponse[identity.Tenant](resp)
 }
 
 // GetTenant returns a tenant by ID.

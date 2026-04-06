@@ -30,7 +30,7 @@ func (c *Client) ListVMs(ctx context.Context, tenantID uuid.UUID) ([]compute.VM,
 	if err != nil {
 		return nil, err
 	}
-	return decodeResponse[[]compute.VM](resp)
+	return decodePagedResponse[compute.VM](resp)
 }
 
 func (c *Client) GetVM(ctx context.Context, tenantID, vmID uuid.UUID) (*compute.VM, error) {

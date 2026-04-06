@@ -148,11 +148,21 @@ func TestE2EFullFlow(t *testing.T) {
 	vm = waitForVMStatus(t, adminC, ctx, tenantID, vm.ID, compute.VMStatusStopped, 30*time.Second)
 	t.Logf("VM stopped: %s", vm.ID)
 
-	// --- Step 8: Delete VM (must be stopped) ---
+	// --- Step 8: Delete VM (must be stopped) and wait for teardown ---
 	if err := adminC.DeleteVM(ctx, tenantID, vm.ID); err != nil {
 		t.Fatalf("delete vm: %v", err)
 	}
 	t.Logf("VM delete initiated: %s", vm.ID)
+
+	// Wait for VM to be fully removed (teardown releases the port).
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		_, err := adminC.GetVM(ctx, tenantID, vm.ID)
+		if err != nil {
+			break // 404 means fully deleted
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
 
 	// --- Step 9: Delete Network ---
 	if err := adminC.DeleteNetwork(ctx, net.ID); err != nil {

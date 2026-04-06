@@ -53,8 +53,9 @@ type ResourceReport struct {
 
 // AllocatableResources represents the remaining allocatable resources on a host.
 type AllocatableResources struct {
-	Vcpus    float64 `json:"vcpus"`
-	MemoryMB float64 `json:"memory_mb"`
+	Vcpus         float64 `json:"vcpus"`
+	MemoryMB      float64 `json:"memory_mb"`
+	PhysicalKnown bool    `json:"physical_known"` // false when resource_physical is not yet reported
 }
 
 // PhysicalResources holds the raw physical resource counts for a host.

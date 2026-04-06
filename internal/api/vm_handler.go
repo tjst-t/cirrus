@@ -283,6 +283,10 @@ func (h *vmHandlers) deleteVM(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "vm not found"})
 			return
 		}
+		if errors.Is(err, compute.ErrConflict) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "vm cannot be deleted in its current state"})
+			return
+		}
 		writeInternalError(w, err, h.debug)
 		return
 	}

@@ -29,7 +29,7 @@ func (c *Client) ListFlavors(ctx context.Context) ([]flavor.Flavor, error) {
 	if err != nil {
 		return nil, err
 	}
-	return decodeResponse[[]flavor.Flavor](resp)
+	return decodePagedResponse[flavor.Flavor](resp)
 }
 
 func (c *Client) GetFlavor(ctx context.Context, id uuid.UUID) (*flavor.Flavor, error) {
