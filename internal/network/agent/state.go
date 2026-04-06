@@ -18,7 +18,7 @@ type StateCache struct {
 	dnsRecords  map[string]*pb.DnsRecord    // "network_id:name" -> DnsRecord
 
 	// Gateway state (GW-role hosts only)
-	egressRules  []*pb.EgressRule
+	egressRules  map[string]*pb.EgressRule // egress_id -> EgressRule
 	ingressRules []*pb.IngressRule
 	gatewayInfo  *pb.GatewayInfo
 
@@ -41,6 +41,7 @@ func NewStateCache() *StateCache {
 		policies:     make(map[string]*pb.PolicyRule),
 		remotePorts:  make(map[string]*pb.RemotePort),
 		dnsRecords:   make(map[string]*pb.DnsRecord),
+		egressRules:  make(map[string]*pb.EgressRule),
 		ipToPort:     make(map[string]*pb.PortState),
 		macToPort:    make(map[string]*pb.PortState),
 		networkDNS:   make(map[string][]*pb.DnsRecord),
@@ -58,6 +59,7 @@ func (s *StateCache) ApplyFull(update *pb.HostNetworkStateUpdate) {
 	s.policies = make(map[string]*pb.PolicyRule)
 	s.remotePorts = make(map[string]*pb.RemotePort)
 	s.dnsRecords = make(map[string]*pb.DnsRecord)
+	s.egressRules = make(map[string]*pb.EgressRule)
 	s.ipToPort = make(map[string]*pb.PortState)
 	s.macToPort = make(map[string]*pb.PortState)
 	s.networkDNS = make(map[string][]*pb.DnsRecord)
@@ -81,7 +83,9 @@ func (s *StateCache) ApplyFull(update *pb.HostNetworkStateUpdate) {
 	for _, dns := range state.DnsRecords {
 		s.addDnsRecord(dns)
 	}
-	s.egressRules = state.EgressRules
+	for _, er := range state.EgressRules {
+		s.egressRules[er.EgressId] = er
+	}
 	s.ingressRules = state.IngressRules
 	s.gatewayInfo = state.GatewayInfo
 
@@ -106,6 +110,12 @@ func (s *StateCache) ApplyDelta(update *pb.HostNetworkStateUpdate) {
 	for _, name := range update.RemovedDnsNames {
 		s.removeDnsRecordByName(name)
 	}
+	for _, egressID := range update.RemovedEgressIds {
+		s.removeEgressRule(egressID)
+	}
+	for _, ingressID := range update.RemovedIngressIds {
+		s.removeIngressRule(ingressID)
+	}
 
 	// Process additions
 	state := update.GetState()
@@ -121,6 +131,14 @@ func (s *StateCache) ApplyDelta(update *pb.HostNetworkStateUpdate) {
 		}
 		for _, dns := range state.DnsRecords {
 			s.addDnsRecord(dns)
+		}
+		// Add/update egress rules from the delta state.
+		for _, er := range state.EgressRules {
+			s.egressRules[er.EgressId] = er
+		}
+		s.ingressRules = append(s.ingressRules, state.IngressRules...)
+		if state.GatewayInfo != nil {
+			s.gatewayInfo = state.GatewayInfo
 		}
 	}
 
@@ -199,6 +217,16 @@ func (s *StateCache) rebuildNetworkDNS(networkID string) {
 	} else {
 		s.networkDNS[networkID] = records
 	}
+}
+
+func (s *StateCache) removeEgressRule(egressID string) {
+	delete(s.egressRules, egressID)
+}
+
+func (s *StateCache) removeIngressRule(ingressID string) {
+	s.ingressRules = removeFromSlice(s.ingressRules, func(r *pb.IngressRule) bool {
+		return r.IngressId == ingressID
+	})
 }
 
 func removeFromSlice[T any](slice []T, match func(T) bool) []T {
@@ -281,6 +309,18 @@ func (s *StateCache) GetAllDNSRecords() []*pb.DnsRecord {
 	return result
 }
 
+// EgressTypeForID returns the type field of the cached EgressRule with the given ID,
+// or "" if no matching rule is found. Used during delta removals to dispatch to the
+// correct VPN backend without knowing the type from the removal ID alone.
+func (s *StateCache) EgressTypeForID(id string) string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if r, ok := s.egressRules[id]; ok {
+		return r.Type
+	}
+	return ""
+}
+
 // GetVersion returns the current state version.
 func (s *StateCache) GetVersion() uint64 {
 	s.mu.RLock()
@@ -293,8 +333,13 @@ func (s *StateCache) Snapshot() *pb.HostNetworkState {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	egressRules := make([]*pb.EgressRule, 0, len(s.egressRules))
+	for _, r := range s.egressRules {
+		egressRules = append(egressRules, r)
+	}
+
 	state := &pb.HostNetworkState{
-		EgressRules:  s.egressRules,
+		EgressRules:  egressRules,
 		IngressRules: s.ingressRules,
 		GatewayInfo:  s.gatewayInfo,
 	}

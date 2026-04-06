@@ -4,13 +4,13 @@
 
 ## Progress
 
-- Total: 45 Sprints | Done: 22 | In Progress: 0 | Remaining: 23
-- [█████████░░░░░░░░░░░] 49%
+- Total: 45 Sprints | Done: 23 | In Progress: 0 | Remaining: 22
+- [██████████░░░░░░░░░░] 51%
 
 ## Execution Order
 
 S001 → S002 → S003 → S004 → S005 → S006 → S007 → S008 → S009 → S010 → S011 → S012 → S013 → S014 → S015 → S016 → S017 → S018 → S019 → S020 → S021 → S045 → S042 → S043 → S044 → S022 → S023 → S024 → S025 → S026 → S027 → S028 → S029 → S030 → S031 → S032 → S033 → S034 → S035 → S036 → S037 → S038 → S039 → S040 → S041
-                                                                                                                                                           ↑ next
+                                                                                                                                                                    ↑ next
 
 ---
 
@@ -1073,22 +1073,28 @@ OPA 等の外部ポリシーエンジンで認可判定が行える。
 
 ---
 
-## Sprint S042: VPN Egress + Direct Connect [ ]
+## Sprint S042: VPN Egress + Direct Connect [DONE]
 
 NAT Gateway に加えて VPN（IPsec/WireGuard）と Direct Connect（VLAN trunk）の Egress タイプをサポートする。S020 の GW 基盤に依存。
 
-### Story S042-1: VPN Egress [ ]
+### Story S042-1: VPN Egress [x]
 
-- [ ] **Task S042-1-1**: Egress type=vpn_ipsec: IKEv2 による IPsec トンネル設定（事前共有鍵 or 証明書）
-- [ ] **Task S042-1-2**: Egress type=vpn_wireguard: WireGuard トンネル設定（鍵ペア管理）
-- [ ] **Task S042-1-3**: GW ノードへの VPN 設定配信 + HostNetworkState 拡張
+- [x] **Task S042-1-1**: Egress type=vpn_ipsec: IKEv2 による IPsec トンネル設定（事前共有鍵 or 証明書）
+- [x] **Task S042-1-2**: Egress type=vpn_wireguard: WireGuard トンネル設定（鍵ペア管理）
+- [x] **Task S042-1-3**: GW ノードへの VPN 設定配信 + HostNetworkState 拡張
 
-### Story S042-2: Direct Connect Egress + テスト [ ]
+### Story S042-2: Direct Connect Egress + テスト [x]
 
-- [ ] **Task S042-2-1**: Egress type=direct_connect: VLAN trunk 設定（VLAN ID、物理ポート指定）
-- [ ] **Task S042-2-2**: GW ノードでの VLAN trunk 設定配信
-- [ ] **Task S042-2-3**: テスト: VPN トンネル確立（cirrus-sim）、Direct Connect フロー
-- [ ] **Task S042-2-4**: `cirrusctl egress` に vpn-ipsec/vpn-wireguard/direct-connect サブタイプ追加
+- [x] **Task S042-2-1**: Egress type=direct_connect: VLAN trunk 設定（VLAN ID、物理ポート指定）
+- [x] **Task S042-2-2**: GW ノードでの VLAN trunk 設定配信
+- [x] **Task S042-2-3**: テスト: VPN トンネル確立（cirrus-sim）、Direct Connect フロー
+- [x] **Task S042-2-4**: `cirrusctl egress` に vpn-ipsec/vpn-wireguard/direct-connect サブタイプ追加
+
+### Design Notes
+
+- **IPsec 実装**: strongSwan + govici ライブラリ（CLI ラッパー禁止ポリシーに準拠）
+- **WireGuard 鍵管理**: Controller 側で鍵ペアを生成・DB に AES-GCM 暗号化保存。テナントは API 経由で公開鍵を取得
+- **Direct Connect uplink ポート**: cirrus.yaml に `worker.gw.uplink_port` として記述 → worker 起動時に gRPC で Controller へ通知 → `gateway_nodes` テーブルに保存
 
 ---
 

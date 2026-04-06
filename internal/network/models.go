@@ -8,8 +8,11 @@ import (
 
 // Egress and Ingress type constants.
 const (
-	EgressTypeNATGateway = "nat_gateway"
-	IngressTypeDirectIP  = "direct_ip"
+	EgressTypeNATGateway    = "nat_gateway"
+	EgressTypeVPNIPsec      = "vpn_ipsec"
+	EgressTypeVPNWireGuard  = "vpn_wireguard"
+	EgressTypeDirectConnect = "direct_connect"
+	IngressTypeDirectIP     = "direct_ip"
 )
 
 // NetworkStatus represents the lifecycle state of a network.
@@ -117,9 +120,10 @@ type PolicySpec struct {
 type GatewayNode struct {
 	ID         uuid.UUID `json:"id"`
 	HostID     uuid.UUID `json:"host_id"`
-	ExternalIP string    `json:"external_ip"` // Public-facing IP for SNAT/DNAT
-	InternalIP string    `json:"internal_ip"` // Fabric IP for Geneve tunnel
-	Status     string    `json:"status"`      // "active", "draining", "retired"
+	ExternalIP string    `json:"external_ip"`            // Public-facing IP for SNAT/DNAT
+	InternalIP string    `json:"internal_ip"`            // Fabric IP for Geneve tunnel
+	UplinkPort string    `json:"uplink_port,omitempty"` // Physical uplink port for Direct Connect
+	Status     string    `json:"status"`                 // "active", "draining", "retired"
 	CreatedAt  time.Time `json:"created_at"`
 }
 
@@ -128,6 +132,7 @@ type GatewayNodeSpec struct {
 	HostID     uuid.UUID `json:"host_id"`
 	ExternalIP string    `json:"external_ip"`
 	InternalIP string    `json:"internal_ip"`
+	UplinkPort string    `json:"uplink_port,omitempty"` // Physical uplink port for Direct Connect (GW-role hosts only)
 }
 
 // Egress represents a network egress rule (e.g. NAT gateway SNAT).
@@ -140,7 +145,35 @@ type Egress struct {
 
 // EgressConfig holds type-specific egress configuration.
 type EgressConfig struct {
-	PublicIP string `json:"public_ip"` // For nat_gateway: the SNAT public IP
+	PublicIP      string               `json:"public_ip,omitempty"`      // For nat_gateway: the SNAT public IP
+	VPNIPsec      *VPNIPsecConfig      `json:"vpn_ipsec,omitempty"`      // For vpn_ipsec type
+	VPNWireGuard  *VPNWireGuardConfig  `json:"vpn_wireguard,omitempty"`  // For vpn_wireguard type
+	DirectConnect *DirectConnectConfig `json:"direct_connect,omitempty"` // For direct_connect type
+}
+
+// DirectConnectConfig holds VLAN trunk configuration for direct Layer-2 connectivity.
+type DirectConnectConfig struct {
+	VLANID     int    `json:"vlan_id"`      // VLAN tag for this tenant segment (1-4094)
+	UplinkPort string `json:"uplink_port"`  // Physical port name, inherited from GW node registration
+}
+
+// VPNIPsecConfig holds IKEv2 IPsec tunnel configuration.
+type VPNIPsecConfig struct {
+	PeerIP          string `json:"peer_ip"`                     // Remote IPsec peer address
+	PreSharedKey    string `json:"pre_shared_key,omitempty"`    // IKEv2 pre-shared key (plaintext input only; cleared after encryption)
+	PreSharedKeyEnc string `json:"pre_shared_key_enc,omitempty"` // AES-GCM encrypted PSK (base64); stored in DB
+	LocalCIDR       string `json:"local_cidr"`                  // Tenant network CIDR
+	RemoteCIDR      string `json:"remote_cidr"`                 // On-prem CIDR
+}
+
+// VPNWireGuardConfig holds WireGuard tunnel configuration.
+type VPNWireGuardConfig struct {
+	PrivateKeyEnc string   `json:"private_key_enc"` // AES-GCM encrypted private key (base64)
+	PublicKey     string   `json:"public_key"`      // WireGuard public key (base64, for tenant to read)
+	PeerPublicKey string   `json:"peer_public_key"` // Peer's WireGuard public key
+	PeerEndpoint  string   `json:"peer_endpoint"`   // Peer host:port
+	AllowedIPs    []string `json:"allowed_ips"`     // CIDRs routed through tunnel
+	ListenPort    int      `json:"listen_port"`     // WireGuard listen port
 }
 
 // EgressSpec is the input for creating a new egress rule.

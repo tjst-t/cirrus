@@ -3,6 +3,7 @@ package agent
 import (
 	"testing"
 
+	"github.com/tjst-t/cirrus/internal/network"
 	pb "github.com/tjst-t/cirrus/proto/networkpb"
 )
 
@@ -244,5 +245,169 @@ func TestStateCache_Snapshot(t *testing.T) {
 	}
 	if len(snap.DnsRecords) != 1 {
 		t.Errorf("expected 1 DNS record, got %d", len(snap.DnsRecords))
+	}
+}
+
+// TestApplyDelta_RemovedEgressIngressIDs verifies that the bug fix for
+// removed_egress_ids and removed_ingress_ids handling works correctly.
+func TestApplyDelta_RemovedEgressIngressIDs(t *testing.T) {
+	sc := NewStateCache()
+
+	// First apply a full state with egress and ingress rules.
+	sc.ApplyFull(&pb.HostNetworkStateUpdate{
+		Full: true,
+		State: &pb.HostNetworkState{
+			EgressRules: []*pb.EgressRule{
+				{EgressId: "egress-1", NetworkId: "net-1", Type: "nat_gateway", PublicIp: "1.2.3.4"},
+				{EgressId: "egress-2", NetworkId: "net-1", Type: "vpn_ipsec"},
+				{EgressId: "egress-3", NetworkId: "net-1", Type: "vpn_wireguard"},
+			},
+			IngressRules: []*pb.IngressRule{
+				{IngressId: "ingress-1", NetworkId: "net-1", Type: "direct_ip"},
+				{IngressId: "ingress-2", NetworkId: "net-1", Type: "direct_ip"},
+			},
+		},
+		Version: 1,
+	})
+
+	snap := sc.Snapshot()
+	if len(snap.EgressRules) != 3 {
+		t.Fatalf("expected 3 egress rules after full, got %d", len(snap.EgressRules))
+	}
+	if len(snap.IngressRules) != 2 {
+		t.Fatalf("expected 2 ingress rules after full, got %d", len(snap.IngressRules))
+	}
+
+	// Now apply a delta that removes one egress and one ingress rule.
+	sc.ApplyDelta(&pb.HostNetworkStateUpdate{
+		Full:              false,
+		RemovedEgressIds:  []string{"egress-2"},
+		RemovedIngressIds: []string{"ingress-1"},
+		Version:           2,
+	})
+
+	snap = sc.Snapshot()
+	if len(snap.EgressRules) != 2 {
+		t.Errorf("expected 2 egress rules after delta remove, got %d", len(snap.EgressRules))
+	}
+	for _, r := range snap.EgressRules {
+		if r.EgressId == "egress-2" {
+			t.Error("egress-2 should have been removed")
+		}
+	}
+	if len(snap.IngressRules) != 1 {
+		t.Errorf("expected 1 ingress rule after delta remove, got %d", len(snap.IngressRules))
+	}
+	if snap.IngressRules[0].IngressId != "ingress-2" {
+		t.Errorf("expected ingress-2 to remain, got %q", snap.IngressRules[0].IngressId)
+	}
+}
+
+// TestApplyDelta_AddEgressRule verifies that delta updates can add new egress rules.
+func TestApplyDelta_AddEgressRule(t *testing.T) {
+	sc := NewStateCache()
+
+	sc.ApplyFull(&pb.HostNetworkStateUpdate{
+		Full: true,
+		State: &pb.HostNetworkState{
+			EgressRules: []*pb.EgressRule{
+				{EgressId: "egress-1", Type: "nat_gateway"},
+			},
+		},
+		Version: 1,
+	})
+
+	sc.ApplyDelta(&pb.HostNetworkStateUpdate{
+		Full: false,
+		State: &pb.HostNetworkState{
+			EgressRules: []*pb.EgressRule{
+				{EgressId: "egress-2", Type: "vpn_wireguard"},
+			},
+		},
+		Version: 2,
+	})
+
+	snap := sc.Snapshot()
+	if len(snap.EgressRules) != 2 {
+		t.Errorf("expected 2 egress rules after delta add, got %d", len(snap.EgressRules))
+	}
+}
+
+// TestEgressTypeForID verifies EgressTypeForID returns the correct type for cached rules.
+func TestEgressTypeForID(t *testing.T) {
+	sc := NewStateCache()
+
+	sc.ApplyFull(&pb.HostNetworkStateUpdate{
+		Full: true,
+		State: &pb.HostNetworkState{
+			EgressRules: []*pb.EgressRule{
+				{EgressId: "egress-nat", Type: "nat_gateway"},
+				{EgressId: "egress-ipsec", Type: "vpn_ipsec"},
+				{EgressId: "egress-wg", Type: "vpn_wireguard"},
+				{EgressId: "egress-dc", Type: "direct_connect"},
+			},
+		},
+		Version: 1,
+	})
+
+	cases := []struct {
+		id       string
+		wantType string
+	}{
+		{"egress-nat", "nat_gateway"},
+		{"egress-ipsec", "vpn_ipsec"},
+		{"egress-wg", "vpn_wireguard"},
+		{"egress-dc", "direct_connect"},
+		{"egress-missing", ""},
+	}
+
+	for _, tc := range cases {
+		got := sc.EgressTypeForID(tc.id)
+		if got != tc.wantType {
+			t.Errorf("EgressTypeForID(%q) = %q, want %q", tc.id, got, tc.wantType)
+		}
+	}
+}
+
+// TestApplyDelta_DirectConnectRemoval verifies that direct_connect egress rules are
+// removed correctly via delta updates and that EgressTypeForID reflects the removal.
+func TestApplyDelta_DirectConnectRemoval(t *testing.T) {
+	sc := NewStateCache()
+
+	sc.ApplyFull(&pb.HostNetworkStateUpdate{
+		Full: true,
+		State: &pb.HostNetworkState{
+			EgressRules: []*pb.EgressRule{
+				{EgressId: "egress-dc", Type: "direct_connect", NetworkId: "net-1"},
+				{EgressId: "egress-nat", Type: "nat_gateway"},
+			},
+		},
+		Version: 1,
+	})
+
+	// Verify both rules are present before removal.
+	if sc.EgressTypeForID("egress-dc") != network.EgressTypeDirectConnect {
+		t.Error("expected direct_connect type before removal")
+	}
+
+	// Apply delta that removes the direct_connect rule.
+	sc.ApplyDelta(&pb.HostNetworkStateUpdate{
+		Full:             false,
+		RemovedEgressIds: []string{"egress-dc"},
+		Version:          2,
+	})
+
+	// After removal, the type lookup should return empty string.
+	if got := sc.EgressTypeForID("egress-dc"); got != "" {
+		t.Errorf("expected empty type after removal, got %q", got)
+	}
+	// nat_gateway should still be present.
+	if sc.EgressTypeForID("egress-nat") != "nat_gateway" {
+		t.Error("nat_gateway egress rule should not be affected by direct_connect removal")
+	}
+
+	snap := sc.Snapshot()
+	if len(snap.EgressRules) != 1 {
+		t.Errorf("expected 1 egress rule after removal, got %d", len(snap.EgressRules))
 	}
 }

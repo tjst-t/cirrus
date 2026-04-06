@@ -18,6 +18,23 @@ type egressHandlers struct {
 	logger *slog.Logger
 }
 
+// sanitizeEgress returns a copy of e with sensitive encrypted fields zeroed out
+// so they are not leaked via the API.
+func sanitizeEgress(e *network.Egress) network.Egress {
+	out := *e
+	if out.Config.VPNWireGuard != nil {
+		wg := *out.Config.VPNWireGuard
+		wg.PrivateKeyEnc = ""
+		out.Config.VPNWireGuard = &wg
+	}
+	if out.Config.VPNIPsec != nil {
+		ipsec := *out.Config.VPNIPsec
+		ipsec.PreSharedKeyEnc = ""
+		out.Config.VPNIPsec = &ipsec
+	}
+	return out
+}
+
 // networkFromEgressURL retrieves the network from the URL parameter {network_id} and verifies
 // it belongs to the tenant in the URL {tenant_id}.
 func (h *egressHandlers) networkFromEgressURL(w http.ResponseWriter, r *http.Request) (*network.Network, bool) {
@@ -70,12 +87,14 @@ func (h *egressHandlers) createEgress(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type is required"})
 		return
 	}
-	if spec.Type != network.EgressTypeNATGateway {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported egress type; only nat_gateway is supported"})
-		return
-	}
-	if spec.Config.PublicIP == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "config.public_ip is required for nat_gateway"})
+	switch spec.Type {
+	case network.EgressTypeNATGateway,
+		network.EgressTypeVPNIPsec,
+		network.EgressTypeVPNWireGuard,
+		network.EgressTypeDirectConnect:
+		// valid
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported egress type; supported types: nat_gateway, vpn_ipsec, vpn_wireguard, direct_connect"})
 		return
 	}
 
@@ -89,7 +108,10 @@ func (h *egressHandlers) createEgress(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create egress"})
 		return
 	}
-	writeJSON(w, http.StatusCreated, e)
+
+	// The canonical public_key location is Config.VPNWireGuard.PublicKey, which is
+	// already populated and not stripped by sanitizeEgress. No top-level duplication needed.
+	writeJSON(w, http.StatusCreated, sanitizeEgress(e))
 }
 
 func (h *egressHandlers) listEgresses(w http.ResponseWriter, r *http.Request) {
@@ -113,7 +135,11 @@ func (h *egressHandlers) listEgresses(w http.ResponseWriter, r *http.Request) {
 	if egresses == nil {
 		egresses = []network.Egress{}
 	}
-	writeJSON(w, http.StatusOK, egresses)
+	sanitized := make([]network.Egress, len(egresses))
+	for i := range egresses {
+		sanitized[i] = sanitizeEgress(&egresses[i])
+	}
+	writeJSON(w, http.StatusOK, sanitized)
 }
 
 func (h *egressHandlers) getEgress(w http.ResponseWriter, r *http.Request) {
@@ -150,7 +176,7 @@ func (h *egressHandlers) getEgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, e)
+	writeJSON(w, http.StatusOK, sanitizeEgress(e))
 }
 
 func (h *egressHandlers) deleteEgress(w http.ResponseWriter, r *http.Request) {

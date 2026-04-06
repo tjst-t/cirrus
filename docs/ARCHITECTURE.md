@@ -34,13 +34,16 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 ### Network (`internal/network`)
 
 - VPC/Group/Policy/Egress/Ingress の CRUD、HostNetworkState 計算・配信、IPAM
-- **Gateway Node 管理**: `gateway_nodes` テーブルで管理。`hosts.node_roles` に `gateway` を持つホストを GW ノードとして登録し、Network 単位で 1 台割り当て（Active-Standby HA は S033 で対応）
+- **Gateway Node 管理**: `gateway_nodes` テーブルで管理。`hosts.node_roles` に `gateway` を持つホストを GW ノードとして登録し、Network 単位で 1 台割り当て（Active-Standby HA は S033 で対応）。Worker の `gw_uplink_port` (cirrus.yaml) を起動時に Controller へ通知し `gateway_nodes.uplink_port` に保存
 - **IP Pool 管理**: 管理者が公開 IP プール（CIDR）を登録し、Direct IP Ingress の公開 IP をここから払い出す
 - **NAT Gateway Egress** (`type=nat_gateway`): テナントネットワーク発の外部通信を GW ノードで SNAT
+- **VPN IPsec Egress** (`type=vpn_ipsec`): IKEv2 IPsec トンネル。PSK は AES-GCM 暗号化して DB 保存（`controller.secrets_key`）。GW ノードへ復号済み設定を配信し `VPNManager.ConfigureIPsec` で適用
+- **VPN WireGuard Egress** (`type=vpn_wireguard`): WireGuard トンネル。Controller が Curve25519 キーペアを生成し秘密鍵を AES-GCM 暗号化保存。公開鍵は API レスポンスで返却。GW ノードへ復号済み設定を配信し `VPNManager.ConfigureWireGuard` で適用
+- **Direct Connect Egress** (`type=direct_connect`): 専用線 VLAN trunk。VLAN ID をテナントが指定し、`uplink_port` は GW ノード登録情報から自動設定。GW ノードへ配信し `DirectConnectManager.ConfigureVLANTrunk` で適用
 - **Direct IP Ingress** (`type=direct_ip`): 公開 IP → VM プライベート IP の DNAT ルールを GW ノードで適用
-- `StateController.ComputeHostNetworkState`: 各 Worker へ配信する `HostNetworkState` を計算（local ports / remote ports / policies / DNS / egress rules / ingress rules）。GW ホストでローカル VM がなくても、担当ネットワークの remote port ルーティングを含める
+- `StateController.ComputeHostNetworkState`: 各 Worker へ配信する `HostNetworkState` を計算（local ports / remote ports / policies / DNS / egress rules / ingress rules）。GW ホストでローカル VM がなくても、担当ネットワークの remote port ルーティングを含める。VPN/DC egress では暗号化シークレットを復号してから配信
 - `GRPCStateServer.WatchHostNetworkState`: gRPC server-streaming で Worker に `HostNetworkState` を Push（2 秒ポーリング差分検出、`TriggerRefresh` で強制再配信）
-- `internal/network/agent/` — Worker 側 OVS OpenFlow フロー生成・適用（Table 0–7）、SNAT/DNAT フロー含む
+- `internal/network/agent/` — Worker 側 OVS OpenFlow フロー生成・適用（Table 0–7）、SNAT/DNAT フロー含む。`VPNManager` / `DirectConnectManager` インターフェースで VPN・VLAN 設定を抽象化（本番: strongSwan/wgctrl、シム: no-op ログ）
 
 ### Storage (`internal/storage`)
 

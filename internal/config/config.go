@@ -18,6 +18,10 @@ type ControllerConfig struct {
 	LogLevel          string `yaml:"log_level"`          // debug, info, warn, error
 	Debug             bool   `yaml:"debug"`              // include internal error details in API 500 responses
 
+	// SecretsKey is a base64-encoded 32-byte key used for AES-GCM encryption of
+	// secrets such as WireGuard private keys stored in the database.
+	SecretsKey string `yaml:"secrets_key"`
+
 	// Reconciler settings
 	ReconcileInterval          int  `yaml:"reconcile_interval"`           // seconds; default 300
 	ReconcileNetworkInterval   int  `yaml:"reconcile_network_interval"`   // seconds; 0 = use ReconcileInterval
@@ -42,6 +46,7 @@ type WorkerConfig struct {
 	StorageDomains        string `yaml:"storage_domains"`       // comma-separated storage domains to join
 	Location              string `yaml:"location"`              // location in the topology tree (name or ID)
 	FabricIP              string `yaml:"fabric_ip"`             // IP for Geneve tunnel endpoints (overlay fabric)
+	GatewayUplinkPort     string `yaml:"gw_uplink_port"`        // Physical port for VLAN trunk (GW-role hosts only)
 }
 
 // ParseAuthTokens parses the auth-tokens flag value into a map of token→externalID.

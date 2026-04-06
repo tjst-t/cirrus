@@ -19,14 +19,22 @@ import (
 
 // Store implements Service using PostgreSQL.
 type Store struct {
-	pool     *pgxpool.Pool
-	logger   *slog.Logger
-	quotaSvc quota.Service
+	pool       *pgxpool.Pool
+	logger     *slog.Logger
+	quotaSvc   quota.Service
+	secretsKey []byte // AES-GCM key for encrypting WireGuard private keys
 }
 
 // NewStore creates a new network store.
 func NewStore(pool *pgxpool.Pool, logger *slog.Logger, quotaSvc quota.Service) *Store {
 	return &Store{pool: pool, logger: logger, quotaSvc: quotaSvc}
+}
+
+// WithSecretsKey sets the AES-GCM key used to encrypt WireGuard private keys.
+// key must be 16, 24, or 32 bytes (for AES-128, AES-192, or AES-256).
+func (s *Store) WithSecretsKey(key []byte) *Store {
+	s.secretsKey = key
+	return s
 }
 
 func wrapErr(msg string, err error) error {
@@ -532,11 +540,11 @@ func (s *Store) CreateGatewayNode(ctx context.Context, spec GatewayNodeSpec) (*G
 
 	var gw GatewayNode
 	err = tx.QueryRow(ctx,
-		`INSERT INTO gateway_nodes (host_id, external_ip, internal_ip, status)
-		 VALUES ($1, $2::inet, $3::inet, 'active')
-		 RETURNING id, host_id, host(external_ip), host(internal_ip), status, created_at`,
-		spec.HostID, spec.ExternalIP, spec.InternalIP,
-	).Scan(&gw.ID, &gw.HostID, &gw.ExternalIP, &gw.InternalIP, &gw.Status, &gw.CreatedAt)
+		`INSERT INTO gateway_nodes (host_id, external_ip, internal_ip, uplink_port, status)
+		 VALUES ($1, $2::inet, $3::inet, $4, 'active')
+		 RETURNING id, host_id, host(external_ip), host(internal_ip), uplink_port, status, created_at`,
+		spec.HostID, spec.ExternalIP, spec.InternalIP, spec.UplinkPort,
+	).Scan(&gw.ID, &gw.HostID, &gw.ExternalIP, &gw.InternalIP, &gw.UplinkPort, &gw.Status, &gw.CreatedAt)
 	if err != nil {
 		return nil, wrapErr("gateway_node: create", err)
 	}
@@ -560,9 +568,9 @@ func (s *Store) CreateGatewayNode(ctx context.Context, spec GatewayNodeSpec) (*G
 func (s *Store) GetGatewayNode(ctx context.Context, id uuid.UUID) (*GatewayNode, error) {
 	var gw GatewayNode
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, host_id, host(external_ip), host(internal_ip), status, created_at
+		`SELECT id, host_id, host(external_ip), host(internal_ip), uplink_port, status, created_at
 		 FROM gateway_nodes WHERE id = $1`, id,
-	).Scan(&gw.ID, &gw.HostID, &gw.ExternalIP, &gw.InternalIP, &gw.Status, &gw.CreatedAt)
+	).Scan(&gw.ID, &gw.HostID, &gw.ExternalIP, &gw.InternalIP, &gw.UplinkPort, &gw.Status, &gw.CreatedAt)
 	if err != nil {
 		return nil, wrapErr("gateway_node: get", err)
 	}
@@ -571,7 +579,7 @@ func (s *Store) GetGatewayNode(ctx context.Context, id uuid.UUID) (*GatewayNode,
 
 func (s *Store) ListGatewayNodes(ctx context.Context) ([]GatewayNode, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, host_id, host(external_ip), host(internal_ip), status, created_at
+		`SELECT id, host_id, host(external_ip), host(internal_ip), uplink_port, status, created_at
 		 FROM gateway_nodes ORDER BY created_at`)
 	if err != nil {
 		return nil, fmt.Errorf("gateway_node: list: %w", err)
@@ -581,7 +589,7 @@ func (s *Store) ListGatewayNodes(ctx context.Context) ([]GatewayNode, error) {
 	var nodes []GatewayNode
 	for rows.Next() {
 		var gw GatewayNode
-		if err := rows.Scan(&gw.ID, &gw.HostID, &gw.ExternalIP, &gw.InternalIP, &gw.Status, &gw.CreatedAt); err != nil {
+		if err := rows.Scan(&gw.ID, &gw.HostID, &gw.ExternalIP, &gw.InternalIP, &gw.UplinkPort, &gw.Status, &gw.CreatedAt); err != nil {
 			return nil, fmt.Errorf("gateway_node: list scan: %w", err)
 		}
 		nodes = append(nodes, gw)
@@ -645,11 +653,11 @@ func (s *Store) AssignGatewayNode(ctx context.Context, networkID uuid.UUID, gate
 func (s *Store) GetNetworkGatewayNode(ctx context.Context, networkID uuid.UUID) (*GatewayNode, error) {
 	var gw GatewayNode
 	err := s.pool.QueryRow(ctx,
-		`SELECT gn.id, gn.host_id, host(gn.external_ip), host(gn.internal_ip), gn.status, gn.created_at
+		`SELECT gn.id, gn.host_id, host(gn.external_ip), host(gn.internal_ip), gn.uplink_port, gn.status, gn.created_at
 		 FROM gateway_nodes gn
 		 JOIN networks n ON n.gateway_node_id = gn.id
 		 WHERE n.id = $1`, networkID,
-	).Scan(&gw.ID, &gw.HostID, &gw.ExternalIP, &gw.InternalIP, &gw.Status, &gw.CreatedAt)
+	).Scan(&gw.ID, &gw.HostID, &gw.ExternalIP, &gw.InternalIP, &gw.UplinkPort, &gw.Status, &gw.CreatedAt)
 	if err != nil {
 		return nil, wrapErr("gateway_node: get network gateway", err)
 	}
@@ -658,9 +666,56 @@ func (s *Store) GetNetworkGatewayNode(ctx context.Context, networkID uuid.UUID) 
 
 // --- Egresses ---
 
+// validateEgressSpec validates the required fields of an EgressSpec for its type
+// and performs any cryptographic pre-processing (key generation, encryption).
+// It returns ErrInvalidState for missing/invalid fields, or an error from key operations.
+// Note: direct_connect uplink_port population requires a DB call and is handled separately in CreateEgress.
+func (s *Store) validateEgressSpec(spec *EgressSpec) error {
+	switch spec.Type {
+	case EgressTypeNATGateway:
+		if spec.Config.PublicIP == "" {
+			return fmt.Errorf("config.public_ip is required for nat_gateway: %w", ErrInvalidState)
+		}
+	case EgressTypeVPNIPsec:
+		if spec.Config.VPNIPsec == nil {
+			return fmt.Errorf("config.vpn_ipsec is required for vpn_ipsec: %w", ErrInvalidState)
+		}
+		if spec.Config.VPNIPsec.PeerIP == "" || spec.Config.VPNIPsec.PreSharedKey == "" ||
+			spec.Config.VPNIPsec.LocalCIDR == "" || spec.Config.VPNIPsec.RemoteCIDR == "" {
+			return fmt.Errorf("vpn_ipsec requires peer_ip, pre_shared_key, local_cidr, remote_cidr: %w", ErrInvalidState)
+		}
+		return s.encryptIPsecPSK(&spec.Config)
+	case EgressTypeVPNWireGuard:
+		if spec.Config.VPNWireGuard == nil {
+			return fmt.Errorf("config.vpn_wireguard is required for vpn_wireguard: %w", ErrInvalidState)
+		}
+		if spec.Config.VPNWireGuard.PeerPublicKey == "" || spec.Config.VPNWireGuard.PeerEndpoint == "" {
+			return fmt.Errorf("vpn_wireguard requires peer_public_key, peer_endpoint: %w", ErrInvalidState)
+		}
+		return s.generateWireGuardKeys(&spec.Config)
+	case EgressTypeDirectConnect:
+		if spec.Config.DirectConnect == nil {
+			return fmt.Errorf("config.direct_connect is required for direct_connect: %w", ErrInvalidState)
+		}
+		if spec.Config.DirectConnect.VLANID < 1 || spec.Config.DirectConnect.VLANID > 4094 {
+			return fmt.Errorf("direct_connect vlan_id must be between 1 and 4094: %w", ErrInvalidState)
+		}
+	default:
+		return fmt.Errorf("unsupported type %q: %w", spec.Type, ErrInvalidState)
+	}
+	return nil
+}
+
 func (s *Store) CreateEgress(ctx context.Context, networkID uuid.UUID, spec EgressSpec) (*Egress, error) {
-	if spec.Type != EgressTypeNATGateway {
-		return nil, fmt.Errorf("egress: create: unsupported type %q: %w", spec.Type, ErrInvalidState)
+	if err := s.validateEgressSpec(&spec); err != nil {
+		return nil, fmt.Errorf("egress: create: %w", err)
+	}
+
+	// For direct_connect, uplink_port is populated from the network's assigned GW node.
+	if spec.Type == EgressTypeDirectConnect {
+		if err := s.populateDirectConnectUplinkPort(ctx, networkID, &spec.Config); err != nil {
+			return nil, fmt.Errorf("egress: create: %w", err)
+		}
 	}
 
 	// Fetch tenant_id for quota tracking.
@@ -712,6 +767,65 @@ func (s *Store) CreateEgress(ctx context.Context, networkID uuid.UUID, spec Egre
 		return nil, fmt.Errorf("egress: create: unmarshal config: %w", err)
 	}
 	return &e, nil
+}
+
+// encryptIPsecPSK encrypts the plaintext PreSharedKey in the VPNIPsecConfig using
+// AES-GCM, stores the result as PreSharedKeyEnc (base64), and clears PreSharedKey.
+func (s *Store) encryptIPsecPSK(cfg *EgressConfig) error {
+	if len(s.secretsKey) == 0 {
+		return fmt.Errorf("ipsec psk encryption: secrets key not configured")
+	}
+	encPSK, err := EncryptAESGCM(s.secretsKey, []byte(cfg.VPNIPsec.PreSharedKey))
+	if err != nil {
+		return fmt.Errorf("ipsec psk encryption: %w", err)
+	}
+	cfg.VPNIPsec.PreSharedKeyEnc = encodeBase64(encPSK)
+	cfg.VPNIPsec.PreSharedKey = "" // clear plaintext
+	return nil
+}
+
+// populateDirectConnectUplinkPort fetches the GW node assigned to the network and
+// copies its uplink_port into the DirectConnectConfig. Users do not specify uplink_port
+// directly; it is derived from the gateway node's registration configuration.
+func (s *Store) populateDirectConnectUplinkPort(ctx context.Context, networkID uuid.UUID, cfg *EgressConfig) error {
+	var uplinkPort string
+	err := s.pool.QueryRow(ctx,
+		`SELECT gn.uplink_port
+		 FROM gateway_nodes gn
+		 JOIN networks n ON n.gateway_node_id = gn.id
+		 WHERE n.id = $1 AND gn.status = 'active'
+		 LIMIT 1`, networkID,
+	).Scan(&uplinkPort)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("direct_connect: no active gateway node assigned to network %s: %w", networkID, ErrInvalidState)
+		}
+		return fmt.Errorf("direct_connect: lookup gateway node: %w", err)
+	}
+	if uplinkPort == "" {
+		return fmt.Errorf("direct_connect: gateway node for network %s has no uplink_port configured: set gw_uplink_port in the GW worker's cirrus.yaml: %w", networkID, ErrInvalidState)
+	}
+	cfg.DirectConnect.UplinkPort = uplinkPort
+	return nil
+}
+
+// generateWireGuardKeys generates a WireGuard keypair, encrypts the private key,
+// and stores both keys in spec.Config.VPNWireGuard.
+func (s *Store) generateWireGuardKeys(cfg *EgressConfig) error {
+	if len(s.secretsKey) == 0 {
+		return fmt.Errorf("wireguard key generation: secrets key not configured")
+	}
+	priv, pub, err := GenerateWireGuardKeypair()
+	if err != nil {
+		return fmt.Errorf("wireguard key generation: %w", err)
+	}
+	encPriv, err := EncryptAESGCM(s.secretsKey, priv)
+	if err != nil {
+		return fmt.Errorf("wireguard key generation: encrypt private key: %w", err)
+	}
+	cfg.VPNWireGuard.PrivateKeyEnc = encodeBase64(encPriv)
+	cfg.VPNWireGuard.PublicKey = encodeBase64(pub)
+	return nil
 }
 
 func (s *Store) GetEgress(ctx context.Context, id uuid.UUID) (*Egress, error) {

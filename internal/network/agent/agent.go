@@ -9,6 +9,7 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/tjst-t/cirrus/internal/network"
 	pb "github.com/tjst-t/cirrus/proto/networkpb"
 )
 
@@ -23,20 +24,24 @@ type Config struct {
 
 // NetworkAgent manages the network data plane on a single worker host.
 // It connects to the controller's NetworkStateService, receives state updates,
-// and applies them via OVS flows, DHCP, DNS, and metadata services.
+// and applies them via OVS flows, DHCP, DNS, metadata, and VPN services.
 type NetworkAgent struct {
-	config   Config
-	conn     *grpc.ClientConn
-	state    *StateCache
-	pipeline *Pipeline
-	dhcp     *DHCPServer
-	dns      *DNSServer
-	metadata *MetadataServer
-	logger   *slog.Logger
+	config          Config
+	conn            *grpc.ClientConn
+	state           *StateCache
+	pipeline        *Pipeline
+	dhcp            *DHCPServer
+	dns             *DNSServer
+	metadata        *MetadataServer
+	vpnManager      VPNManager
+	dcManager       DirectConnectManager
+	logger          *slog.Logger
 }
 
 // New creates a new NetworkAgent. Pass the shared gRPC connection from the worker agent.
 // ovsClient can be nil; if so, pipeline Apply will be skipped (state-only mode for dev).
+// vpnManager can be nil; if so, VPN configuration is skipped. Use NewSimVPNManager for
+// simulation environments.
 func New(cfg Config, conn *grpc.ClientConn, ovsClient OVSClient) *NetworkAgent {
 	if cfg.OVSBridge == "" {
 		cfg.OVSBridge = BridgeName
@@ -54,16 +59,38 @@ func New(cfg Config, conn *grpc.ClientConn, ovsClient OVSClient) *NetworkAgent {
 	dnsSrv := NewDNSServer(cache, cfg.Logger, "")
 	metaSrv := NewMetadataServer(cache, cfg.Logger)
 
+	// Default to a no-op sim VPN manager so VPN egress rules are at least logged.
+	vpnMgr := VPNManager(NewSimVPNManager(cfg.Logger))
+
+	// Default to a no-op sim Direct Connect manager.
+	dcMgr := DirectConnectManager(NewSimDirectConnectManager(cfg.Logger))
+
 	return &NetworkAgent{
-		config:   cfg,
-		conn:     conn,
-		state:    cache,
-		pipeline: pipeline,
-		dhcp:     dhcpSrv,
-		dns:      dnsSrv,
-		metadata: metaSrv,
-		logger:   cfg.Logger,
+		config:    cfg,
+		conn:      conn,
+		state:     cache,
+		pipeline:  pipeline,
+		dhcp:      dhcpSrv,
+		dns:       dnsSrv,
+		metadata:  metaSrv,
+		vpnManager: vpnMgr,
+		dcManager:  dcMgr,
+		logger:    cfg.Logger,
 	}
+}
+
+// WithVPNManager sets the VPN manager used to apply VPN egress rules.
+// Call this before Run to override the default SimVPNManager with a real implementation.
+func (a *NetworkAgent) WithVPNManager(mgr VPNManager) *NetworkAgent {
+	a.vpnManager = mgr
+	return a
+}
+
+// WithDirectConnectManager sets the Direct Connect manager used to configure VLAN trunk rules.
+// Call this before Run to override the default SimDirectConnectManager with a real implementation.
+func (a *NetworkAgent) WithDirectConnectManager(mgr DirectConnectManager) *NetworkAgent {
+	a.dcManager = mgr
+	return a
 }
 
 // Run starts the network agent. It connects to the controller's
@@ -122,6 +149,14 @@ func (a *NetworkAgent) streamLoop(ctx context.Context) error {
 
 // applyUpdate processes a HostNetworkStateUpdate from the controller.
 func (a *NetworkAgent) applyUpdate(update *pb.HostNetworkStateUpdate) error {
+	ctx := context.Background()
+
+	// Apply VPN/DC removal dispatch BEFORE updating the state cache so that
+	// EgressTypeForID lookups still find the rule being removed.
+	if err := a.applyVPNRules(ctx, update); err != nil {
+		a.logger.Error("failed to apply VPN rules", "error", err)
+	}
+
 	// Update state cache
 	if update.Full {
 		a.state.ApplyFull(update)
@@ -145,6 +180,63 @@ func (a *NetworkAgent) applyUpdate(update *pb.HostNetworkStateUpdate) error {
 		"remote_ports", len(snapshot.RemotePorts),
 	)
 
+	return nil
+}
+
+// applyVPNRules applies VPN and Direct Connect egress rule configuration.
+// It must be called BEFORE ApplyFull/ApplyDelta so that EgressTypeForID lookups
+// can find rules that are being removed.
+func (a *NetworkAgent) applyVPNRules(ctx context.Context, update *pb.HostNetworkStateUpdate) error {
+	// Non-GW hosts never receive egress rules; skip all processing.
+	if len(update.RemovedEgressIds) == 0 &&
+		(update.GetState() == nil || len(update.GetState().EgressRules) == 0) {
+		return nil
+	}
+
+	// Handle removals: look up the type from the state cache before dispatching.
+	// The state cache still holds the rule at this point because applyVPNRules is
+	// called before ApplyDelta processes the removal.
+	for _, egressID := range update.RemovedEgressIds {
+		egressType := a.state.EgressTypeForID(egressID)
+		switch egressType {
+		case network.EgressTypeVPNIPsec:
+			if err := a.vpnManager.RemoveIPsec(ctx, egressID); err != nil {
+				a.logger.Warn("vpn: remove ipsec failed", "egress_id", egressID, "error", err)
+			}
+		case network.EgressTypeVPNWireGuard:
+			if err := a.vpnManager.RemoveWireGuard(ctx, egressID); err != nil {
+				a.logger.Warn("vpn: remove wireguard failed", "egress_id", egressID, "error", err)
+			}
+		case network.EgressTypeDirectConnect:
+			if err := a.dcManager.RemoveVLANTrunk(ctx, egressID); err != nil {
+				a.logger.Warn("direct_connect: remove vlan trunk failed", "egress_id", egressID, "error", err)
+			}
+		default:
+			// Not a managed egress (e.g. nat_gateway) or unknown — nothing to do.
+		}
+	}
+
+	// Handle additions/updates from the state payload.
+	state := update.GetState()
+	if state == nil {
+		return nil
+	}
+	for _, rule := range state.EgressRules {
+		switch rule.Type {
+		case network.EgressTypeVPNIPsec:
+			if err := a.vpnManager.ConfigureIPsec(ctx, rule); err != nil {
+				a.logger.Error("vpn: configure ipsec failed", "egress_id", rule.EgressId, "error", err)
+			}
+		case network.EgressTypeVPNWireGuard:
+			if err := a.vpnManager.ConfigureWireGuard(ctx, rule); err != nil {
+				a.logger.Error("vpn: configure wireguard failed", "egress_id", rule.EgressId, "error", err)
+			}
+		case network.EgressTypeDirectConnect:
+			if err := a.dcManager.ConfigureVLANTrunk(ctx, rule); err != nil {
+				a.logger.Error("direct_connect: configure vlan trunk failed", "egress_id", rule.EgressId, "error", err)
+			}
+		}
+	}
 	return nil
 }
 

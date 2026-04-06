@@ -17,13 +17,21 @@ import (
 
 // StateController computes HostNetworkState for each host.
 type StateController struct {
-	pool   *pgxpool.Pool
-	logger *slog.Logger
+	pool       *pgxpool.Pool
+	logger     *slog.Logger
+	secretsKey []byte // AES-GCM key for decrypting WireGuard private keys
 }
 
 // NewStateController creates a new StateController.
 func NewStateController(pool *pgxpool.Pool, logger *slog.Logger) *StateController {
 	return &StateController{pool: pool, logger: logger}
+}
+
+// WithSecretsKey sets the AES-GCM key used to decrypt WireGuard private keys
+// before delivering them to GW workers.
+func (sc *StateController) WithSecretsKey(key []byte) *StateController {
+	sc.secretsKey = key
+	return sc
 }
 
 // portRow holds a joined port+network+group row.
@@ -289,12 +297,12 @@ func (sc *StateController) getDNSRecords(ctx context.Context, networkIDs []uuid.
 func (sc *StateController) getGatewayNodeForHost(ctx context.Context, hostID uuid.UUID) (*GatewayNode, error) {
 	var gw GatewayNode
 	err := sc.pool.QueryRow(ctx, `
-		SELECT gn.id, gn.host_id, host(gn.external_ip), host(gn.internal_ip), gn.status, gn.created_at
+		SELECT gn.id, gn.host_id, host(gn.external_ip), host(gn.internal_ip), gn.uplink_port, gn.status, gn.created_at
 		FROM gateway_nodes gn
 		JOIN hosts h ON h.id = gn.host_id
 		WHERE h.id = $1 AND 'gateway' = ANY(h.node_roles) AND gn.status = 'active'
 		LIMIT 1
-	`, hostID).Scan(&gw.ID, &gw.HostID, &gw.ExternalIP, &gw.InternalIP, &gw.Status, &gw.CreatedAt)
+	`, hostID).Scan(&gw.ID, &gw.HostID, &gw.ExternalIP, &gw.InternalIP, &gw.UplinkPort, &gw.Status, &gw.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
@@ -372,8 +380,8 @@ func (sc *StateController) computeEgressRules(ctx context.Context, gw *GatewayNo
 		SELECT e.id, e.network_id, e.type, e.config, n.cidr::TEXT
 		FROM egresses e
 		JOIN networks n ON n.id = e.network_id
-		WHERE n.gateway_node_id = $1 AND e.type = $2
-	`, gw.ID, EgressTypeNATGateway)
+		WHERE n.gateway_node_id = $1 AND e.type = ANY($2)
+	`, gw.ID, []string{EgressTypeNATGateway, EgressTypeVPNIPsec, EgressTypeVPNWireGuard, EgressTypeDirectConnect})
 	if err != nil {
 		return nil, fmt.Errorf("compute egress: query: %w", err)
 	}
@@ -391,15 +399,88 @@ func (sc *StateController) computeEgressRules(ctx context.Context, gw *GatewayNo
 		if err := json.Unmarshal(configJSON, &cfg); err != nil {
 			return nil, fmt.Errorf("compute egress: unmarshal config: %w", err)
 		}
-		egressRules = append(egressRules, &pb.EgressRule{
+
+		rule := &pb.EgressRule{
 			EgressId:    eID.String(),
 			NetworkId:   eNetID.String(),
 			Type:        eType,
-			PublicIp:    cfg.PublicIP,
 			NetworkCidr: cidr,
-		})
+		}
+
+		switch eType {
+		case EgressTypeNATGateway:
+			rule.PublicIp = cfg.PublicIP
+		case EgressTypeVPNIPsec:
+			if cfg.VPNIPsec != nil {
+				psk := cfg.VPNIPsec.PreSharedKey // may be empty if encrypted
+				if cfg.VPNIPsec.PreSharedKeyEnc != "" && len(sc.secretsKey) > 0 {
+					pskBytes, ok := sc.decryptSecret(eID.String(), "ipsec psk", cfg.VPNIPsec.PreSharedKeyEnc)
+					if !ok {
+						continue
+					}
+					psk = string(pskBytes)
+				}
+				rule.VpnIpsec = &pb.VPNIPsecConfig{
+					PeerIp:       cfg.VPNIPsec.PeerIP,
+					PreSharedKey: psk,
+					LocalCidr:    cfg.VPNIPsec.LocalCIDR,
+					RemoteCidr:   cfg.VPNIPsec.RemoteCIDR,
+				}
+			}
+		case EgressTypeVPNWireGuard:
+			if cfg.VPNWireGuard != nil {
+				wgRule := &pb.VPNWireGuardConfig{
+					PublicKey:     cfg.VPNWireGuard.PublicKey,
+					PeerPublicKey: cfg.VPNWireGuard.PeerPublicKey,
+					PeerEndpoint:  cfg.VPNWireGuard.PeerEndpoint,
+					AllowedIps:    cfg.VPNWireGuard.AllowedIPs,
+					ListenPort:    int32(cfg.VPNWireGuard.ListenPort),
+				}
+				// Decrypt the private key to deliver to the GW worker.
+				if cfg.VPNWireGuard.PrivateKeyEnc != "" && len(sc.secretsKey) > 0 {
+					privBytes, ok := sc.decryptSecret(eID.String(), "wireguard private key", cfg.VPNWireGuard.PrivateKeyEnc)
+					if !ok {
+						continue
+					}
+					wgRule.PrivateKey = encodeBase64(privBytes)
+				}
+				rule.VpnWireguard = wgRule
+			}
+		case EgressTypeDirectConnect:
+			if cfg.DirectConnect != nil {
+				// Use the stored uplink_port (auto-populated from GW node at create time);
+				// fall back to the GW node's current uplink_port so it stays up-to-date.
+				uplinkPort := cfg.DirectConnect.UplinkPort
+				if uplinkPort == "" {
+					uplinkPort = gw.UplinkPort
+				}
+				rule.DirectConnect = &pb.DirectConnectConfig{
+					VlanId:     int32(cfg.DirectConnect.VLANID),
+					UplinkPort: uplinkPort,
+				}
+			}
+		}
+
+		egressRules = append(egressRules, rule)
 	}
 	return egressRules, rows.Err()
+}
+
+// decryptSecret decodes a base64-encoded ciphertext and decrypts it with AES-GCM.
+// Returns the plaintext and true on success; logs a warning and returns nil, false on any error.
+// egressID and label are used solely for structured log context.
+func (sc *StateController) decryptSecret(egressID, label, enc string) ([]byte, bool) {
+	raw, err := decodeBase64(enc)
+	if err != nil {
+		sc.logger.Warn("compute egress: decode "+label+" failed, skipping rule", "egress_id", egressID, "error", err)
+		return nil, false
+	}
+	plain, err := DecryptAESGCM(sc.secretsKey, raw)
+	if err != nil {
+		sc.logger.Warn("compute egress: decrypt "+label+" failed, skipping rule", "egress_id", egressID, "error", err)
+		return nil, false
+	}
+	return plain, true
 }
 
 // gatewayIPFromVM computes the gateway IP (.2) from the VM IP (.1) in a /30 block.

@@ -3,6 +3,7 @@ module github.com/tjst-t/cirrus
 go 1.25.7
 
 require (
+	github.com/diskfs/go-diskfs v1.9.1
 	github.com/fergusstrange/embedded-postgres v1.34.0
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/golang-migrate/migrate/v4 v4.19.1
@@ -12,6 +13,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/miekg/dns v1.1.72
 	github.com/spf13/cobra v1.10.2
+	golang.org/x/crypto v0.49.0
 	golang.org/x/sync v0.20.0
 	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.11
@@ -20,7 +22,6 @@ require (
 
 require (
 	github.com/anchore/go-lzo v0.1.0 // indirect
-	github.com/diskfs/go-diskfs v1.9.1 // indirect
 	github.com/djherbis/times v1.6.0 // indirect
 	github.com/elliotwutingfeng/asciiset v0.0.0-20230602022725-51bbb787efab // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
@@ -37,10 +38,10 @@ require (
 	github.com/u-root/uio v0.0.0-20230220225925-ffce2a382923 // indirect
 	github.com/ulikunitz/xz v0.5.15 // indirect
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect
-	golang.org/x/mod v0.31.0 // indirect
-	golang.org/x/net v0.48.0 // indirect
-	golang.org/x/sys v0.39.0 // indirect
-	golang.org/x/text v0.32.0 // indirect
-	golang.org/x/tools v0.40.0 // indirect
+	golang.org/x/mod v0.33.0 // indirect
+	golang.org/x/net v0.51.0 // indirect
+	golang.org/x/sys v0.42.0 // indirect
+	golang.org/x/text v0.35.0 // indirect
+	golang.org/x/tools v0.42.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
 )

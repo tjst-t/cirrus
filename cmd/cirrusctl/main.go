@@ -1699,6 +1699,25 @@ func groupRow(g *network.Group) []string {
 	return []string{g.ID.String(), g.NetworkID.String(), g.Name}
 }
 
+func egressRow(e *network.Egress) []string {
+	detail := e.Config.PublicIP
+	switch e.Type {
+	case network.EgressTypeVPNIPsec:
+		if e.Config.VPNIPsec != nil {
+			detail = fmt.Sprintf("peer=%s", e.Config.VPNIPsec.PeerIP)
+		}
+	case network.EgressTypeVPNWireGuard:
+		if e.Config.VPNWireGuard != nil {
+			detail = fmt.Sprintf("pubkey=%s", e.Config.VPNWireGuard.PublicKey)
+		}
+	case network.EgressTypeDirectConnect:
+		if e.Config.DirectConnect != nil {
+			detail = fmt.Sprintf("vlan=%d port=%s", e.Config.DirectConnect.VLANID, e.Config.DirectConnect.UplinkPort)
+		}
+	}
+	return []string{e.ID.String(), e.NetworkID.String(), e.Type, detail}
+}
+
 func policyRow(p *network.Policy) []string {
 	dstPort := "-"
 	if p.DstPort != nil {
@@ -2815,7 +2834,7 @@ func (app *cli) newGatewayNodeListCmd() *cobra.Command {
 }
 
 func (app *cli) newGatewayNodeCreateCmd() *cobra.Command {
-	var hostStr, externalIP, internalIP string
+	var hostStr, externalIP, internalIP, uplinkPort string
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a gateway node",
@@ -2831,19 +2850,21 @@ func (app *cli) newGatewayNodeCreateCmd() *cobra.Command {
 				HostID:     hostID,
 				ExternalIP: externalIP,
 				InternalIP: internalIP,
+				UplinkPort: uplinkPort,
 			})
 			if err != nil {
 				return err
 			}
 			return app.printTable(
-				[]string{"ID", "HOST_ID", "EXTERNAL_IP", "INTERNAL_IP", "STATUS"},
-				[][]string{{gw.ID.String(), gw.HostID.String(), gw.ExternalIP, gw.InternalIP, gw.Status}},
+				[]string{"ID", "HOST_ID", "EXTERNAL_IP", "INTERNAL_IP", "UPLINK_PORT", "STATUS"},
+				[][]string{{gw.ID.String(), gw.HostID.String(), gw.ExternalIP, gw.InternalIP, gw.UplinkPort, gw.Status}},
 			)
 		},
 	}
 	cmd.Flags().StringVar(&hostStr, "host", "", "Host (UUID or name) (required)")
 	cmd.Flags().StringVar(&externalIP, "external-ip", "", "External (public) IP address (required)")
 	cmd.Flags().StringVar(&internalIP, "internal-ip", "", "Internal (fabric) IP address (required)")
+	cmd.Flags().StringVar(&uplinkPort, "uplink-port", "", "Physical uplink port for Direct Connect VLAN trunk (optional)")
 	_ = cmd.MarkFlagRequired("host")
 	_ = cmd.MarkFlagRequired("external-ip")
 	_ = cmd.MarkFlagRequired("internal-ip")
@@ -3022,10 +3043,10 @@ func (app *cli) newEgressListCmd() *cobra.Command {
 				return err
 			}
 			rows := make([][]string, len(egresses))
-			for i, e := range egresses {
-				rows[i] = []string{e.ID.String(), e.NetworkID.String(), e.Type, e.Config.PublicIP}
+			for i := range egresses {
+				rows[i] = egressRow(&egresses[i])
 			}
-			return app.printTable([]string{"ID", "NETWORK_ID", "TYPE", "PUBLIC_IP"}, rows)
+			return app.printTable([]string{"ID", "NETWORK_ID", "TYPE", "DETAIL"}, rows)
 		},
 	}
 	cmd.Flags().StringVar(&networkStr, "network", "", "Network (UUID or name) (required)")
@@ -3037,7 +3058,17 @@ func (app *cli) newEgressListCmd() *cobra.Command {
 }
 
 func (app *cli) newEgressCreateCmd() *cobra.Command {
-	var networkStr, tenant, org, egressType, publicIP string
+	var (
+		networkStr, tenant, org, egressType, publicIP string
+		// IPsec flags
+		ipsecPeerIP, ipsecPSK, ipsecLocalCIDR, ipsecRemoteCIDR string
+		// WireGuard flags
+		wgPeerPublicKey, wgPeerEndpoint string
+		wgAllowedIPs                    []string
+		wgListenPort                    int
+		// Direct Connect flags
+		dcVLANID int
+	)
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create an egress rule",
@@ -3053,27 +3084,81 @@ func (app *cli) newEgressCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			e, err := c.CreateEgress(ctx, tenantID, networkID, network.EgressSpec{
-				Type:   egressType,
-				Config: network.EgressConfig{PublicIP: publicIP},
-			})
+
+			var spec network.EgressSpec
+			switch egressType {
+			case network.EgressTypeNATGateway:
+				spec = network.EgressSpec{
+					Type:   egressType,
+					Config: network.EgressConfig{PublicIP: publicIP},
+				}
+			case network.EgressTypeVPNIPsec:
+				spec = network.EgressSpec{
+					Type: egressType,
+					Config: network.EgressConfig{
+						VPNIPsec: &network.VPNIPsecConfig{
+							PeerIP:       ipsecPeerIP,
+							PreSharedKey: ipsecPSK,
+							LocalCIDR:    ipsecLocalCIDR,
+							RemoteCIDR:   ipsecRemoteCIDR,
+						},
+					},
+				}
+			case network.EgressTypeVPNWireGuard:
+				spec = network.EgressSpec{
+					Type: egressType,
+					Config: network.EgressConfig{
+						VPNWireGuard: &network.VPNWireGuardConfig{
+							PeerPublicKey: wgPeerPublicKey,
+							PeerEndpoint:  wgPeerEndpoint,
+							AllowedIPs:    wgAllowedIPs,
+							ListenPort:    wgListenPort,
+						},
+					},
+				}
+			case network.EgressTypeDirectConnect:
+				spec = network.EgressSpec{
+					Type: egressType,
+					Config: network.EgressConfig{
+						DirectConnect: &network.DirectConnectConfig{
+							VLANID: dcVLANID,
+						},
+					},
+				}
+			default:
+				return fmt.Errorf("unknown egress type: %s", egressType)
+			}
+
+			e, err := c.CreateEgress(ctx, tenantID, networkID, spec)
 			if err != nil {
 				return err
 			}
+
 			return app.printTable(
-				[]string{"ID", "NETWORK_ID", "TYPE", "PUBLIC_IP"},
-				[][]string{{e.ID.String(), e.NetworkID.String(), e.Type, e.Config.PublicIP}},
+				[]string{"ID", "NETWORK_ID", "TYPE", "DETAIL"},
+				[][]string{egressRow(e)},
 			)
 		},
 	}
 	cmd.Flags().StringVar(&networkStr, "network", "", "Network (UUID or name) (required)")
 	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (UUID or name) (required)")
 	cmd.Flags().StringVar(&org, "org", "", "Organization for tenant name resolution")
-	cmd.Flags().StringVar(&egressType, "type", "nat_gateway", "Egress type (nat_gateway)")
-	cmd.Flags().StringVar(&publicIP, "public-ip", "", "Public IP for SNAT (required)")
+	cmd.Flags().StringVar(&egressType, "type", network.EgressTypeNATGateway, "Egress type (nat_gateway|vpn_ipsec|vpn_wireguard|direct_connect)")
+	cmd.Flags().StringVar(&publicIP, "public-ip", "", "Public IP for SNAT (nat_gateway only)")
+	// IPsec flags
+	cmd.Flags().StringVar(&ipsecPeerIP, "ipsec-peer-ip", "", "Remote IPsec peer IP (vpn_ipsec only)")
+	cmd.Flags().StringVar(&ipsecPSK, "ipsec-psk", "", "IKEv2 pre-shared key (vpn_ipsec only)")
+	cmd.Flags().StringVar(&ipsecLocalCIDR, "ipsec-local-cidr", "", "Local CIDR for IPsec tunnel (vpn_ipsec only)")
+	cmd.Flags().StringVar(&ipsecRemoteCIDR, "ipsec-remote-cidr", "", "Remote CIDR for IPsec tunnel (vpn_ipsec only)")
+	// WireGuard flags
+	cmd.Flags().StringVar(&wgPeerPublicKey, "wg-peer-public-key", "", "WireGuard peer public key (vpn_wireguard only)")
+	cmd.Flags().StringVar(&wgPeerEndpoint, "wg-peer-endpoint", "", "WireGuard peer endpoint host:port (vpn_wireguard only)")
+	cmd.Flags().StringArrayVar(&wgAllowedIPs, "wg-allowed-ips", nil, "Allowed IPs for WireGuard tunnel (vpn_wireguard only, repeatable)")
+	cmd.Flags().IntVar(&wgListenPort, "wg-listen-port", 0, "WireGuard listen port (vpn_wireguard only)")
+	// Direct Connect flags
+	cmd.Flags().IntVar(&dcVLANID, "vlan-id", 0, "VLAN ID for Direct Connect trunk (direct_connect only, 1-4094)")
 	_ = cmd.MarkFlagRequired("network")
 	_ = cmd.MarkFlagRequired("tenant")
-	_ = cmd.MarkFlagRequired("public-ip")
 	return cmd
 }
 

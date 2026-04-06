@@ -56,13 +56,42 @@ message HostNetworkState {
   GatewayInfo gateway_info = 7;            // only populated for GW-role hosts
 }
 
-// EgressRule describes an Egress rule for a GW node (NAT Gateway SNAT).
+// VPNIPsecConfig holds IKEv2 IPsec tunnel configuration for an EgressRule.
+message VPNIPsecConfig {
+  string peer_ip = 1;        // Remote IPsec peer address
+  string pre_shared_key = 2; // IKEv2 pre-shared key
+  string local_cidr = 3;     // Tenant network CIDR
+  string remote_cidr = 4;    // On-prem CIDR
+}
+
+// VPNWireGuardConfig holds WireGuard tunnel configuration for an EgressRule.
+message VPNWireGuardConfig {
+  string private_key = 1;        // Decrypted private key (only sent to GW worker)
+  string public_key = 2;         // WireGuard public key (base64)
+  string peer_public_key = 3;    // Peer's WireGuard public key (base64)
+  string peer_endpoint = 4;      // Peer host:port
+  repeated string allowed_ips = 5; // CIDRs routed through the tunnel
+  int32 listen_port = 6;         // WireGuard listen port
+}
+
+// DirectConnectConfig holds VLAN trunk configuration for an EgressRule.
+message DirectConnectConfig {
+  int32 vlan_id = 1;      // VLAN tag for this tenant segment (1-4094)
+  string uplink_port = 2; // Physical uplink port name on the GW host
+}
+
+// EgressRule describes an Egress rule for a GW node.
 message EgressRule {
   string egress_id = 1;
   string network_id = 2;
-  string type = 3;           // "nat_gateway"
-  string public_ip = 4;      // The public IP for SNAT (from config JSONB)
-  string network_cidr = 5;   // The tenant network CIDR to SNAT
+  // TODO: Convert to enum EgressType for compile-time safety. Requires coordinated
+  // wire format migration. Valid values: "nat_gateway", "vpn_ipsec", "vpn_wireguard", "direct_connect".
+  string type = 3;
+  string public_ip = 4;                  // The public IP for SNAT (nat_gateway only)
+  string network_cidr = 5;               // The tenant network CIDR
+  VPNIPsecConfig vpn_ipsec = 6;          // Populated for vpn_ipsec type
+  VPNWireGuardConfig vpn_wireguard = 7;  // Populated for vpn_wireguard type
+  DirectConnectConfig direct_connect = 8; // Populated for direct_connect type
 }
 
 // IngressRule describes an Ingress rule for a GW node (Direct IP DNAT).
@@ -72,7 +101,6 @@ message IngressRule {
   string type = 3;           // "direct_ip"
   string public_ip = 4;      // The public IP that external traffic arrives on
   string target_ip = 5;      // The VM private IP to DNAT to
-  repeated string removed_egress_ids = 6;  // for delta updates (reuse field)
 }
 
 // GatewayInfo tells a GW-role host its external IP for SNAT/DNAT.

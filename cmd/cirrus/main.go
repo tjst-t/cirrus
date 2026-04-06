@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"net"
@@ -80,6 +81,7 @@ func newControllerCmd() *cobra.Command {
 	f.BoolVar(&cfg.AutoHealEnabled, "auto-heal-enabled", true, "Enable auto-heal actions on drift detection")
 	f.IntVar(&cfg.UnexpectedPresentThreshold, "unexpected-present-threshold", 3, "Consecutive detections before unexpected_present escalation")
 	f.IntVar(&cfg.DriftEventRetentionDays, "drift-event-retention-days", 90, "Days to retain drift_events records")
+	f.StringVar(&cfg.SecretsKey, "secrets-key", "", "Base64-encoded 32-byte AES-GCM key for encrypting VPN secrets (required for VPN egress)")
 	return cmd
 }
 
@@ -105,6 +107,7 @@ func newWorkerCmd() *cobra.Command {
 	f.StringVar(&cfg.StorageDomains, "storage-domains", "", "Comma-separated storage domains to join")
 	f.StringVar(&cfg.Location, "location", "", "Location in the topology tree (name or ID)")
 	f.StringVar(&cfg.FabricIP, "fabric-ip", "", "IP for Geneve tunnel endpoints (auto-detected if empty)")
+	f.StringVar(&cfg.GatewayUplinkPort, "gw-uplink-port", "", "Physical uplink port for Direct Connect VLAN trunk (GW-role hosts only)")
 	return cmd
 }
 
@@ -195,8 +198,21 @@ func runController(cfg *config.ControllerConfig) error {
 	// Flavor service
 	flavorSvc := flavor.NewService(pool)
 
+	// SecretsKey: optional — required only when creating VPN egress types.
+	// If absent, the store returns an error when vpn_ipsec or vpn_wireguard is requested.
+	var secretsKey []byte
+	if cfg.SecretsKey == "" {
+		logger.Warn("secrets_key not configured; VPN egress types will be unavailable")
+	} else {
+		var err error
+		secretsKey, err = base64.StdEncoding.DecodeString(cfg.SecretsKey)
+		if err != nil {
+			return fmt.Errorf("controller: decode secrets-key: %w", err)
+		}
+	}
+
 	// Network service
-	networkSvc := network.NewStore(pool, logger, quotaSvc)
+	networkSvc := network.NewStore(pool, logger, quotaSvc).WithSecretsKey(secretsKey)
 
 	// Scheduler
 	sched := scheduler.New(hostSvc, storageSvc, topologySvc)
@@ -222,7 +238,7 @@ func runController(cfg *config.ControllerConfig) error {
 	}
 
 	// Network state controller
-	stateCtrl := network.NewStateController(pool, logger)
+	stateCtrl := network.NewStateController(pool, logger).WithSecretsKey(secretsKey)
 	networkStateSrv := network.NewGRPCStateServer(stateCtrl, logger, cfg.RegistrationToken)
 
 	// Reconcile intervals
