@@ -4,7 +4,9 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -176,4 +178,9 @@ func (e *TestEnv) WaitForFlows(t *testing.T, workerName string, tableID int, tim
 	}
 	t.Fatalf("timed out waiting for flows in table %d on %s", tableID, workerName)
 	return ""
+}
+
+// decodeJSON reads a JSON HTTP response body into dest.
+func decodeJSON(resp *http.Response, dest any) error {
+	return json.NewDecoder(resp.Body).Decode(dest)
 }
