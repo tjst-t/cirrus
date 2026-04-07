@@ -191,6 +191,13 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		r.Get("/networks/{network_id}/ingresses", ingh.listIngresses)
 		r.Get("/networks/{network_id}/ingresses/{ingress_id}", ingh.getIngress)
 		r.Delete("/networks/{network_id}/ingresses/{ingress_id}", ingh.deleteIngress)
+
+		// Internal Load Balancers (tenant-scoped, nested under tenant/network)
+		lbh := &lbHandlers{svc: networkSvc, authz: authz, logger: logger}
+		r.Post("/tenants/{tenant_id}/networks/{network_id}/load-balancers", lbh.createLoadBalancer)
+		r.Get("/tenants/{tenant_id}/networks/{network_id}/load-balancers", lbh.listLoadBalancers)
+		r.Get("/tenants/{tenant_id}/networks/{network_id}/load-balancers/{lb_id}", lbh.getLoadBalancer)
+		r.Delete("/tenants/{tenant_id}/networks/{network_id}/load-balancers/{lb_id}", lbh.deleteLoadBalancer)
 	})
 
 	return r

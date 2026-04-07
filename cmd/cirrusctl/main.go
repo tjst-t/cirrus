@@ -65,6 +65,7 @@ func main() {
 	rootCmd.AddCommand(app.newAdminCmd())
 	rootCmd.AddCommand(app.newEgressCmd())
 	rootCmd.AddCommand(app.newIngressCmd())
+	rootCmd.AddCommand(app.newLoadBalancerCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -3318,25 +3319,9 @@ func (app *cli) newIngressCreateCmd() *cobra.Command {
 					return fmt.Errorf("--port is required for type=l4_lb")
 				}
 
-				var parsedBackends []network.L4LBBackend
-				for _, bStr := range backends {
-					// Format: <vm-uuid>:<port> or <ip>:<port>
-					parts := strings.SplitN(bStr, ":", 2)
-					if len(parts) != 2 {
-						return fmt.Errorf("invalid backend format %q: expected <vm-uuid-or-ip>:<port>", bStr)
-					}
-					bPort, err := strconv.Atoi(parts[1])
-					if err != nil {
-						return fmt.Errorf("invalid backend port in %q: %w", bStr, err)
-					}
-					b := network.L4LBBackend{Port: bPort, Weight: 1}
-					// Determine if parts[0] is a UUID (vm_id) or an IP.
-					if _, parseErr := uuid.Parse(parts[0]); parseErr == nil {
-						b.VMID = parts[0]
-					} else {
-						b.IP = parts[0]
-					}
-					parsedBackends = append(parsedBackends, b)
+				parsedBackends, err := parseBackendSpecs(backends)
+				if err != nil {
+					return err
 				}
 
 				if sessionAffinity == "" {
@@ -3388,17 +3373,13 @@ func (app *cli) newIngressCreateCmd() *cobra.Command {
 			switch ing.Type {
 			case network.IngressTypeL4LB:
 				if ing.L4LBConfig != nil {
-					backendsDisplay := make([]string, len(ing.L4LBConfig.Backends))
-					for i, b := range ing.L4LBConfig.Backends {
-						backendsDisplay[i] = fmt.Sprintf("%s:%d", b.IP, b.Port)
-					}
 					return app.printTable(
 						[]string{"ID", "TYPE", "PUBLIC_IP", "PORT", "PROTOCOL", "BACKENDS", "AFFINITY"},
 						[][]string{{
 							ing.ID.String(), ing.Type, ing.PublicIP,
 							fmt.Sprintf("%d", ing.L4LBConfig.ListenerPort),
 							ing.L4LBConfig.Protocol,
-							strings.Join(backendsDisplay, ","),
+							formatBackends(ing.L4LBConfig.Backends),
 							ing.L4LBConfig.SessionAffinity,
 						}},
 					)
@@ -3462,6 +3443,275 @@ func (app *cli) newIngressDeleteCmd() *cobra.Command {
 				return err
 			}
 			return app.printStatus("Deleted", "ingress", ingressID.String())
+		},
+	}
+	cmd.Flags().StringVar(&networkStr, "network", "", "Network (UUID or name) (required)")
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (UUID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization for tenant name resolution")
+	_ = cmd.MarkFlagRequired("network")
+	_ = cmd.MarkFlagRequired("tenant")
+	return cmd
+}
+
+// --- Load Balancer commands ---
+
+// formatBackends renders a slice of L4LBBackend as a comma-joined "ip:port" string.
+func formatBackends(backends []network.L4LBBackend) string {
+	parts := make([]string, len(backends))
+	for i, b := range backends {
+		parts[i] = fmt.Sprintf("%s:%d", b.IP, b.Port)
+	}
+	return strings.Join(parts, ",")
+}
+
+// parseBackendSpecs parses a slice of "<vm-uuid-or-ip>:<port>" strings into L4LBBackend values.
+func parseBackendSpecs(specs []string) ([]network.L4LBBackend, error) {
+	backends := make([]network.L4LBBackend, 0, len(specs))
+	for _, s := range specs {
+		parts := strings.SplitN(s, ":", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid backend format %q: expected <vm-uuid-or-ip>:<port>", s)
+		}
+		bPort, err := strconv.Atoi(parts[1])
+		if err != nil {
+			return nil, fmt.Errorf("invalid backend port in %q: %w", s, err)
+		}
+		b := network.L4LBBackend{Port: bPort, Weight: 1}
+		if _, parseErr := uuid.Parse(parts[0]); parseErr == nil {
+			b.VMID = parts[0]
+		} else {
+			b.IP = parts[0]
+		}
+		backends = append(backends, b)
+	}
+	return backends, nil
+}
+
+func (app *cli) newLoadBalancerCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "load-balancer",
+		Short: "Manage internal network load balancers (VIP-based, all hosts)",
+	}
+	cmd.AddCommand(app.newLBListCmd())
+	cmd.AddCommand(app.newLBCreateCmd())
+	cmd.AddCommand(app.newLBShowCmd())
+	cmd.AddCommand(app.newLBDeleteCmd())
+	return cmd
+}
+
+func (app *cli) newLBListCmd() *cobra.Command {
+	var networkStr, tenant, org string
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List internal load balancers for a network",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			networkID, err := c.ResolveNetwork(ctx, networkStr, tenantID)
+			if err != nil {
+				return err
+			}
+			lbs, err := c.ListLoadBalancers(ctx, tenantID, networkID)
+			if err != nil {
+				return err
+			}
+			if app.output == "json" {
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(lbs)
+			}
+			rows := make([][]string, len(lbs))
+			for i, lb := range lbs {
+				rows[i] = []string{
+					lb.ID.String(),
+					lb.Name,
+					lb.VIP,
+					fmt.Sprintf("%d", lb.Config.ListenerPort),
+					lb.Config.Protocol,
+					fmt.Sprintf("%d", len(lb.Config.Backends)),
+					lb.Config.SessionAffinity,
+				}
+			}
+			return app.printTable([]string{"ID", "NAME", "VIP", "PORT", "PROTOCOL", "BACKENDS", "AFFINITY"}, rows)
+		},
+	}
+	cmd.Flags().StringVar(&networkStr, "network", "", "Network (UUID or name) (required)")
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (UUID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization for tenant name resolution")
+	_ = cmd.MarkFlagRequired("network")
+	_ = cmd.MarkFlagRequired("tenant")
+	return cmd
+}
+
+func (app *cli) newLBCreateCmd() *cobra.Command {
+	var networkStr, tenant, org, name, protocol, sessionAffinity string
+	var port int
+	var backends []string
+
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create an internal load balancer (VIP auto-allocated from network CIDR)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			networkID, err := c.ResolveNetwork(ctx, networkStr, tenantID)
+			if err != nil {
+				return err
+			}
+			if len(backends) == 0 {
+				return fmt.Errorf("--backend is required (e.g. --backend <vm-uuid>:80)")
+			}
+			if port == 0 {
+				return fmt.Errorf("--port is required")
+			}
+			if protocol == "" {
+				protocol = "tcp"
+			}
+			if sessionAffinity == "" {
+				sessionAffinity = "none"
+			}
+
+			parsedBackends, err := parseBackendSpecs(backends)
+			if err != nil {
+				return err
+			}
+
+			spec := network.LoadBalancerSpec{
+				Name: name,
+				Config: network.L4LBConfig{
+					ListenerPort:    port,
+					Protocol:        protocol,
+					SessionAffinity: sessionAffinity,
+					Backends:        parsedBackends,
+				},
+			}
+
+			lb, err := c.CreateLoadBalancer(ctx, tenantID, networkID, spec)
+			if err != nil {
+				return err
+			}
+
+			if app.output == "json" {
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(lb)
+			}
+			return app.printTable(
+				[]string{"ID", "NAME", "VIP", "PORT", "PROTOCOL", "BACKENDS", "AFFINITY"},
+				[][]string{{
+					lb.ID.String(),
+					lb.Name,
+					lb.VIP,
+					fmt.Sprintf("%d", lb.Config.ListenerPort),
+					lb.Config.Protocol,
+					formatBackends(lb.Config.Backends),
+					lb.Config.SessionAffinity,
+				}},
+			)
+		},
+	}
+	cmd.Flags().StringVar(&networkStr, "network", "", "Network (UUID or name) (required)")
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (UUID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization for tenant name resolution")
+	cmd.Flags().StringVar(&name, "name", "", "Load balancer name (required)")
+	cmd.Flags().IntVar(&port, "port", 0, "Listener port (required)")
+	cmd.Flags().StringVar(&protocol, "protocol", "tcp", "Protocol (tcp)")
+	cmd.Flags().StringVar(&sessionAffinity, "session-affinity", "none", "Session affinity (none or source_ip)")
+	cmd.Flags().StringArrayVar(&backends, "backend", nil, "Backend in <vm-uuid-or-ip>:<port> format (repeatable)")
+	_ = cmd.MarkFlagRequired("network")
+	_ = cmd.MarkFlagRequired("tenant")
+	_ = cmd.MarkFlagRequired("name")
+	_ = cmd.MarkFlagRequired("port")
+	return cmd
+}
+
+func (app *cli) newLBShowCmd() *cobra.Command {
+	var networkStr, tenant, org string
+	cmd := &cobra.Command{
+		Use:   "show <lb-uuid-or-name>",
+		Short: "Show an internal load balancer",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			networkID, err := c.ResolveNetwork(ctx, networkStr, tenantID)
+			if err != nil {
+				return err
+			}
+			lbID, err := c.ResolveLoadBalancer(ctx, args[0], tenantID, networkID)
+			if err != nil {
+				return err
+			}
+			lb, err := c.GetLoadBalancer(ctx, tenantID, networkID, lbID)
+			if err != nil {
+				return err
+			}
+			if app.output == "json" {
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(lb)
+			}
+			return app.printTable(
+				[]string{"ID", "NAME", "VIP", "PORT", "PROTOCOL", "BACKENDS", "AFFINITY"},
+				[][]string{{
+					lb.ID.String(),
+					lb.Name,
+					lb.VIP,
+					fmt.Sprintf("%d", lb.Config.ListenerPort),
+					lb.Config.Protocol,
+					formatBackends(lb.Config.Backends),
+					lb.Config.SessionAffinity,
+				}},
+			)
+		},
+	}
+	cmd.Flags().StringVar(&networkStr, "network", "", "Network (UUID or name) (required)")
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (UUID or name) (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization for tenant name resolution")
+	_ = cmd.MarkFlagRequired("network")
+	_ = cmd.MarkFlagRequired("tenant")
+	return cmd
+}
+
+func (app *cli) newLBDeleteCmd() *cobra.Command {
+	var networkStr, tenant, org string
+	cmd := &cobra.Command{
+		Use:   "delete <lb-uuid-or-name>",
+		Short: "Delete an internal load balancer",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			networkID, err := c.ResolveNetwork(ctx, networkStr, tenantID)
+			if err != nil {
+				return err
+			}
+			lbID, err := c.ResolveLoadBalancer(ctx, args[0], tenantID, networkID)
+			if err != nil {
+				return err
+			}
+			if err := c.DeleteLoadBalancer(ctx, tenantID, networkID, lbID); err != nil {
+				return err
+			}
+			return app.printStatus("Deleted", "load-balancer", lbID.String())
 		},
 	}
 	cmd.Flags().StringVar(&networkStr, "network", "", "Network (UUID or name) (required)")

@@ -124,6 +124,52 @@ func AssignCIDR(existingCIDRs []string) (string, error) {
 	return "", fmt.Errorf("ipam: no available CIDR blocks in pool %s", defaultPool)
 }
 
+// AllocateVIP picks the next available single IP from the network CIDR that is
+// not already allocated as a port IP or as an existing VIP.
+// It skips the network address (.0), the broadcast (last IP), and the gateway
+// address (.2 of each /30 block — used by DHCP per AllocateBlock).
+// Callers should pass all existing port IPs and VIPs combined in existingIPs.
+func AllocateVIP(cidr string, existingIPs []string) (string, error) {
+	_, ipNet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return "", fmt.Errorf("ipam: vip: parse cidr: %w", err)
+	}
+
+	// Build a set of used IPs for O(1) lookup.
+	used := make(map[uint32]bool, len(existingIPs))
+	for _, ipStr := range existingIPs {
+		ip := net.ParseIP(ipStr)
+		if ip == nil {
+			continue
+		}
+		ip4 := ip.To4()
+		if ip4 != nil {
+			used[ipToUint32(ip4)] = true
+		}
+	}
+
+	baseIP := ipToUint32(ipNet.IP)
+	ones, bits := ipNet.Mask.Size()
+	hostCount := uint32(1) << uint(bits-ones)
+
+	// Walk the CIDR, skip:
+	//   offset%4==2 — gateway IP of each /30 block (AllocateBlock places gwIP at blockBase+2)
+	//   offset%4==3 — directed broadcast of each /30 block (semantically reserved)
+	// offset==0 (network address) is excluded by starting at 1.
+	// The last IP in the CIDR (broadcast) is excluded by the upper bound.
+	for offset := uint32(1); offset < hostCount-1; offset++ {
+		if offset%4 == 2 || offset%4 == 3 {
+			continue
+		}
+		candidate := baseIP + offset
+		if !used[candidate] {
+			return uint32ToIP(candidate).String(), nil
+		}
+	}
+
+	return "", ErrCIDRExhausted
+}
+
 func ipToUint32(ip net.IP) uint32 {
 	ip4 := ip.To4()
 	if ip4 == nil {

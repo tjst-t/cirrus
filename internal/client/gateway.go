@@ -208,3 +208,68 @@ func (c *Client) DeleteIngress(ctx context.Context, tenantID, networkID, ingress
 	resp.Body.Close()
 	return nil
 }
+
+// --- Internal Load Balancers ---
+
+func lbBasePath(tenantID, networkID uuid.UUID) string {
+	return fmt.Sprintf("/api/v1/tenants/%s/networks/%s/load-balancers", tenantID, networkID)
+}
+
+func (c *Client) CreateLoadBalancer(ctx context.Context, tenantID, networkID uuid.UUID, spec network.LoadBalancerSpec) (*network.LoadBalancer, error) {
+	resp, err := c.doWithTenant(ctx, "POST", lbBasePath(tenantID, networkID), spec, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	return decodeResponse[*network.LoadBalancer](resp)
+}
+
+func (c *Client) ListLoadBalancers(ctx context.Context, tenantID, networkID uuid.UUID) ([]network.LoadBalancer, error) {
+	resp, err := c.doWithTenant(ctx, "GET", lbBasePath(tenantID, networkID), nil, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	return decodeResponse[[]network.LoadBalancer](resp)
+}
+
+func (c *Client) GetLoadBalancer(ctx context.Context, tenantID, networkID, lbID uuid.UUID) (*network.LoadBalancer, error) {
+	resp, err := c.doWithTenant(ctx, "GET", lbBasePath(tenantID, networkID)+"/"+lbID.String(), nil, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	return decodeResponse[*network.LoadBalancer](resp)
+}
+
+func (c *Client) DeleteLoadBalancer(ctx context.Context, tenantID, networkID, lbID uuid.UUID) error {
+	resp, err := c.doWithTenant(ctx, "DELETE", lbBasePath(tenantID, networkID)+"/"+lbID.String(), nil, tenantID)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
+// ResolveLoadBalancer resolves a load balancer UUID or name to a UUID.
+// tenantID and networkID are required for name resolution.
+func (c *Client) ResolveLoadBalancer(ctx context.Context, idOrName string, tenantID, networkID uuid.UUID) (uuid.UUID, error) {
+	if id, err := uuid.Parse(idOrName); err == nil {
+		return id, nil
+	}
+	lbs, err := c.ListLoadBalancers(ctx, tenantID, networkID)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("resolve load balancer %q: %w", idOrName, err)
+	}
+	var matches []network.LoadBalancer
+	for _, lb := range lbs {
+		if lb.Name == idOrName {
+			matches = append(matches, lb)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return uuid.Nil, fmt.Errorf("load balancer %q not found", idOrName)
+	case 1:
+		return matches[0].ID, nil
+	default:
+		return uuid.Nil, fmt.Errorf("multiple load balancers named %q found, use ID instead", idOrName)
+	}
+}

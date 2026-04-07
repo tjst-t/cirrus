@@ -129,6 +129,12 @@ const (
 	ActionListIngresses Action = "list_ingresses"
 	ActionGetIngress    Action = "get_ingress"
 	ActionDeleteIngress Action = "delete_ingress"
+
+	// Internal Load Balancer actions (tenant-scoped)
+	ActionCreateLoadBalancer Action = "create_load_balancer"
+	ActionListLoadBalancers  Action = "list_load_balancers"
+	ActionGetLoadBalancer    Action = "get_load_balancer"
+	ActionDeleteLoadBalancer Action = "delete_load_balancer"
 )
 
 // Resource represents the target resource of an authorization check.
@@ -216,6 +222,7 @@ func (a *RBACAuthorizer) checkPermission(ra RoleAssignment, action Action, resou
 			ActionCreatePolicy, ActionListPolicies, ActionGetPolicy, ActionDeletePolicy,
 			ActionCreateEgress, ActionListEgresses, ActionGetEgress, ActionDeleteEgress,
 			ActionCreateIngress, ActionListIngresses, ActionGetIngress, ActionDeleteIngress,
+			ActionCreateLoadBalancer, ActionListLoadBalancers, ActionGetLoadBalancer, ActionDeleteLoadBalancer,
 			ActionListVolumeTypes, ActionGetVolumeType,
 			ActionCreateVolume, ActionListVolumes, ActionGetVolume, ActionDeleteVolume, ActionResizeVolume,
 			ActionListFlavors, ActionGetFlavor,
@@ -242,6 +249,7 @@ func (a *RBACAuthorizer) checkPermission(ra RoleAssignment, action Action, resou
 			ActionListPolicies, ActionGetPolicy,
 			ActionListEgresses, ActionGetEgress,
 			ActionListIngresses, ActionGetIngress,
+			ActionListLoadBalancers, ActionGetLoadBalancer,
 			ActionListVolumeTypes, ActionGetVolumeType,
 			ActionListVolumes, ActionGetVolume,
 			ActionListFlavors, ActionGetFlavor,

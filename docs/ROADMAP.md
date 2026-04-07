@@ -4,13 +4,13 @@
 
 ## Progress
 
-- Total: 45 Sprints | Done: 24 | In Progress: 0 | Remaining: 21
-- [██████████░░░░░░░░░░] 53%
+- Total: 45 Sprints | Done: 25 | In Progress: 0 | Remaining: 20
+- [███████████░░░░░░░░░] 56%
 
 ## Execution Order
 
 S001 → S002 → S003 → S004 → S005 → S006 → S007 → S008 → S009 → S010 → S011 → S012 → S013 → S014 → S015 → S016 → S017 → S018 → S019 → S020 → S021 → S045 → S042 → S043 → S044 → S022 → S023 → S024 → S025 → S026 → S027 → S028 → S029 → S030 → S031 → S032 → S033 → S034 → S035 → S036 → S037 → S038 → S039 → S040 → S041
-                                                                                                                                                                            ↑ next
+                                                                                                                                                                                      ↑ next
 
 ---
 
@@ -1112,16 +1112,16 @@ NAT Gateway に加えて VPN（IPsec/WireGuard）と Direct Connect（VLAN trunk
 
 ---
 
-## Sprint S044: 内部 LB [ ]
+## Sprint S044: 内部 LB [DONE]
 
 テナント Network 内部で VIP による L4 負荷分散ができる。各ホストの OVS で分散実行するため GW ノード不要。S020 の Network 基盤に依存。
 
-### Story S044-1: 内部 LB 実装 [ ]
+### Story S044-1: 内部 LB 実装 [x]
 
-- [ ] **Task S044-1-1**: テナント API: POST/GET/DELETE /tenants/{tid}/networks/{nid}/load-balancers
-- [ ] **Task S044-1-2**: Group に VIP 割り当て、各ホストの OVS で分散実行
-- [ ] **Task S044-1-3**: テスト: 内部 LB 分散、VIP への疎通確認
-- [ ] **Task S044-1-4**: `cirrusctl load-balancer`
+- [x] **Task S044-1-1**: テナント API: POST/GET/DELETE /tenants/{tid}/networks/{nid}/load-balancers
+- [x] **Task S044-1-2**: Group に VIP 割り当て、各ホストの OVS で分散実行
+- [x] **Task S044-1-3**: テスト: 内部 LB 分散、VIP への疎通確認
+- [x] **Task S044-1-4**: `cirrusctl load-balancer`
 
 ---
 

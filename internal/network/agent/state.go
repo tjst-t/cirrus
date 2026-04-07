@@ -22,6 +22,9 @@ type StateCache struct {
 	ingressRules []*pb.IngressRule
 	gatewayInfo  *pb.GatewayInfo
 
+	// Internal LB rules (all hosts in the network)
+	internalLBRules []*pb.InternalLBRule
+
 	// Reverse lookups
 	ipToPort  map[string]*pb.PortState // VM IP -> PortState
 	macToPort map[string]*pb.PortState // MAC -> PortState
@@ -88,6 +91,7 @@ func (s *StateCache) ApplyFull(update *pb.HostNetworkStateUpdate) {
 	}
 	s.ingressRules = state.IngressRules
 	s.gatewayInfo = state.GatewayInfo
+	s.internalLBRules = state.InternalLbRules
 
 	s.version = update.GetVersion()
 }
@@ -339,9 +343,10 @@ func (s *StateCache) Snapshot() *pb.HostNetworkState {
 	}
 
 	state := &pb.HostNetworkState{
-		EgressRules:  egressRules,
-		IngressRules: s.ingressRules,
-		GatewayInfo:  s.gatewayInfo,
+		EgressRules:     egressRules,
+		IngressRules:    s.ingressRules,
+		GatewayInfo:     s.gatewayInfo,
+		InternalLbRules: s.internalLBRules,
 	}
 	for _, p := range s.ports {
 		state.Ports = append(state.Ports, p)

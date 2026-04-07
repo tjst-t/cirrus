@@ -123,14 +123,28 @@ func (sc *StateController) ComputeHostNetworkState(ctx context.Context, hostID u
 		}
 	}
 
+	// Internal LB rules apply to ALL hosts that participate in any of the networks.
+	var internalLBRules []*pb.InternalLBRule
+	if len(networkIDs) > 0 {
+		netIDs := make([]uuid.UUID, 0, len(networkIDs))
+		for id := range networkIDs {
+			netIDs = append(netIDs, id)
+		}
+		internalLBRules, err = sc.computeInternalLBRules(ctx, netIDs)
+		if err != nil {
+			return nil, fmt.Errorf("compute state: internal lb rules: %w", err)
+		}
+	}
+
 	return &pb.HostNetworkState{
-		Ports:        localPorts,
-		Policies:     policies,
-		RemotePorts:  remotePorts,
-		DnsRecords:   dnsRecords,
-		EgressRules:  egressRules,
-		IngressRules: ingressRules,
-		GatewayInfo:  gatewayInfo,
+		Ports:           localPorts,
+		Policies:        policies,
+		RemotePorts:     remotePorts,
+		DnsRecords:      dnsRecords,
+		EgressRules:     egressRules,
+		IngressRules:    ingressRules,
+		GatewayInfo:     gatewayInfo,
+		InternalLbRules: internalLBRules,
 	}, nil
 }
 
@@ -546,6 +560,102 @@ func (sc *StateController) computeEgressRules(ctx context.Context, gw *GatewayNo
 		egressRules = append(egressRules, rule)
 	}
 	return egressRules, rows.Err()
+}
+
+// computeInternalLBRules returns InternalLBRule entries for all load_balancers
+// in the given networks. Unlike ingress rules, these go to ALL hosts in the network.
+func (sc *StateController) computeInternalLBRules(ctx context.Context, networkIDs []uuid.UUID) ([]*pb.InternalLBRule, error) {
+	rows, err := sc.pool.Query(ctx, `
+		SELECT lb.id, lb.network_id, host(lb.vip), lb.config,
+		       h.vm_id::TEXT, h.healthy
+		FROM load_balancers lb
+		LEFT JOIN lb_backend_health h ON h.lb_id = lb.id
+		WHERE lb.network_id = ANY($1)
+		ORDER BY lb.id
+	`, networkIDs)
+	if err != nil {
+		return nil, fmt.Errorf("compute internal lb: query: %w", err)
+	}
+	defer rows.Close()
+
+	type lbRow struct {
+		id        uuid.UUID
+		networkID uuid.UUID
+		vip       string
+		config    []byte
+	}
+	var (
+		lbOrder    []lbRow
+		healthMaps = make(map[uuid.UUID]map[string]bool)
+		seenIDs    = make(map[uuid.UUID]bool)
+	)
+
+	for rows.Next() {
+		var lbID, netID uuid.UUID
+		var vip string
+		var configJSON []byte
+		var vmIDStr *string
+		var healthy *bool
+		if err := rows.Scan(&lbID, &netID, &vip, &configJSON, &vmIDStr, &healthy); err != nil {
+			return nil, fmt.Errorf("compute internal lb: scan: %w", err)
+		}
+		if !seenIDs[lbID] {
+			seenIDs[lbID] = true
+			lbOrder = append(lbOrder, lbRow{lbID, netID, vip, configJSON})
+		}
+		if vmIDStr != nil && healthy != nil {
+			if healthMaps[lbID] == nil {
+				healthMaps[lbID] = make(map[string]bool)
+			}
+			healthMaps[lbID][*vmIDStr] = *healthy
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("compute internal lb: rows: %w", err)
+	}
+
+	var rules []*pb.InternalLBRule
+	for _, r := range lbOrder {
+		var cfg L4LBConfig
+		if err := json.Unmarshal(r.config, &cfg); err != nil {
+			sc.logger.Warn("internal lb: unmarshal config failed, skipping", "lb_id", r.id, "error", err)
+			continue
+		}
+
+		healthMap := healthMaps[r.id]
+		var backends []*pb.L4LBBackend
+		for _, b := range cfg.Backends {
+			healthy := b.Healthy
+			if h, ok := healthMap[b.VMID]; ok {
+				healthy = h
+			}
+			if !healthy {
+				continue
+			}
+			backends = append(backends, &pb.L4LBBackend{
+				VmId:    b.VMID,
+				Ip:      b.IP,
+				Port:    int32(b.Port),
+				Weight:  int32(b.Weight),
+				Healthy: true,
+			})
+		}
+		if len(backends) == 0 {
+			sc.logger.Warn("internal lb: no healthy backends, skipping", "lb_id", r.id)
+			continue
+		}
+
+		rules = append(rules, &pb.InternalLBRule{
+			LbId:            r.id.String(),
+			NetworkId:       r.networkID.String(),
+			Vip:             r.vip,
+			ListenerPort:    int32(cfg.ListenerPort),
+			Protocol:        cfg.Protocol,
+			Backends:        backends,
+			SessionAffinity: cfg.SessionAffinity,
+		})
+	}
+	return rules, nil
 }
 
 // decryptSecret decodes a base64-encoded ciphertext and decrypts it with AES-GCM.

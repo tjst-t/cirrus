@@ -51,9 +51,22 @@ message HostNetworkState {
   repeated PolicyRule policies = 2;
   repeated RemotePort remote_ports = 3;
   repeated DnsRecord dns_records = 4;
-  repeated EgressRule egress_rules = 5;    // only populated for GW-role hosts
-  repeated IngressRule ingress_rules = 6;  // only populated for GW-role hosts
-  GatewayInfo gateway_info = 7;            // only populated for GW-role hosts
+  repeated EgressRule egress_rules = 5;           // only populated for GW-role hosts
+  repeated IngressRule ingress_rules = 6;         // only populated for GW-role hosts
+  GatewayInfo gateway_info = 7;                   // only populated for GW-role hosts
+  repeated InternalLBRule internal_lb_rules = 8;  // populated for ALL hosts in the network
+}
+
+// InternalLBRule describes an internal L4 load balancer whose VIP is within
+// the tenant network CIDR. OVS flows are installed on every host in the network.
+message InternalLBRule {
+  string lb_id          = 1;
+  string network_id     = 2;
+  string vip            = 3;
+  int32  listener_port  = 4;
+  string protocol       = 5;                 // "tcp"
+  repeated L4LBBackend backends = 6;         // healthy backends only
+  string session_affinity = 7;               // "none" (5-tuple hash) or "source_ip"
 }
 
 // VPNIPsecConfig holds IKEv2 IPsec tunnel configuration for an EgressRule.

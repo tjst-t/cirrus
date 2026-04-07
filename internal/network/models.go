@@ -253,3 +253,24 @@ type IngressSpec struct {
 	Config      IngressConfig `json:"config"`
 	L4LBConfig  *L4LBConfig   `json:"l4lb_config,omitempty"` // for l4_lb type
 }
+
+// LoadBalancer represents an internal L4 load balancer within a tenant network.
+// VIP is allocated from the network CIDR by IPAM. OVS flows are installed on
+// every host in the network (no GW node required).
+type LoadBalancer struct {
+	ID        uuid.UUID  `json:"id"`
+	TenantID  uuid.UUID  `json:"tenant_id"`
+	NetworkID uuid.UUID  `json:"network_id"`
+	Name      string     `json:"name"`
+	VIP       string     `json:"vip"`
+	Config    L4LBConfig `json:"config"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+}
+
+// LoadBalancerSpec is the input for creating a new internal load balancer.
+// VIP is auto-allocated from the network CIDR; callers do not specify it.
+type LoadBalancerSpec struct {
+	Name   string     `json:"name"`
+	Config L4LBConfig `json:"config"`
+}

@@ -65,4 +65,11 @@ type Service interface {
 
 	// UpdateBackendHealth updates the healthy state of a backend VM in an l4_lb ingress.
 	UpdateBackendHealth(ctx context.Context, ingressID uuid.UUID, vmID uuid.UUID, healthy bool) error
+
+	// Internal Load Balancers (tenant operations)
+	CreateLoadBalancer(ctx context.Context, tenantID, networkID uuid.UUID, spec LoadBalancerSpec) (*LoadBalancer, error)
+	GetLoadBalancer(ctx context.Context, id uuid.UUID) (*LoadBalancer, error)
+	ListLoadBalancers(ctx context.Context, networkID uuid.UUID) ([]LoadBalancer, error)
+	DeleteLoadBalancer(ctx context.Context, id uuid.UUID) error
+	UpdateLBBackendHealth(ctx context.Context, lbID uuid.UUID, vmID uuid.UUID, healthy bool) error
 }

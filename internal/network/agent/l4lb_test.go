@@ -289,3 +289,194 @@ func TestL4LB_BackwardCompatible_DirectIPStillWorks(t *testing.T) {
 		t.Error("expected flow for l4_lb rule")
 	}
 }
+
+// --- Internal LB tests ---
+
+// stateWithInternalLB returns a minimal HostNetworkState with an InternalLBRule.
+// NOTE: No GatewayInfo — internal LBs apply to all hosts, not just GW nodes.
+func stateWithInternalLB(backends []*pb.L4LBBackend, affinity string) *pb.HostNetworkState {
+	return &pb.HostNetworkState{
+		Ports: []*pb.PortState{
+			{
+				PortId:     "port-1-uuid-abcdef",
+				VmId:       "vm-1",
+				VmName:     "web-1",
+				NetworkId:  "net-1",
+				MacAddress: "aa:bb:cc:dd:ee:01",
+				IpAddress:  "100.64.0.1",
+				GatewayIp:  "100.64.0.2",
+				Vni:        100,
+			},
+		},
+		InternalLbRules: []*pb.InternalLBRule{
+			{
+				LbId:            "lb-internal-uuid-001",
+				NetworkId:       "net-1",
+				Vip:             "100.64.0.100",
+				ListenerPort:    80,
+				Protocol:        "tcp",
+				SessionAffinity: affinity,
+				Backends:        backends,
+			},
+		},
+	}
+}
+
+// TestInternalLBDistribution verifies that an InternalLBRule installs an OVS
+// select group and a matching steering flow on any host (no GW node required).
+func TestInternalLBDistribution(t *testing.T) {
+	pipeline, mock := newL4LBTestPipeline(t)
+
+	state := stateWithInternalLB([]*pb.L4LBBackend{
+		{VmId: "vm-a", Ip: "100.64.0.1", Port: 8080, Weight: 1, Healthy: true},
+		{VmId: "vm-b", Ip: "100.64.0.5", Port: 8080, Weight: 1, Healthy: true},
+	}, "none")
+
+	if err := pipeline.Apply(state); err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	cmds := mock.GetRecordedCommands()
+	var foundGroup, foundFlow bool
+	for _, cmd := range cmds {
+		if cmd.Op == "add-group" && strings.Contains(cmd.Actions, "type=select") {
+			foundGroup = true
+			if !strings.Contains(cmd.Actions, "100.64.0.1:8080") {
+				t.Errorf("group spec missing backend 100.64.0.1:8080, got: %s", cmd.Actions)
+			}
+			if !strings.Contains(cmd.Actions, "100.64.0.5:8080") {
+				t.Errorf("group spec missing backend 100.64.0.5:8080, got: %s", cmd.Actions)
+			}
+		}
+		if cmd.Op == "add-flow" &&
+			strings.Contains(cmd.Match, "100.64.0.100") &&
+			strings.Contains(cmd.Match, "tp_dst=80") &&
+			strings.Contains(cmd.Actions, "group:") {
+			foundFlow = true
+		}
+	}
+	if !foundGroup {
+		t.Error("expected add-group with type=select for internal LB")
+	}
+	if !foundFlow {
+		t.Error("expected add-flow matching vip:listener_port for internal LB")
+	}
+}
+
+// TestInternalLBSessionAffinity verifies that source_ip affinity sets selection_method=ip_src.
+func TestInternalLBSessionAffinity(t *testing.T) {
+	pipeline, mock := newL4LBTestPipeline(t)
+
+	state := stateWithInternalLB([]*pb.L4LBBackend{
+		{VmId: "vm-a", Ip: "100.64.0.1", Port: 8080, Weight: 1, Healthy: true},
+	}, "source_ip")
+
+	if err := pipeline.Apply(state); err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	cmds := mock.GetRecordedCommands()
+	var found bool
+	for _, cmd := range cmds {
+		if cmd.Op == "add-group" && strings.Contains(cmd.Actions, "selection_method=ip_src") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected add-group with selection_method=ip_src for source_ip affinity")
+	}
+}
+
+// TestInternalLBNoGatewayRequired verifies that internal LB flows are installed
+// even when GatewayInfo is absent (non-GW hosts).
+func TestInternalLBNoGatewayRequired(t *testing.T) {
+	pipeline, mock := newL4LBTestPipeline(t)
+
+	// State without GatewayInfo — simulates a regular compute host.
+	state := &pb.HostNetworkState{
+		Ports: []*pb.PortState{
+			{
+				PortId:     "port-1-uuid-abcdef",
+				VmId:       "vm-1",
+				VmName:     "web-1",
+				NetworkId:  "net-1",
+				MacAddress: "aa:bb:cc:dd:ee:01",
+				IpAddress:  "100.64.0.1",
+				GatewayIp:  "100.64.0.2",
+				Vni:        100,
+			},
+		},
+		// No GatewayInfo — this host is NOT a gateway node.
+		InternalLbRules: []*pb.InternalLBRule{
+			{
+				LbId:            "lb-internal-uuid-002",
+				NetworkId:       "net-1",
+				Vip:             "100.64.0.200",
+				ListenerPort:    443,
+				Protocol:        "tcp",
+				SessionAffinity: "none",
+				Backends: []*pb.L4LBBackend{
+					{VmId: "vm-a", Ip: "100.64.0.1", Port: 443, Weight: 1, Healthy: true},
+				},
+			},
+		},
+	}
+
+	if err := pipeline.Apply(state); err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	cmds := mock.GetRecordedCommands()
+	var foundGroup, foundFlow bool
+	for _, cmd := range cmds {
+		if cmd.Op == "add-group" && strings.Contains(cmd.Actions, "type=select") {
+			foundGroup = true
+		}
+		if cmd.Op == "add-flow" &&
+			strings.Contains(cmd.Match, "100.64.0.200") &&
+			strings.Contains(cmd.Match, "tp_dst=443") {
+			foundFlow = true
+		}
+	}
+	if !foundGroup {
+		t.Error("expected internal LB group even without GatewayInfo")
+	}
+	if !foundFlow {
+		t.Error("expected internal LB flow even without GatewayInfo")
+	}
+}
+
+// TestInternalLBStaleFlowCleanup verifies that when an internal LB is removed,
+// its OVS group and steering flow are deleted on the next Apply cycle.
+func TestInternalLBStaleFlowCleanup(t *testing.T) {
+	pipeline, mock := newL4LBTestPipeline(t)
+
+	stateWith := stateWithInternalLB([]*pb.L4LBBackend{
+		{VmId: "vm-a", Ip: "100.64.0.1", Port: 8080, Weight: 1, Healthy: true},
+	}, "none")
+
+	if err := pipeline.Apply(stateWith); err != nil {
+		t.Fatalf("Apply (with LB) failed: %v", err)
+	}
+	mock.Reset()
+
+	// Second Apply — internal LB removed from state.
+	stateWithout := &pb.HostNetworkState{
+		Ports:           stateWith.Ports,
+		InternalLbRules: nil,
+	}
+	if err := pipeline.Apply(stateWithout); err != nil {
+		t.Fatalf("Apply (without LB) failed: %v", err)
+	}
+
+	cmds := mock.GetRecordedCommands()
+	var foundGroupDelete bool
+	for _, cmd := range cmds {
+		if cmd.Op == "del-group" {
+			foundGroupDelete = true
+		}
+	}
+	if !foundGroupDelete {
+		t.Errorf("expected del-group for removed internal LB; commands: %v", cmds)
+	}
+}

@@ -201,5 +201,19 @@ func stateEqual(a, b *pb.HostNetworkState) bool {
 		}
 	}
 
+	// Compare internal LB rule IDs
+	if len(a.InternalLbRules) != len(b.InternalLbRules) {
+		return false
+	}
+	aLBMap := make(map[string]bool, len(a.InternalLbRules))
+	for _, lb := range a.InternalLbRules {
+		aLBMap[lb.LbId] = true
+	}
+	for _, lb := range b.InternalLbRules {
+		if !aLBMap[lb.LbId] {
+			return false
+		}
+	}
+
 	return true
 }

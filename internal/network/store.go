@@ -1204,6 +1204,208 @@ func (s *Store) UpdateBackendHealth(ctx context.Context, ingressID uuid.UUID, vm
 	return nil
 }
 
+// --- Internal Load Balancers ---
+
+// CreateLoadBalancer allocates a VIP from the network CIDR and creates an
+// internal load balancer. OVS flows are installed on every host in the network.
+func (s *Store) CreateLoadBalancer(ctx context.Context, tenantID, networkID uuid.UUID, spec LoadBalancerSpec) (*LoadBalancer, error) {
+	if spec.Name == "" {
+		return nil, fmt.Errorf("lb: create: name is required: %w", ErrInvalidState)
+	}
+	if spec.Config.ListenerPort <= 0 || spec.Config.ListenerPort > 65535 {
+		return nil, fmt.Errorf("lb: create: invalid listener_port %d: %w", spec.Config.ListenerPort, ErrInvalidState)
+	}
+	if len(spec.Config.Backends) == 0 {
+		return nil, fmt.Errorf("lb: create: backends must not be empty: %w", ErrInvalidState)
+	}
+	if spec.Config.Protocol == "" {
+		spec.Config.Protocol = "tcp"
+	}
+	if spec.Config.Protocol != "tcp" {
+		return nil, fmt.Errorf("lb: create: unsupported protocol %q (only tcp supported): %w", spec.Config.Protocol, ErrInvalidState)
+	}
+	if spec.Config.SessionAffinity == "" {
+		spec.Config.SessionAffinity = "none"
+	}
+	if spec.Config.SessionAffinity != "none" && spec.Config.SessionAffinity != "source_ip" {
+		return nil, fmt.Errorf("lb: create: invalid session_affinity %q (must be none or source_ip): %w", spec.Config.SessionAffinity, ErrInvalidState)
+	}
+
+	// Get network CIDR.
+	nw, err := s.GetNetwork(ctx, networkID)
+	if err != nil {
+		return nil, fmt.Errorf("lb: create: get network: %w", err)
+	}
+
+	// Resolve backend IPs from VM ports when IP is not provided.
+	for i := range spec.Config.Backends {
+		b := &spec.Config.Backends[i]
+		if b.Weight == 0 {
+			b.Weight = 1
+		}
+		b.Healthy = true
+		if b.IP == "" && b.VMID != "" {
+			vmUUID, err := uuid.Parse(b.VMID)
+			if err != nil {
+				return nil, fmt.Errorf("lb: create: invalid backend vm_id %q: %w", b.VMID, ErrInvalidState)
+			}
+			port, err := s.GetPortByVMID(ctx, vmUUID)
+			if err != nil {
+				return nil, fmt.Errorf("lb: create: resolve backend VM port for %s: %w", b.VMID, err)
+			}
+			b.IP = port.IPAddress
+		}
+		if b.IP == "" {
+			return nil, fmt.Errorf("lb: create: backend ip is required (provide vm_id or ip): %w", ErrInvalidState)
+		}
+	}
+
+	// Collect existing IPs (port IPs + existing VIPs) to avoid conflicts.
+	portIPRows, err := s.pool.Query(ctx, `SELECT host(ip_address) FROM ports WHERE network_id = $1`, networkID)
+	if err != nil {
+		return nil, fmt.Errorf("lb: create: list port ips: %w", err)
+	}
+	var existingIPs []string
+	for portIPRows.Next() {
+		var ip string
+		if err := portIPRows.Scan(&ip); err != nil {
+			portIPRows.Close()
+			return nil, fmt.Errorf("lb: create: scan port ip: %w", err)
+		}
+		existingIPs = append(existingIPs, ip)
+	}
+	portIPRows.Close()
+	if err := portIPRows.Err(); err != nil {
+		return nil, fmt.Errorf("lb: create: port ip rows: %w", err)
+	}
+
+	existingVIPRows, err := s.pool.Query(ctx, `SELECT host(vip) FROM load_balancers WHERE network_id = $1`, networkID)
+	if err != nil {
+		return nil, fmt.Errorf("lb: create: list existing vips: %w", err)
+	}
+	for existingVIPRows.Next() {
+		var vip string
+		if err := existingVIPRows.Scan(&vip); err != nil {
+			existingVIPRows.Close()
+			return nil, fmt.Errorf("lb: create: scan vip: %w", err)
+		}
+		existingIPs = append(existingIPs, vip)
+	}
+	existingVIPRows.Close()
+	if err := existingVIPRows.Err(); err != nil {
+		return nil, fmt.Errorf("lb: create: vip rows: %w", err)
+	}
+
+	vip, err := AllocateVIP(nw.CIDR, existingIPs)
+	if err != nil {
+		return nil, fmt.Errorf("lb: create: allocate vip: %w", err)
+	}
+
+	configJSON, err := json.Marshal(spec.Config)
+	if err != nil {
+		return nil, fmt.Errorf("lb: create: marshal config: %w", err)
+	}
+
+	var lb LoadBalancer
+	var rawConfig []byte
+	err = s.pool.QueryRow(ctx,
+		`INSERT INTO load_balancers (tenant_id, network_id, name, vip, config)
+		 VALUES ($1, $2, $3, $4::inet, $5)
+		 RETURNING id, tenant_id, network_id, name, host(vip), config, created_at, updated_at`,
+		tenantID, networkID, spec.Name, vip, configJSON,
+	).Scan(&lb.ID, &lb.TenantID, &lb.NetworkID, &lb.Name, &lb.VIP, &rawConfig, &lb.CreatedAt, &lb.UpdatedAt)
+	if err != nil {
+		return nil, wrapErr("lb: create", err)
+	}
+	if err := json.Unmarshal(rawConfig, &lb.Config); err != nil {
+		return nil, fmt.Errorf("lb: create: unmarshal config: %w", err)
+	}
+
+	// Insert initial health rows for backends that have a VMID.
+	for _, b := range spec.Config.Backends {
+		if b.VMID == "" {
+			continue
+		}
+		vmUUID, err := uuid.Parse(b.VMID)
+		if err != nil {
+			continue
+		}
+		_, _ = s.pool.Exec(ctx, `
+			INSERT INTO lb_backend_health (lb_id, vm_id, healthy, last_checked_at)
+			VALUES ($1, $2, true, NOW())
+			ON CONFLICT (lb_id, vm_id) DO NOTHING
+		`, lb.ID, vmUUID)
+	}
+
+	return &lb, nil
+}
+
+func (s *Store) GetLoadBalancer(ctx context.Context, id uuid.UUID) (*LoadBalancer, error) {
+	var lb LoadBalancer
+	var rawConfig []byte
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, tenant_id, network_id, name, host(vip), config, created_at, updated_at
+		 FROM load_balancers WHERE id = $1`, id,
+	).Scan(&lb.ID, &lb.TenantID, &lb.NetworkID, &lb.Name, &lb.VIP, &rawConfig, &lb.CreatedAt, &lb.UpdatedAt)
+	if err != nil {
+		return nil, wrapErr("lb: get", err)
+	}
+	if err := json.Unmarshal(rawConfig, &lb.Config); err != nil {
+		return nil, fmt.Errorf("lb: get: unmarshal config: %w", err)
+	}
+	return &lb, nil
+}
+
+func (s *Store) ListLoadBalancers(ctx context.Context, networkID uuid.UUID) ([]LoadBalancer, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, tenant_id, network_id, name, host(vip), config, created_at, updated_at
+		 FROM load_balancers WHERE network_id = $1 ORDER BY created_at`, networkID)
+	if err != nil {
+		return nil, fmt.Errorf("lb: list: %w", err)
+	}
+	defer rows.Close()
+
+	var lbs []LoadBalancer
+	for rows.Next() {
+		var lb LoadBalancer
+		var rawConfig []byte
+		if err := rows.Scan(&lb.ID, &lb.TenantID, &lb.NetworkID, &lb.Name, &lb.VIP, &rawConfig, &lb.CreatedAt, &lb.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("lb: list: scan: %w", err)
+		}
+		if err := json.Unmarshal(rawConfig, &lb.Config); err != nil {
+			return nil, fmt.Errorf("lb: list: unmarshal config: %w", err)
+		}
+		lbs = append(lbs, lb)
+	}
+	return lbs, rows.Err()
+}
+
+func (s *Store) DeleteLoadBalancer(ctx context.Context, id uuid.UUID) error {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM load_balancers WHERE id = $1`, id)
+	if err != nil {
+		return wrapErr("lb: delete", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("lb: delete: %w", ErrNotFound)
+	}
+	return nil
+}
+
+// UpdateLBBackendHealth upserts the health state for a backend VM in an internal LB.
+func (s *Store) UpdateLBBackendHealth(ctx context.Context, lbID uuid.UUID, vmID uuid.UUID, healthy bool) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO lb_backend_health (lb_id, vm_id, healthy, last_checked_at)
+		VALUES ($1, $2, $3, NOW())
+		ON CONFLICT (lb_id, vm_id) DO UPDATE
+		  SET healthy = EXCLUDED.healthy,
+		      last_checked_at = EXCLUDED.last_checked_at
+	`, lbID, vmID, healthy)
+	if err != nil {
+		return fmt.Errorf("lb: update backend health: %w", err)
+	}
+	return nil
+}
+
 // ipInCIDR returns true if ip is within the given cidr string (e.g. "203.0.113.0/24").
 func ipInCIDR(ipStr, cidrStr string) bool {
 	_, ipNet, err := net.ParseCIDR(cidrStr)
