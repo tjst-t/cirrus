@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design System tokens are declared in index.html :root for early availability */
+/* Replicate here for Tailwind utilities that need CSS vars */
+@layer base {
+  :root {
+    --color-accent: #1877f2;
+    --color-accent-hover: #1558b0;
+    --color-accent-subtle: #e8f0fe;
+    --color-success: #31a24c;
+    --color-warning: #f0960a;
+    --color-danger: #e4363a;
+    --color-bg: #ffffff;
+    --color-bg-secondary: #f5f6f7;
+    --color-border: #dddfe2;
+    --color-text: #1c1e21;
+    --color-text-secondary: #606770;
+  }
+
+  body {
+    font-family: 'Geist', 'Noto Sans JP', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--color-text);
+    background-color: var(--color-bg);
+    -webkit-font-smoothing: antialiased;
+  }
+}

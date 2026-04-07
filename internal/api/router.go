@@ -3,6 +3,9 @@ package api
 import (
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -17,6 +20,45 @@ import (
 	"github.com/tjst-t/cirrus/internal/storage"
 	"github.com/tjst-t/cirrus/internal/topology"
 )
+
+// spaHandler serves a Single Page Application from the given directory.
+// Any path that does not correspond to a real file is served as index.html.
+type spaHandler struct {
+	fs   http.Handler
+	dist string
+}
+
+func newSPAHandler(staticPath string) *spaHandler {
+	return &spaHandler{
+		fs:   http.FileServer(http.Dir(staticPath)),
+		dist: staticPath,
+	}
+}
+
+func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Check if the requested file exists in dist
+	path := filepath.Join(h.dist, filepath.Clean("/"+r.URL.Path))
+	_, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		// SPA fallback: serve index.html
+		http.ServeFile(w, r, filepath.Join(h.dist, "index.html"))
+		return
+	}
+	h.fs.ServeHTTP(w, r)
+}
+
+// staticDistHandler returns a handler that serves web/dist if it exists, otherwise nil.
+func staticDistHandler() http.Handler {
+	// Resolve relative to executable or cwd
+	candidates := []string{"web/dist", "../web/dist"}
+	for _, p := range candidates {
+		if info, err := os.Stat(p); err == nil && info.IsDir() {
+			return newSPAHandler(p)
+		}
+	}
+	return nil
+}
+
 
 // NewRouter creates the HTTP router with all middleware and routes.
 // debug controls whether internal error details are included in 500 responses.
@@ -199,6 +241,23 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		r.Get("/tenants/{tenant_id}/networks/{network_id}/load-balancers/{lb_id}", lbh.getLoadBalancer)
 		r.Delete("/tenants/{tenant_id}/networks/{network_id}/load-balancers/{lb_id}", lbh.deleteLoadBalancer)
 	})
+
+	// SPA static files — serve web/dist if present.
+	// Must be registered AFTER /api/* routes so API takes priority.
+	if spa := staticDistHandler(); spa != nil {
+		serveSPA := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			// Guard against future /api/* paths that are not yet registered.
+			// /api/v1/* is already handled above and chi would match it first,
+			// but this prevents SPA from swallowing unrecognised /api/* paths.
+			if strings.HasPrefix(req.URL.Path, "/api/") {
+				http.NotFound(w, req)
+				return
+			}
+			spa.ServeHTTP(w, req)
+		})
+		r.Get("/*", serveSPA)
+		r.Get("/", serveSPA)
+	}
 
 	return r
 }

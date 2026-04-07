@@ -4,13 +4,13 @@
 
 ## Progress
 
-- Total: 45 Sprints | Done: 25 | In Progress: 0 | Remaining: 20
-- [███████████░░░░░░░░░] 56%
+- Total: 45 Sprints | Done: 26 | In Progress: 0 | Remaining: 19
+- [████████████░░░░░░░] 58%
 
 ## Execution Order
 
 S001 → S002 → S003 → S004 → S005 → S006 → S007 → S008 → S009 → S010 → S011 → S012 → S013 → S014 → S015 → S016 → S017 → S018 → S019 → S020 → S021 → S045 → S042 → S043 → S044 → S022 → S023 → S024 → S025 → S026 → S027 → S028 → S029 → S030 → S031 → S032 → S033 → S034 → S035 → S036 → S037 → S038 → S039 → S040 → S041
-                                                                                                                                                                                      ↑ next
+                                                                                                                                                                                              ↑ next
 
 ---
 
@@ -726,38 +726,38 @@ Phase 1 全機能の結合テストが通り、安定してデプロイできる
 
 ---
 
-## Sprint S022: WebUI 基盤 + Phase 1 管理画面 [ ]
+## Sprint S022: WebUI 基盤 + Phase 1 管理画面 [DONE]
 
 Phase 1 の全機能（Identity・Host・Network・Storage・Compute・Quota・Egress/Ingress）を Web ブラウザで操作できる。**WebUI でできることはすべて REST API でも実行可能**（API ファースト原則）。デザインシステムに準拠した UI を controller が静的ファイルとして配信する。
 
-### Story S022-1: フロントエンド基盤 [ ]
+### Story S022-1: フロントエンド基盤 [x]
 
-- [ ] **Task S022-1-1**: `web/` ディレクトリにフロントエンドプロジェクト初期化（Vite + React + Tailwind CSS + shadcn/ui、design-system のデザイントークンを Tailwind theme に適用）
-- [ ] **Task S022-1-2**: 開発時は Vite dev server (:5173) が `/api/*` を Go controller にプロキシ、本番は `web/dist/` を chi FileServer で配信
-- [ ] **Task S022-1-3**: 認証フロー: トークン入力 → localStorage 保存 → 全 API リクエストに付与
-- [ ] **Task S022-1-4**: テナントコンテキスト切り替え（X-Tenant-ID ヘッダ管理）
-- [ ] **Task S022-1-5**: `make build` に web ビルドを統合
+- [x] **Task S022-1-1**: `web/` ディレクトリにフロントエンドプロジェクト初期化（Vite + React + Tailwind CSS + shadcn/ui、design-system のデザイントークンを Tailwind theme に適用）
+- [x] **Task S022-1-2**: 開発時は Vite dev server (:5173) が `/api/*` を Go controller にプロキシ、本番は `web/dist/` を chi FileServer で配信
+- [x] **Task S022-1-3**: 認証フロー: トークン入力 → localStorage 保存 → 全 API リクエストに付与
+- [x] **Task S022-1-4**: テナントコンテキスト切り替え（X-Tenant-ID ヘッダ管理）
+- [x] **Task S022-1-5**: `make build` に web ビルドを統合
 
-### Story S022-2: 管理者 UI [ ]
+### Story S022-2: 管理者 UI [x]
 
-- [ ] **Task S022-2-1**: 組織・テナント管理画面（CRUD + ロール割り当て）
-- [ ] **Task S022-2-2**: ホスト管理画面（一覧・状態遷移ボタン: activate/drain/maintenance/retire）
-- [ ] **Task S022-2-3**: Storage Backend・Volume Type・Flavor 管理画面
-- [ ] **Task S022-2-4**: Quota 設定画面（テナント別 vCPU/メモリ/VM 数/ボリューム容量）
-- [ ] **Task S022-2-5**: Drift Event ビューア（一覧・フィルタ・ステータス確認）
+- [x] **Task S022-2-1**: 組織・テナント管理画面（CRUD + ロール割り当て）
+- [x] **Task S022-2-2**: ホスト管理画面（一覧・状態遷移ボタン: activate/drain/maintenance/retire）
+- [x] **Task S022-2-3**: Storage Backend・Volume Type・Flavor 管理画面
+- [x] **Task S022-2-4**: Quota 設定画面（テナント別 vCPU/メモリ/VM 数/ボリューム容量）
+- [x] **Task S022-2-5**: Drift Event ビューア（一覧・フィルタ・ステータス確認）
 
-### Story S022-3: テナント UI [ ]
+### Story S022-3: テナント UI [x]
 
-- [ ] **Task S022-3-1**: ダッシュボード（リソース使用量サマリ・クォータ残量）
-- [ ] **Task S022-3-2**: VM 管理画面（作成フォーム・一覧・詳細・start/stop/reboot/delete）
-- [ ] **Task S022-3-3**: ネットワーク管理画面（Network/Group/Policy CRUD）
-- [ ] **Task S022-3-4**: ボリューム管理画面（作成・一覧・削除・リサイズ）
-- [ ] **Task S022-3-5**: Egress / Ingress 管理画面
+- [x] **Task S022-3-1**: ダッシュボード（リソース使用量サマリ・クォータ残量）
+- [x] **Task S022-3-2**: VM 管理画面（作成フォーム・一覧・詳細・start/stop/reboot/delete）
+- [x] **Task S022-3-3**: ネットワーク管理画面（Network/Group/Policy CRUD）
+- [x] **Task S022-3-4**: ボリューム管理画面（作成・一覧・削除・リサイズ）
+- [x] **Task S022-3-5**: Egress / Ingress 管理画面
 
-### Story S022-4: テスト [ ]
+### Story S022-4: テスト [x]
 
-- [ ] **Task S022-4-1**: 主要フローの E2E テスト（Playwright 等）: ログイン→VM 作成→削除
-- [ ] **Task S022-4-2**: `make serve` で WebUI が http://localhost:{port} で起動すること確認
+- [x] **Task S022-4-1**: 主要フローの E2E テスト（Playwright 等）: ログイン→VM 作成→削除
+- [x] **Task S022-4-2**: `make serve` で WebUI が http://localhost:{port} で起動すること確認
 
 ---
 
@@ -1194,6 +1194,7 @@ Controller 再起動後も非同期ジョブが安全にリカバリできる。
 
 ## Backlog
 
+- [ ] **WebUI ロール別 Admin ナビ分離**: `GET /api/v1/me`（ログインユーザー情報・ロール取得）API を追加し、フロントエンドの Admin ナビを infra_admin 向け（ホスト・ストレージ・Flavor・Quota・DriftEvent）と org_admin 向け（組織・テナント・ロール割り当て）に分離。現状は UI レベルのアクセス制御なし（API の RBAC に委ねている）。
 - [ ] **S008 フォローアップ**: `make serve` での storage-domain → AZ の自動シード改善
 - [ ] **OVS クライアント移行**: S012 で実装した ExecOVSClient（os/exec）を antrea-io/ofnet に移行（OVSClient interface は不変）
 - [ ] **Port API 公開**: POST /api/v1/ports（現在は Compute 統合まで内部ヘルパーのみ）→ S015 で実装

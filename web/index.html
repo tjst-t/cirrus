@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cirrus IaaS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        /* Accent */
+        --color-accent: #1877f2;
+        --color-accent-hover: #1558b0;
+        --color-accent-subtle: #e8f0fe;
+
+        /* Semantic */
+        --color-success: #31a24c;
+        --color-warning: #f0960a;
+        --color-danger: #e4363a;
+
+        /* Neutral */
+        --color-bg: #ffffff;
+        --color-bg-secondary: #f5f6f7;
+        --color-border: #dddfe2;
+        --color-text: #1c1e21;
+        --color-text-secondary: #606770;
+
+        /* Spacing (4px grid) */
+        --space-1: 4px;
+        --space-2: 8px;
+        --space-3: 12px;
+        --space-4: 16px;
+        --space-5: 24px;
+        --space-6: 32px;
+
+        /* Border radius */
+        --radius-sm: 2px;
+        --radius: 4px;
+        --radius-lg: 8px;
+
+        /* Font */
+        font-family: 'Geist', 'Noto Sans JP', system-ui, sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+        color: var(--color-text);
+        background-color: var(--color-bg);
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

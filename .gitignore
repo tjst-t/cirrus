@@ -8,3 +8,6 @@
 *.log
 /tmp/
 .claude/worktrees/
+web/node_modules/
+web/dist/
+test-results/

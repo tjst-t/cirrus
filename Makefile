@@ -1,6 +1,6 @@
 .PHONY: all build test lint serve stop serve-storage stop-storage logs logs-worker logs-sim \
         clean-dev reset-db fresh proto test-unit test-mock test-integration test-smoke build-sim \
-        build-storage-servers
+        build-storage-servers web-install web-build test-e2e
 
 # ── Configuration ──
 
@@ -28,7 +28,21 @@ PORTMAN_ENV        := $(TMP_DIR)/portman.env
 
 all: lint test build
 
-build:
+web-install:
+	@if [ -d web ]; then cd web && npm install; else echo "web/ not found, skipping npm install"; fi
+
+web-build:
+	@if [ -d web ] && [ -d web/node_modules ]; then \
+		echo "==> Building web UI..."; \
+		cd web && npm run build; \
+	elif [ -d web ]; then \
+		echo "==> web/node_modules not found, running npm install first..."; \
+		cd web && npm install && npm run build; \
+	else \
+		echo "web/ not found, skipping web build"; \
+	fi
+
+build: web-install web-build
 	go build -o bin/cirrus ./cmd/cirrus/
 	go build -o bin/cirrusctl ./cmd/cirrusctl/
 
@@ -72,6 +86,9 @@ test-integration:
 	@$(COMPOSE) up -d
 	@echo "Integration environment is up. Running tests..."
 	go test -tags integration -v -timeout 5m ./test/integration/...
+
+test-e2e: web-install
+	cd web && PLAYWRIGHT_CHROMIUM_PATH=$(shell ls $(HOME)/.cache/ms-playwright/chromium-*/chrome-linux*/chrome 2>/dev/null | head -1) npx playwright test --reporter=list
 
 lint:
 	golangci-lint run ./...
