@@ -269,7 +269,7 @@ func runController(cfg *config.ControllerConfig) error {
 	hbReconciler := reconcile.NewHeartbeatReconciler(pool, driftHandler, logger)
 
 	// gRPC
-	grpcSrv := controller.NewGRPCServer(logger, hostSvc, topologySvc, networkStateSrv, cfg.RegistrationToken, hbReconciler)
+	grpcSrv := controller.NewGRPCServerWithNetwork(logger, hostSvc, topologySvc, networkSvc, networkStateSrv, cfg.RegistrationToken, hbReconciler)
 	grpcLis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
 	if err != nil {
 		return fmt.Errorf("controller: grpc listen: %w", err)

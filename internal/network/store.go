@@ -949,7 +949,10 @@ func (s *Store) DeleteIPPool(ctx context.Context, id uuid.UUID) error {
 // --- Ingresses ---
 
 func (s *Store) CreateIngress(ctx context.Context, networkID uuid.UUID, spec IngressSpec) (*Ingress, error) {
-	if spec.Type != IngressTypeDirectIP {
+	switch spec.Type {
+	case IngressTypeDirectIP, IngressTypeL4LB:
+		// supported
+	default:
 		return nil, fmt.Errorf("ingress: create: unsupported type %q: %w", spec.Type, ErrInvalidState)
 	}
 
@@ -965,20 +968,64 @@ func (s *Store) CreateIngress(ctx context.Context, networkID uuid.UUID, spec Ing
 		return nil, fmt.Errorf("ingress: create: public_ip %s is not within pool CIDR %s: %w", spec.PublicIP, poolCIDR, ErrInvalidState)
 	}
 
-	// Resolve target_ip from the VM's port if not provided.
-	if spec.Config.TargetVMID != "" && spec.Config.TargetIP == "" {
-		vmUUID, err := uuid.Parse(spec.Config.TargetVMID)
-		if err != nil {
-			return nil, fmt.Errorf("ingress: create: invalid target_vm_id: %w", ErrInvalidState)
+	if spec.Type == IngressTypeDirectIP {
+		// Resolve target_ip from the VM's port if not provided.
+		if spec.Config.TargetVMID != "" && spec.Config.TargetIP == "" {
+			vmUUID, err := uuid.Parse(spec.Config.TargetVMID)
+			if err != nil {
+				return nil, fmt.Errorf("ingress: create: invalid target_vm_id: %w", ErrInvalidState)
+			}
+			port, err := s.GetPortByVMID(ctx, vmUUID)
+			if err != nil {
+				return nil, fmt.Errorf("ingress: create: resolve target VM port: %w", err)
+			}
+			spec.Config.TargetIP = port.IPAddress
 		}
-		port, err := s.GetPortByVMID(ctx, vmUUID)
-		if err != nil {
-			return nil, fmt.Errorf("ingress: create: resolve target VM port: %w", err)
+		if spec.Config.TargetIP == "" {
+			return nil, fmt.Errorf("ingress: create: target_ip is required (provide target_vm_id or target_ip): %w", ErrInvalidState)
 		}
-		spec.Config.TargetIP = port.IPAddress
-	}
-	if spec.Config.TargetIP == "" {
-		return nil, fmt.Errorf("ingress: create: target_ip is required (provide target_vm_id or target_ip): %w", ErrInvalidState)
+	} else if spec.Type == IngressTypeL4LB {
+		// Validate L4LB config
+		if spec.L4LBConfig == nil {
+			return nil, fmt.Errorf("ingress: create: l4lb_config is required for l4_lb type: %w", ErrInvalidState)
+		}
+		if len(spec.L4LBConfig.Backends) == 0 {
+			return nil, fmt.Errorf("ingress: create: l4lb_config.backends must not be empty: %w", ErrInvalidState)
+		}
+		if spec.L4LBConfig.ListenerPort <= 0 || spec.L4LBConfig.ListenerPort > 65535 {
+			return nil, fmt.Errorf("ingress: create: invalid listener_port %d: %w", spec.L4LBConfig.ListenerPort, ErrInvalidState)
+		}
+		if spec.L4LBConfig.Protocol == "" {
+			spec.L4LBConfig.Protocol = "tcp"
+		}
+		if spec.L4LBConfig.Protocol != "tcp" {
+			return nil, fmt.Errorf("ingress: create: unsupported protocol %q (only tcp supported): %w", spec.L4LBConfig.Protocol, ErrInvalidState)
+		}
+		if spec.L4LBConfig.SessionAffinity == "" {
+			spec.L4LBConfig.SessionAffinity = "none"
+		}
+		// Resolve backend IPs from VM ports when IP not provided
+		for i := range spec.L4LBConfig.Backends {
+			b := &spec.L4LBConfig.Backends[i]
+			if b.Weight == 0 {
+				b.Weight = 1
+			}
+			b.Healthy = true // newly created backends start healthy
+			if b.IP == "" && b.VMID != "" {
+				vmUUID, err := uuid.Parse(b.VMID)
+				if err != nil {
+					return nil, fmt.Errorf("ingress: create: invalid backend vm_id %q: %w", b.VMID, ErrInvalidState)
+				}
+				port, err := s.GetPortByVMID(ctx, vmUUID)
+				if err != nil {
+					return nil, fmt.Errorf("ingress: create: resolve backend VM port for %s: %w", b.VMID, err)
+				}
+				b.IP = port.IPAddress
+			}
+			if b.IP == "" {
+				return nil, fmt.Errorf("ingress: create: backend ip is required (provide vm_id or ip): %w", ErrInvalidState)
+			}
+		}
 	}
 
 	// Fetch tenant_id for quota tracking.
@@ -996,7 +1043,18 @@ func (s *Store) CreateIngress(ctx context.Context, networkID uuid.UUID, spec Ing
 		}
 	}
 
-	configJSON, err := json.Marshal(spec.Config)
+	// For l4_lb, store the full l4lb config inside the config JSONB field under the key "l4lb".
+	// For direct_ip, store the IngressConfig as before.
+	var configToStore interface{}
+	if spec.Type == IngressTypeL4LB {
+		configToStore = struct {
+			L4LB *L4LBConfig `json:"l4lb"`
+		}{L4LB: spec.L4LBConfig}
+	} else {
+		configToStore = spec.Config
+	}
+
+	configJSON, err := json.Marshal(configToStore)
 	if err != nil {
 		if s.quotaSvc != nil {
 			_ = s.quotaSvc.Release(ctx, quota.ResourceTypeIngress, ingressID)
@@ -1005,12 +1063,13 @@ func (s *Store) CreateIngress(ctx context.Context, networkID uuid.UUID, spec Ing
 	}
 
 	var ing Ingress
+	var rawConfig []byte
 	err = s.pool.QueryRow(ctx,
 		`INSERT INTO ingresses (id, network_id, type, public_ip, ip_pool_id, config)
 		 VALUES ($1, $2, $3, $4::inet, $5, $6)
 		 RETURNING id, network_id, type, host(public_ip), ip_pool_id, config, created_at`,
 		ingressID, networkID, spec.Type, spec.PublicIP, spec.IPPoolID, configJSON,
-	).Scan(&ing.ID, &ing.NetworkID, &ing.Type, &ing.PublicIP, &ing.IPPoolID, &configJSON, &ing.CreatedAt)
+	).Scan(&ing.ID, &ing.NetworkID, &ing.Type, &ing.PublicIP, &ing.IPPoolID, &rawConfig, &ing.CreatedAt)
 	if err != nil {
 		if s.quotaSvc != nil {
 			_ = s.quotaSvc.Release(ctx, quota.ResourceTypeIngress, ingressID)
@@ -1024,10 +1083,44 @@ func (s *Store) CreateIngress(ctx context.Context, networkID uuid.UUID, spec Ing
 		}
 	}
 
-	if err := json.Unmarshal(configJSON, &ing.Config); err != nil {
+	if err := s.unmarshalIngressConfig(&ing, rawConfig); err != nil {
 		return nil, fmt.Errorf("ingress: create: unmarshal config: %w", err)
 	}
+
+	// For l4_lb, insert initial health rows.
+	if spec.Type == IngressTypeL4LB && spec.L4LBConfig != nil {
+		for _, b := range spec.L4LBConfig.Backends {
+			if b.VMID == "" {
+				continue
+			}
+			vmUUID, err := uuid.Parse(b.VMID)
+			if err != nil {
+				continue
+			}
+			_, _ = s.pool.Exec(ctx, `
+				INSERT INTO l4lb_backend_health (ingress_id, vm_id, healthy, last_checked_at)
+				VALUES ($1, $2, true, NOW())
+				ON CONFLICT (ingress_id, vm_id) DO NOTHING
+			`, ingressID, vmUUID)
+		}
+	}
+
 	return &ing, nil
+}
+
+// unmarshalIngressConfig decodes the raw config JSONB into the appropriate fields.
+func (s *Store) unmarshalIngressConfig(ing *Ingress, raw []byte) error {
+	if ing.Type == IngressTypeL4LB {
+		var wrapper struct {
+			L4LB *L4LBConfig `json:"l4lb"`
+		}
+		if err := json.Unmarshal(raw, &wrapper); err != nil {
+			return err
+		}
+		ing.L4LBConfig = wrapper.L4LB
+		return nil
+	}
+	return json.Unmarshal(raw, &ing.Config)
 }
 
 func (s *Store) GetIngress(ctx context.Context, id uuid.UUID) (*Ingress, error) {
@@ -1040,7 +1133,7 @@ func (s *Store) GetIngress(ctx context.Context, id uuid.UUID) (*Ingress, error) 
 	if err != nil {
 		return nil, wrapErr("ingress: get", err)
 	}
-	if err := json.Unmarshal(configJSON, &ing.Config); err != nil {
+	if err := s.unmarshalIngressConfig(&ing, configJSON); err != nil {
 		return nil, fmt.Errorf("ingress: get: unmarshal config: %w", err)
 	}
 	return &ing, nil
@@ -1062,7 +1155,7 @@ func (s *Store) ListIngresses(ctx context.Context, networkID uuid.UUID) ([]Ingre
 		if err := rows.Scan(&ing.ID, &ing.NetworkID, &ing.Type, &ing.PublicIP, &ing.IPPoolID, &configJSON, &ing.CreatedAt); err != nil {
 			return nil, fmt.Errorf("ingress: list scan: %w", err)
 		}
-		if err := json.Unmarshal(configJSON, &ing.Config); err != nil {
+		if err := s.unmarshalIngressConfig(&ing, configJSON); err != nil {
 			return nil, fmt.Errorf("ingress: list: unmarshal config: %w", err)
 		}
 		ingresses = append(ingresses, ing)
@@ -1089,6 +1182,24 @@ func (s *Store) DeleteIngress(ctx context.Context, id uuid.UUID) error {
 		if err := s.quotaSvc.Decommit(ctx, tenantID, quota.ResourceDelta{Ingresses: 1}); err != nil {
 			s.logger.Warn("quota decommit failed after ingress deletion", "ingress_id", id, "error", err)
 		}
+	}
+	return nil
+}
+
+// UpdateBackendHealth updates the healthy state of a backend VM in an l4_lb ingress.
+// It upserts into l4lb_backend_health and refreshes the backends[].healthy field in the
+// ingresses.config JSONB.
+func (s *Store) UpdateBackendHealth(ctx context.Context, ingressID uuid.UUID, vmID uuid.UUID, healthy bool) error {
+	// Upsert the health row.
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO l4lb_backend_health (ingress_id, vm_id, healthy, last_checked_at)
+		VALUES ($1, $2, $3, NOW())
+		ON CONFLICT (ingress_id, vm_id) DO UPDATE
+		  SET healthy = EXCLUDED.healthy,
+		      last_checked_at = EXCLUDED.last_checked_at
+	`, ingressID, vmID, healthy)
+	if err != nil {
+		return fmt.Errorf("ingress: update backend health: upsert: %w", err)
 	}
 	return nil
 }

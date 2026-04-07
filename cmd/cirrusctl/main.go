@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -3233,9 +3234,17 @@ func (app *cli) newIngressListCmd() *cobra.Command {
 			}
 			rows := make([][]string, len(ingresses))
 			for i, ing := range ingresses {
-				rows[i] = []string{ing.ID.String(), ing.NetworkID.String(), ing.Type, ing.PublicIP, ing.Config.TargetIP}
+				detail := ing.Config.TargetIP
+				if ing.Type == network.IngressTypeL4LB && ing.L4LBConfig != nil {
+					detail = fmt.Sprintf("port=%d backends=%d affinity=%s",
+						ing.L4LBConfig.ListenerPort,
+						len(ing.L4LBConfig.Backends),
+						ing.L4LBConfig.SessionAffinity,
+					)
+				}
+				rows[i] = []string{ing.ID.String(), ing.NetworkID.String(), ing.Type, ing.PublicIP, detail}
 			}
-			return app.printTable([]string{"ID", "NETWORK_ID", "TYPE", "PUBLIC_IP", "TARGET_IP"}, rows)
+			return app.printTable([]string{"ID", "NETWORK_ID", "TYPE", "PUBLIC_IP", "DETAIL"}, rows)
 		},
 	}
 	cmd.Flags().StringVar(&networkStr, "network", "", "Network (UUID or name) (required)")
@@ -3247,10 +3256,21 @@ func (app *cli) newIngressListCmd() *cobra.Command {
 }
 
 func (app *cli) newIngressCreateCmd() *cobra.Command {
-	var networkStr, tenant, org, ingressType, publicIP, ipPoolStr, targetVMStr, targetIP string
+	var networkStr, tenant, org, ingressType, publicIP, ipPoolStr string
+	// direct_ip flags
+	var targetVMStr, targetIP string
+	// l4_lb flags
+	var backends []string
+	var listenerPort int
+	var protocol, sessionAffinity string
+	var hcType string
+	var hcPort int
+	var hcPath string
+	var hcInterval, hcTimeout, hcThreshold int
+
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "Create an ingress rule",
+		Short: "Create an ingress rule (direct_ip or l4_lb)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := app.cmdContext()
@@ -3267,22 +3287,122 @@ func (app *cli) newIngressCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// target-vm is stored as a string UUID in config; resolve or pass-through
-			targetVMID := targetVMStr
-			if _, parseErr := uuid.Parse(targetVMStr); parseErr != nil {
-				return fmt.Errorf("--target-vm must be a valid UUID: %w", parseErr)
-			}
-			ing, err := c.CreateIngress(ctx, tenantID, networkID, network.IngressSpec{
+
+			spec := network.IngressSpec{
 				Type:     ingressType,
 				PublicIP: publicIP,
 				IPPoolID: poolID,
-				Config: network.IngressConfig{
+			}
+
+			switch ingressType {
+			case network.IngressTypeDirectIP:
+				if targetVMStr == "" && targetIP == "" {
+					return fmt.Errorf("--target-vm or --target-ip is required for type=direct_ip")
+				}
+				targetVMID := targetVMStr
+				if targetVMID != "" {
+					if _, parseErr := uuid.Parse(targetVMStr); parseErr != nil {
+						return fmt.Errorf("--target-vm must be a valid UUID: %w", parseErr)
+					}
+				}
+				spec.Config = network.IngressConfig{
 					TargetVMID: targetVMID,
 					TargetIP:   targetIP,
-				},
-			})
+				}
+
+			case network.IngressTypeL4LB:
+				if len(backends) == 0 {
+					return fmt.Errorf("--backend is required for type=l4_lb (e.g. --backend <vm-uuid>:80)")
+				}
+				if listenerPort == 0 {
+					return fmt.Errorf("--port is required for type=l4_lb")
+				}
+
+				var parsedBackends []network.L4LBBackend
+				for _, bStr := range backends {
+					// Format: <vm-uuid>:<port> or <ip>:<port>
+					parts := strings.SplitN(bStr, ":", 2)
+					if len(parts) != 2 {
+						return fmt.Errorf("invalid backend format %q: expected <vm-uuid-or-ip>:<port>", bStr)
+					}
+					bPort, err := strconv.Atoi(parts[1])
+					if err != nil {
+						return fmt.Errorf("invalid backend port in %q: %w", bStr, err)
+					}
+					b := network.L4LBBackend{Port: bPort, Weight: 1}
+					// Determine if parts[0] is a UUID (vm_id) or an IP.
+					if _, parseErr := uuid.Parse(parts[0]); parseErr == nil {
+						b.VMID = parts[0]
+					} else {
+						b.IP = parts[0]
+					}
+					parsedBackends = append(parsedBackends, b)
+				}
+
+				if sessionAffinity == "" {
+					sessionAffinity = "none"
+				}
+				if protocol == "" {
+					protocol = "tcp"
+				}
+				if hcInterval == 0 {
+					hcInterval = 10
+				}
+				if hcTimeout == 0 {
+					hcTimeout = 3
+				}
+				if hcThreshold == 0 {
+					hcThreshold = 2
+				}
+				if hcType == "" {
+					hcType = "tcp"
+				}
+				if hcPort == 0 {
+					hcPort = listenerPort
+				}
+
+				spec.L4LBConfig = &network.L4LBConfig{
+					Backends:        parsedBackends,
+					ListenerPort:    listenerPort,
+					Protocol:        protocol,
+					SessionAffinity: sessionAffinity,
+					HealthCheck: network.L4LBHealthCheck{
+						Type:               hcType,
+						Port:               hcPort,
+						Path:               hcPath,
+						IntervalSec:        hcInterval,
+						TimeoutSec:         hcTimeout,
+						UnhealthyThreshold: hcThreshold,
+					},
+				}
+
+			default:
+				return fmt.Errorf("unsupported ingress type %q: must be direct_ip or l4_lb", ingressType)
+			}
+
+			ing, err := c.CreateIngress(ctx, tenantID, networkID, spec)
 			if err != nil {
 				return err
+			}
+
+			switch ing.Type {
+			case network.IngressTypeL4LB:
+				if ing.L4LBConfig != nil {
+					backendsDisplay := make([]string, len(ing.L4LBConfig.Backends))
+					for i, b := range ing.L4LBConfig.Backends {
+						backendsDisplay[i] = fmt.Sprintf("%s:%d", b.IP, b.Port)
+					}
+					return app.printTable(
+						[]string{"ID", "TYPE", "PUBLIC_IP", "PORT", "PROTOCOL", "BACKENDS", "AFFINITY"},
+						[][]string{{
+							ing.ID.String(), ing.Type, ing.PublicIP,
+							fmt.Sprintf("%d", ing.L4LBConfig.ListenerPort),
+							ing.L4LBConfig.Protocol,
+							strings.Join(backendsDisplay, ","),
+							ing.L4LBConfig.SessionAffinity,
+						}},
+					)
+				}
 			}
 			return app.printTable(
 				[]string{"ID", "NETWORK_ID", "TYPE", "PUBLIC_IP", "TARGET_IP"},
@@ -3293,17 +3413,27 @@ func (app *cli) newIngressCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&networkStr, "network", "", "Network (UUID or name) (required)")
 	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant (UUID or name) (required)")
 	cmd.Flags().StringVar(&org, "org", "", "Organization for tenant name resolution")
-	cmd.Flags().StringVar(&ingressType, "type", "direct_ip", "Ingress type (direct_ip)")
-	cmd.Flags().StringVar(&publicIP, "public-ip", "", "Public IP for DNAT (required)")
+	cmd.Flags().StringVar(&ingressType, "type", "direct_ip", "Ingress type: direct_ip or l4_lb")
+	cmd.Flags().StringVar(&publicIP, "public-ip", "", "Public IP for ingress (required)")
 	cmd.Flags().StringVar(&ipPoolStr, "ip-pool", "", "IP pool (UUID or name) (required)")
-	cmd.Flags().StringVar(&targetVMStr, "target-vm", "", "Target VM UUID (required)")
-	cmd.Flags().StringVar(&targetIP, "target-ip", "", "Target private IP (required)")
+	// direct_ip flags
+	cmd.Flags().StringVar(&targetVMStr, "target-vm", "", "Target VM UUID (for direct_ip)")
+	cmd.Flags().StringVar(&targetIP, "target-ip", "", "Target private IP (for direct_ip)")
+	// l4_lb flags
+	cmd.Flags().StringArrayVar(&backends, "backend", nil, "Backend spec: <vm-uuid-or-ip>:<port> (repeatable, for l4_lb)")
+	cmd.Flags().IntVar(&listenerPort, "port", 0, "Listener port on public IP (for l4_lb)")
+	cmd.Flags().StringVar(&protocol, "protocol", "tcp", "Protocol (for l4_lb, currently only tcp)")
+	cmd.Flags().StringVar(&sessionAffinity, "session-affinity", "none", "Session affinity: none (5-tuple hash) or source_ip (for l4_lb)")
+	cmd.Flags().StringVar(&hcType, "health-check-type", "tcp", "Health check type: tcp or http (for l4_lb)")
+	cmd.Flags().IntVar(&hcPort, "health-check-port", 0, "Health check port (defaults to --port, for l4_lb)")
+	cmd.Flags().StringVar(&hcPath, "health-check-path", "/", "HTTP health check path (for l4_lb, http type)")
+	cmd.Flags().IntVar(&hcInterval, "health-check-interval", 10, "Health check interval in seconds (for l4_lb)")
+	cmd.Flags().IntVar(&hcTimeout, "health-check-timeout", 3, "Health check timeout in seconds (for l4_lb)")
+	cmd.Flags().IntVar(&hcThreshold, "health-check-threshold", 2, "Unhealthy threshold (for l4_lb)")
 	_ = cmd.MarkFlagRequired("network")
 	_ = cmd.MarkFlagRequired("tenant")
 	_ = cmd.MarkFlagRequired("public-ip")
 	_ = cmd.MarkFlagRequired("ip-pool")
-	_ = cmd.MarkFlagRequired("target-vm")
-	_ = cmd.MarkFlagRequired("target-ip")
 	return cmd
 }
 

@@ -339,38 +339,120 @@ func (sc *StateController) getGatewayNetworkIDs(ctx context.Context, gwID uuid.U
 // computeIngressRules returns all IngressRules for the networks assigned to this GW node.
 // gw must be non-nil; callers must check before calling.
 func (sc *StateController) computeIngressRules(ctx context.Context, gw *GatewayNode) ([]*pb.IngressRule, error) {
+	// LEFT JOIN l4lb_backend_health to avoid N+1 queries; health rows are NULL for direct_ip.
 	rows, err := sc.pool.Query(ctx, `
-		SELECT i.id, i.network_id, i.type, host(i.public_ip), i.config
+		SELECT i.id, i.network_id, i.type, host(i.public_ip), i.config,
+		       h.vm_id::TEXT, h.healthy
 		FROM ingresses i
 		JOIN networks n ON n.id = i.network_id
-		WHERE n.gateway_node_id = $1 AND i.type = $2
-	`, gw.ID, IngressTypeDirectIP)
+		LEFT JOIN l4lb_backend_health h ON h.ingress_id = i.id
+		WHERE n.gateway_node_id = $1 AND i.type = ANY($2)
+		ORDER BY i.id
+	`, gw.ID, []string{IngressTypeDirectIP, IngressTypeL4LB})
 	if err != nil {
 		return nil, fmt.Errorf("compute ingress: query: %w", err)
 	}
 	defer rows.Close()
 
-	var ingressRules []*pb.IngressRule
+	// Accumulate health rows per ingress, then build rules.
+	type ingressRow struct {
+		id        uuid.UUID
+		networkID uuid.UUID
+		iType     string
+		publicIP  string
+		config    []byte
+	}
+	var (
+		ingressOrder []ingressRow
+		healthMaps   = make(map[uuid.UUID]map[string]bool) // ingress_id → vm_id → healthy
+		seenIDs      = make(map[uuid.UUID]bool)
+	)
+
 	for rows.Next() {
 		var iID, iNetID uuid.UUID
 		var iType, publicIP string
 		var configJSON []byte
-		if err := rows.Scan(&iID, &iNetID, &iType, &publicIP, &configJSON); err != nil {
+		var vmIDStr *string
+		var healthy *bool
+		if err := rows.Scan(&iID, &iNetID, &iType, &publicIP, &configJSON, &vmIDStr, &healthy); err != nil {
 			return nil, fmt.Errorf("compute ingress: scan: %w", err)
 		}
-		var cfg IngressConfig
-		if err := json.Unmarshal(configJSON, &cfg); err != nil {
-			return nil, fmt.Errorf("compute ingress: unmarshal config: %w", err)
+		if !seenIDs[iID] {
+			seenIDs[iID] = true
+			ingressOrder = append(ingressOrder, ingressRow{iID, iNetID, iType, publicIP, configJSON})
 		}
-		ingressRules = append(ingressRules, &pb.IngressRule{
-			IngressId: iID.String(),
-			NetworkId: iNetID.String(),
-			Type:      iType,
-			PublicIp:  publicIP,
-			TargetIp:  cfg.TargetIP,
-		})
+		if vmIDStr != nil && healthy != nil {
+			if healthMaps[iID] == nil {
+				healthMaps[iID] = make(map[string]bool)
+			}
+			healthMaps[iID][*vmIDStr] = *healthy
+		}
 	}
-	return ingressRules, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("compute ingress: rows: %w", err)
+	}
+
+	var ingressRules []*pb.IngressRule
+	for _, ir := range ingressOrder {
+		rule := &pb.IngressRule{
+			IngressId: ir.id.String(),
+			NetworkId: ir.networkID.String(),
+			Type:      ir.iType,
+			PublicIp:  ir.publicIP,
+		}
+
+		switch ir.iType {
+		case IngressTypeDirectIP:
+			var cfg IngressConfig
+			if err := json.Unmarshal(ir.config, &cfg); err != nil {
+				return nil, fmt.Errorf("compute ingress: unmarshal direct_ip config: %w", err)
+			}
+			rule.TargetIp = cfg.TargetIP
+
+		case IngressTypeL4LB:
+			var wrapper struct {
+				L4LB *L4LBConfig `json:"l4lb"`
+			}
+			if err := json.Unmarshal(ir.config, &wrapper); err != nil {
+				return nil, fmt.Errorf("compute ingress: unmarshal l4lb config: %w", err)
+			}
+			if wrapper.L4LB == nil {
+				sc.logger.Warn("l4lb ingress has nil config, skipping", "ingress_id", ir.id)
+				continue
+			}
+			cfg := wrapper.L4LB
+			healthMap := healthMaps[ir.id]
+
+			rule.ListenerPort = int32(cfg.ListenerPort)
+			rule.Protocol = cfg.Protocol
+			rule.SessionAffinity = cfg.SessionAffinity
+
+			for _, b := range cfg.Backends {
+				healthy := b.Healthy
+				if h, ok := healthMap[b.VMID]; ok {
+					healthy = h
+				}
+				if !healthy {
+					continue
+				}
+				rule.Backends = append(rule.Backends, &pb.L4LBBackend{
+					VmId:    b.VMID,
+					Ip:      b.IP,
+					Port:    int32(b.Port),
+					Weight:  int32(b.Weight),
+					Healthy: true,
+				})
+			}
+
+			if len(rule.Backends) == 0 {
+				sc.logger.Warn("l4lb ingress has no healthy backends, skipping", "ingress_id", ir.id)
+				continue
+			}
+		}
+
+		ingressRules = append(ingressRules, rule)
+	}
+	return ingressRules, nil
 }
 
 // computeEgressRules returns all EgressRules for the networks assigned to this GW node.

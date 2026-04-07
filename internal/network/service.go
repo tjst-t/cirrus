@@ -62,4 +62,7 @@ type Service interface {
 	GetIngress(ctx context.Context, id uuid.UUID) (*Ingress, error)
 	ListIngresses(ctx context.Context, networkID uuid.UUID) ([]Ingress, error)
 	DeleteIngress(ctx context.Context, id uuid.UUID) error
+
+	// UpdateBackendHealth updates the healthy state of a backend VM in an l4_lb ingress.
+	UpdateBackendHealth(ctx context.Context, ingressID uuid.UUID, vmID uuid.UUID, healthy bool) error
 }

@@ -41,9 +41,10 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 - **VPN WireGuard Egress** (`type=vpn_wireguard`): WireGuard トンネル。Controller が Curve25519 キーペアを生成し秘密鍵を AES-GCM 暗号化保存。公開鍵は API レスポンスで返却。GW ノードへ復号済み設定を配信し `VPNManager.ConfigureWireGuard` で適用
 - **Direct Connect Egress** (`type=direct_connect`): 専用線 VLAN trunk。VLAN ID をテナントが指定し、`uplink_port` は GW ノード登録情報から自動設定。GW ノードへ配信し `DirectConnectManager.ConfigureVLANTrunk` で適用
 - **Direct IP Ingress** (`type=direct_ip`): 公開 IP → VM プライベート IP の DNAT ルールを GW ノードで適用
-- `StateController.ComputeHostNetworkState`: 各 Worker へ配信する `HostNetworkState` を計算（local ports / remote ports / policies / DNS / egress rules / ingress rules）。GW ホストでローカル VM がなくても、担当ネットワークの remote port ルーティングを含める。VPN/DC egress では暗号化シークレットを復号してから配信
+- **L4 LB Ingress** (`type=l4_lb`): 公開 IP:ポート に届いた TCP トラフィックを複数バックエンド VM へ分散。OVS OpenFlow `select` group（5-tuple ハッシュ or 送信元 IP アフィニティ）で実装。バックエンドの健全性は Worker Agent が TCP probe し `ReportBackendHealth` gRPC で Controller へ報告。不健全バックエンドは `l4lb_backend_health` テーブルで管理され次回 HostNetworkState 配信時に除外される
+- `StateController.ComputeHostNetworkState`: 各 Worker へ配信する `HostNetworkState` を計算（local ports / remote ports / policies / DNS / egress rules / ingress rules）。GW ホストでローカル VM がなくても、担当ネットワークの remote port ルーティングを含める。VPN/DC egress では暗号化シークレットを復号してから配信。l4_lb ingress では `l4lb_backend_health` を LEFT JOIN し健全バックエンドのみ配信
 - `GRPCStateServer.WatchHostNetworkState`: gRPC server-streaming で Worker に `HostNetworkState` を Push（2 秒ポーリング差分検出、`TriggerRefresh` で強制再配信）
-- `internal/network/agent/` — Worker 側 OVS OpenFlow フロー生成・適用（Table 0–7）、SNAT/DNAT フロー含む。`VPNManager` / `DirectConnectManager` インターフェースで VPN・VLAN 設定を抽象化（本番: strongSwan/wgctrl、シム: no-op ログ）
+- `internal/network/agent/` — Worker 側 OVS OpenFlow フロー生成・適用（Table 0–7）、SNAT/DNAT フロー含む。`VPNManager` / `DirectConnectManager` インターフェースで VPN・VLAN 設定を抽象化（本番: strongSwan/wgctrl、シム: no-op ログ）。`HealthChecker` が 10 秒間隔で l4_lb バックエンドを TCP probe し状態変化時のみ `ReportBackendHealth` gRPC を呼ぶ
 
 ### Storage (`internal/storage`)
 
@@ -187,7 +188,7 @@ Controller → gRPC → Agent (internal/agent)
   → NetworkAgent (OVS) — OpenFlowフロー設定
 ```
 
-### NAT Gateway / Direct IP Ingress フロー
+### NAT Gateway / Ingress フロー
 
 ```
 [NAT Gateway Egress: VM → 外部]
@@ -197,18 +198,31 @@ VM (worker-N)
   → GW ホスト OVS Table 7: ct(commit,nat(src=公開IP)), NORMAL
   → 外部ネットワーク
 
-[Direct IP Ingress: 外部 → VM]
+[Direct IP Ingress: 外部 → VM (1:1 DNAT)]
 外部クライアント → GW ホスト
   → OVS Table 0 on GW (priority=300): ip,nw_dst=公開IP → ct(commit,nat(dst=VM-IP)), resubmit(,4)
-  → OVS Table 4: ip,nw_dst=VM-IP → Geneve encap → worker-N (VM が稼働中のホスト)
+  → OVS Table 4: ip,nw_dst=VM-IP → Geneve encap → worker-N
   → worker-N: OVS → VM tap
+
+[L4 LB Ingress: 外部 → 複数VM (select group)]
+外部クライアント → GW ホスト
+  → OVS Table 0 on GW (priority=310): ip,tcp,nw_dst=公開IP,tp_dst=ポート → group:<id>
+  → OVS select group: 5-tuple hash (or src-IP hash) → bucket → ct(commit,nat(dst=VM-IP:ポート)), resubmit(,4)
+  → OVS Table 4 → Geneve encap → worker-N
+
+[L4 LB ヘルスチェックループ]
+Worker HealthChecker (10秒間隔)
+  → TCP probe → ローカルバックエンド VM
+  → 状態変化時のみ: ControllerService.ReportBackendHealth gRPC
+  → Controller: l4lb_backend_health テーブル更新
+  → 次回 WatchHostNetworkState 配信で不健全バックエンドを除外
 
 [HostNetworkState 配信]
 Controller StateController
-  → ComputeHostNetworkState (各 Worker の local/remote ports, policies, egress/ingress rules)
+  → ComputeHostNetworkState (local/remote ports, policies, egress/ingress rules)
   → GRPCStateServer.WatchHostNetworkState (server-streaming, 2秒ポーリング)
   → Worker NetworkAgent.ApplyState
-      → OVS flows の差分適用 (ovs-ofctl add-flow / del-flow)
+      → OVS flows + groups の差分適用
 ```
 
 ### VM 作成フロー (Compute Orchestrator)

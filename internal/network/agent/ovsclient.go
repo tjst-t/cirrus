@@ -49,4 +49,14 @@ type OVSClient interface {
 
 	// SetInterfaceExternalIDs sets external_ids on an interface.
 	SetInterfaceExternalIDs(port string, externalIDs map[string]string) error
+
+	// AddGroup adds an OpenFlow group entry.
+	// groupSpec is the full group specification string (e.g. "group_id=1,type=select,bucket=...").
+	AddGroup(groupSpec string) error
+
+	// ModifyGroup modifies an existing OpenFlow group entry.
+	ModifyGroup(groupSpec string) error
+
+	// DeleteGroup removes an OpenFlow group entry by group ID.
+	DeleteGroup(groupID uint32) error
 }

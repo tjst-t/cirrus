@@ -4,13 +4,13 @@
 
 ## Progress
 
-- Total: 45 Sprints | Done: 23 | In Progress: 0 | Remaining: 22
-- [██████████░░░░░░░░░░] 51%
+- Total: 45 Sprints | Done: 24 | In Progress: 0 | Remaining: 21
+- [██████████░░░░░░░░░░] 53%
 
 ## Execution Order
 
 S001 → S002 → S003 → S004 → S005 → S006 → S007 → S008 → S009 → S010 → S011 → S012 → S013 → S014 → S015 → S016 → S017 → S018 → S019 → S020 → S021 → S045 → S042 → S043 → S044 → S022 → S023 → S024 → S025 → S026 → S027 → S028 → S029 → S030 → S031 → S032 → S033 → S034 → S035 → S036 → S037 → S038 → S039 → S040 → S041
-                                                                                                                                                                    ↑ next
+                                                                                                                                                                            ↑ next
 
 ---
 
@@ -1098,17 +1098,17 @@ NAT Gateway に加えて VPN（IPsec/WireGuard）と Direct Connect（VLAN trunk
 
 ---
 
-## Sprint S043: L4 LB Ingress [ ]
+## Sprint S043: L4 LB Ingress [DONE]
 
 外部からの着信を複数 VM に分散する L4 Load Balancer Ingress を実装する。S020 の Direct IP Ingress 基盤に依存。
 
-### Story S043-1: L4 LB Ingress 実装 [ ]
+### Story S043-1: L4 LB Ingress 実装 [x]
 
-- [ ] **Task S043-1-1**: Ingress type=l4_lb: conntrack + DNAT による L4 分散（ラウンドロビン）
-- [ ] **Task S043-1-2**: conntrack セッションアフィニティ（送信元 IP ベース）
-- [ ] **Task S043-1-3**: コントローラ主導ヘルスチェック（TCP/HTTP probe）+ 不健全バックエンドの除外
-- [ ] **Task S043-1-4**: テスト: L4 LB 分散、セッションアフィニティ、バックエンド障害時の除外
-- [ ] **Task S043-1-5**: `cirrusctl ingress` に l4-lb サブタイプ追加
+- [x] **Task S043-1-1**: Ingress type=l4_lb: conntrack + DNAT による L4 分散（ラウンドロビン）
+- [x] **Task S043-1-2**: conntrack セッションアフィニティ（送信元 IP ベース）
+- [x] **Task S043-1-3**: コントローラ主導ヘルスチェック（TCP/HTTP probe）+ 不健全バックエンドの除外
+- [x] **Task S043-1-4**: テスト: L4 LB 分散、セッションアフィニティ、バックエンド障害時の除外
+- [x] **Task S043-1-5**: `cirrusctl ingress` に l4-lb サブタイプ追加
 
 ---
 

@@ -154,6 +154,22 @@ func (c *ExecOVSClient) SetInterfaceExternalIDs(port string, externalIDs map[str
 	return err
 }
 
+func (c *ExecOVSClient) AddGroup(groupSpec string) error {
+	_, err := c.run("ovs-ofctl", "-O", "OpenFlow13", "add-group", c.bridge, groupSpec)
+	return err
+}
+
+func (c *ExecOVSClient) ModifyGroup(groupSpec string) error {
+	_, err := c.run("ovs-ofctl", "-O", "OpenFlow13", "mod-group", c.bridge, groupSpec)
+	return err
+}
+
+func (c *ExecOVSClient) DeleteGroup(groupID uint32) error {
+	_, err := c.run("ovs-ofctl", "-O", "OpenFlow13", "del-groups", c.bridge,
+		fmt.Sprintf("group_id=%d", groupID))
+	return err
+}
+
 // run executes a command with a 10-second timeout.
 func (c *ExecOVSClient) run(name string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

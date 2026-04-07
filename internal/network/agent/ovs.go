@@ -2,8 +2,10 @@ package agent
 
 import (
 	"fmt"
+	"hash/fnv"
 	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/tjst-t/cirrus/internal/network"
@@ -35,14 +37,26 @@ type Pipeline struct {
 
 	// Tunnel port ofport
 	tunnelOfPort int
+
+	// Installed OVS group IDs for l4_lb ingresses: ingress_id → group_id
+	lbGroups map[string]uint32
+
+	// Installed direct_ip DNAT flows: ingress_id → public_ip (for deletion)
+	directIPFlows map[string]string
+
+	// Installed l4lb steering flows: ingress_id → "match|actions" fingerprint
+	lbFlows map[string]string
 }
 
 // NewPipeline creates a new Pipeline manager.
 func NewPipeline(client OVSClient, logger *slog.Logger) *Pipeline {
 	return &Pipeline{
-		client:      client,
-		logger:      logger,
-		tunnelPorts: make(map[string]string),
+		client:        client,
+		logger:        logger,
+		tunnelPorts:   make(map[string]string),
+		lbGroups:      make(map[string]uint32),
+		directIPFlows: make(map[string]string),
+		lbFlows:       make(map[string]string),
 	}
 }
 
@@ -97,8 +111,10 @@ func (p *Pipeline) Apply(state *pb.HostNetworkState) error {
 		}
 	}
 
-	// 6. Apply ingress (DNAT) rules for GW-role hosts
-	if state.GatewayInfo != nil && len(state.IngressRules) > 0 {
+	// 6. Apply ingress (DNAT) rules for GW-role hosts.
+	// Always called when GatewayInfo is present so stale flows are cleaned up
+	// even when all ingress rules have been removed.
+	if state.GatewayInfo != nil {
 		if err := p.applyIngressRules(state.IngressRules, state.GatewayInfo); err != nil {
 			return fmt.Errorf("pipeline: apply ingress rules: %w", err)
 		}
@@ -118,29 +134,156 @@ func (p *Pipeline) Apply(state *pb.HostNetworkState) error {
 	return nil
 }
 
-// applyIngressRules installs DNAT OVS flows for Direct IP ingress rules on a GW-role host.
+// applyIngressRules installs DNAT OVS flows for Direct IP and L4 LB ingress rules on a GW-role host.
 func (p *Pipeline) applyIngressRules(ingressRules []*pb.IngressRule, gatewayInfo *pb.GatewayInfo) error {
+	// Track which ingress IDs we've seen this cycle to detect removed ones.
+	seenIngresses := make(map[string]bool)
+
 	for _, rule := range ingressRules {
-		if rule.Type != network.IngressTypeDirectIP {
-			continue
+		seenIngresses[rule.IngressId] = true
+
+		switch rule.Type {
+		case network.IngressTypeDirectIP:
+			match := fmt.Sprintf("ip,nw_dst=%s", rule.PublicIp)
+			actions := fmt.Sprintf("ct(commit,nat(dst=%s)),resubmit(,%d)", rule.TargetIp, TableDstHostResolution)
+			fingerprint := match + "|" + actions
+			if p.directIPFlows[rule.IngressId] != fingerprint {
+				if err := p.client.AddFlow(TableInputClassification, 300, match, actions); err != nil {
+					return fmt.Errorf("add dnat flow for ingress %s: %w", rule.IngressId, err)
+				}
+				p.directIPFlows[rule.IngressId] = fingerprint
+				p.logger.Info("installed DNAT flow",
+					"ingress_id", rule.IngressId,
+					"public_ip", rule.PublicIp,
+					"target_ip", rule.TargetIp,
+					"gateway_external_ip", gatewayInfo.ExternalIp,
+				)
+			}
+
+		case network.IngressTypeL4LB:
+			if err := p.applyL4LBRule(rule, gatewayInfo); err != nil {
+				return fmt.Errorf("apply l4lb rule for ingress %s: %w", rule.IngressId, err)
+			}
 		}
-		flow := FlowEntry{
-			Table:    TableInputClassification,
-			Priority: 300,
-			Match:    fmt.Sprintf("ip,nw_dst=%s", rule.PublicIp),
-			Actions:  fmt.Sprintf("ct(commit,nat(dst=%s)),resubmit(,%d)", rule.TargetIp, TableDstHostResolution),
-		}
-		if err := p.client.AddFlow(flow.Table, flow.Priority, flow.Match, flow.Actions); err != nil {
-			return fmt.Errorf("add dnat flow for ingress %s: %w", rule.IngressId, err)
-		}
-		p.logger.Info("installed DNAT flow",
-			"ingress_id", rule.IngressId,
-			"public_ip", rule.PublicIp,
-			"target_ip", rule.TargetIp,
-			"gateway_external_ip", gatewayInfo.ExternalIp,
-		)
 	}
+
+	// Clean up OVS groups and steering flows for l4_lb ingresses that are no longer present.
+	for ingressID, groupID := range p.lbGroups {
+		if !seenIngresses[ingressID] {
+			if err := p.client.DeleteGroup(groupID); err != nil {
+				p.logger.Warn("failed to delete stale lb group",
+					"ingress_id", ingressID, "group_id", groupID, "error", err)
+			}
+			// Also remove the steering flow fingerprint so it gets re-added if the ingress returns.
+			delete(p.lbFlows, ingressID)
+			delete(p.lbGroups, ingressID)
+		}
+	}
+
+	// Clean up DNAT flows for direct_ip ingresses that are no longer present.
+	// directIPFlows stores "match|actions" fingerprint; the match part is before "|".
+	for ingressID, fingerprint := range p.directIPFlows {
+		if !seenIngresses[ingressID] {
+			match := fingerprint
+			if i := strings.IndexByte(fingerprint, '|'); i >= 0 {
+				match = fingerprint[:i]
+			}
+			if err := p.client.DeleteFlow(TableInputClassification, match); err != nil {
+				p.logger.Warn("failed to delete stale dnat flow",
+					"ingress_id", ingressID, "error", err)
+			}
+			delete(p.directIPFlows, ingressID)
+		}
+	}
+
 	return nil
+}
+
+// applyL4LBRule installs an OpenFlow select group and matching flow for an L4 LB ingress.
+func (p *Pipeline) applyL4LBRule(rule *pb.IngressRule, gatewayInfo *pb.GatewayInfo) error {
+	if len(rule.Backends) == 0 {
+		p.logger.Warn("l4lb rule has no healthy backends, skipping", "ingress_id", rule.IngressId)
+		return nil
+	}
+
+	groupID := l4lbGroupID(rule.IngressId)
+
+	// Build the group spec string.
+	groupSpec := p.buildL4LBGroupSpec(groupID, rule)
+
+	// Add or modify the group depending on whether it exists.
+	if _, exists := p.lbGroups[rule.IngressId]; exists {
+		if err := p.client.ModifyGroup(groupSpec); err != nil {
+			return fmt.Errorf("mod-group: %w", err)
+		}
+	} else {
+		if err := p.client.AddGroup(groupSpec); err != nil {
+			return fmt.Errorf("add-group: %w", err)
+		}
+		p.lbGroups[rule.IngressId] = groupID
+	}
+
+	// Install the matching flow: ip,tcp,nw_dst=<public_ip>,tp_dst=<listener_port> → group:<id>
+	match := fmt.Sprintf("ip,tcp,nw_dst=%s,tp_dst=%d", rule.PublicIp, rule.ListenerPort)
+	actions := fmt.Sprintf("group:%d", groupID)
+	fingerprint := match + "|" + actions
+	if p.lbFlows[rule.IngressId] != fingerprint {
+		if err := p.client.AddFlow(TableInputClassification, 310, match, actions); err != nil {
+			return fmt.Errorf("add l4lb flow: %w", err)
+		}
+		p.lbFlows[rule.IngressId] = fingerprint
+	}
+
+	p.logger.Info("installed L4 LB flow",
+		"ingress_id", rule.IngressId,
+		"public_ip", rule.PublicIp,
+		"listener_port", rule.ListenerPort,
+		"backends", len(rule.Backends),
+		"session_affinity", rule.SessionAffinity,
+		"group_id", groupID,
+		"gateway_external_ip", gatewayInfo.ExternalIp,
+	)
+
+	return nil
+}
+
+// buildL4LBGroupSpec constructs the ovs-ofctl group spec string for an l4_lb rule.
+// For session_affinity=source_ip: uses selection_method=ip_src (hash on src IP only).
+// For session_affinity=none (default): uses default 5-tuple hash.
+//
+// OVS requires selection_method to appear before the bucket list.
+func (p *Pipeline) buildL4LBGroupSpec(groupID uint32, rule *pb.IngressRule) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "group_id=%d,type=select", groupID)
+
+	// selection_method must come before bucket specs.
+	if rule.SessionAffinity == "source_ip" {
+		fmt.Fprintf(&sb, ",selection_method=ip_src")
+	}
+
+	for _, b := range rule.Backends {
+		weight := b.Weight
+		if weight <= 0 {
+			weight = 1
+		}
+		fmt.Fprintf(&sb, ",bucket=weight:%d,actions=ct(commit,nat(dst=%s:%d)),resubmit(,%d)",
+			weight, b.Ip, b.Port, TableDstHostResolution)
+	}
+
+	return sb.String()
+}
+
+// l4lbGroupID derives a stable uint32 OpenFlow group ID from an ingress UUID string.
+// Uses FNV-1a to produce a deterministic non-zero group ID.
+func l4lbGroupID(ingressID string) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(ingressID))
+	// Avoid group_id=0 (reserved in OpenFlow).
+	id := h.Sum32()
+	if id == 0 {
+		id = 1
+	}
+	return id
 }
 
 // applyEgressRules installs SNAT flows for each EgressRule on a GW-role host.

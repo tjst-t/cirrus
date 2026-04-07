@@ -5,6 +5,7 @@ package ovs
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	netagent "github.com/tjst-t/cirrus/internal/network/agent"
@@ -57,6 +58,7 @@ type MockClient struct {
 	tunnelPorts map[string]TunnelPort        // port name -> tunnel info
 	ofPortSeq   int                          // next OpenFlow port number
 	ofPorts     map[string]int               // port name -> ofport number
+	groups      map[uint32]string            // group_id -> spec
 	commands    []OVSCommand
 	errors      map[string]error // op -> forced error (for fault injection)
 }
@@ -71,6 +73,7 @@ func New(bridge string) *MockClient {
 		tunnelPorts: make(map[string]TunnelPort),
 		ofPortSeq:   1,
 		ofPorts:     make(map[string]int),
+		groups:      make(map[uint32]string),
 		errors:      make(map[string]error),
 	}
 }
@@ -415,6 +418,68 @@ func (m *MockClient) GetRecordedCommands() []OVSCommand {
 	return cmds
 }
 
+// AddGroup records an add-group command.
+func (m *MockClient) AddGroup(groupSpec string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.checkError("add-group"); err != nil {
+		return err
+	}
+	m.record(OVSCommand{Op: "add-group", Bridge: m.bridge, Actions: groupSpec})
+	// Parse group_id from spec for in-memory tracking.
+	id := parseGroupID(groupSpec)
+	m.groups[id] = groupSpec
+	return nil
+}
+
+// ModifyGroup records a mod-group command.
+func (m *MockClient) ModifyGroup(groupSpec string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.checkError("mod-group"); err != nil {
+		return err
+	}
+	m.record(OVSCommand{Op: "mod-group", Bridge: m.bridge, Actions: groupSpec})
+	id := parseGroupID(groupSpec)
+	m.groups[id] = groupSpec
+	return nil
+}
+
+// DeleteGroup records a del-groups command.
+func (m *MockClient) DeleteGroup(groupID uint32) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.checkError("del-group"); err != nil {
+		return err
+	}
+	m.record(OVSCommand{Op: "del-group", Bridge: m.bridge, Table: int(groupID)})
+	delete(m.groups, groupID)
+	return nil
+}
+
+// GetGroups returns the current in-memory groups map (group_id → spec).
+func (m *MockClient) GetGroups() map[uint32]string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	result := make(map[uint32]string, len(m.groups))
+	for k, v := range m.groups {
+		result[k] = v
+	}
+	return result
+}
+
+// parseGroupID extracts the group_id integer from a group spec string like "group_id=42,type=select,...".
+func parseGroupID(spec string) uint32 {
+	for _, part := range strings.Split(spec, ",") {
+		if strings.HasPrefix(part, "group_id=") {
+			var id uint32
+			fmt.Sscanf(strings.TrimPrefix(part, "group_id="), "%d", &id)
+			return id
+		}
+	}
+	return 0
+}
+
 // Reset clears all state and recorded commands.
 func (m *MockClient) Reset() {
 	m.mu.Lock()
@@ -426,6 +491,7 @@ func (m *MockClient) Reset() {
 	m.tunnelPorts = make(map[string]TunnelPort)
 	m.ofPortSeq = 1
 	m.ofPorts = make(map[string]int)
+	m.groups = make(map[uint32]string)
 	m.commands = nil
 	m.errors = make(map[string]error)
 }

@@ -94,13 +94,28 @@ message EgressRule {
   DirectConnectConfig direct_connect = 8; // Populated for direct_connect type
 }
 
-// IngressRule describes an Ingress rule for a GW node (Direct IP DNAT).
+// L4LBBackend describes one backend in an L4 LB ingress group.
+message L4LBBackend {
+  string vm_id   = 1;
+  string ip      = 2;
+  int32  port    = 3;
+  int32  weight  = 4;
+  bool   healthy = 5;
+}
+
+// IngressRule describes an Ingress rule for a GW node.
+// For type="direct_ip": target_ip is used.
+// For type="l4_lb": listener_port, protocol, backends, session_affinity are used.
 message IngressRule {
   string ingress_id = 1;
   string network_id = 2;
-  string type = 3;           // "direct_ip"
-  string public_ip = 4;      // The public IP that external traffic arrives on
-  string target_ip = 5;      // The VM private IP to DNAT to
+  string type = 3;                     // "direct_ip" or "l4_lb"
+  string public_ip = 4;                // The public IP that external traffic arrives on
+  string target_ip = 5;                // direct_ip: The VM private IP to DNAT to
+  int32  listener_port = 6;            // l4_lb: port on public_ip to receive traffic
+  string protocol = 7;                 // l4_lb: "tcp"
+  repeated L4LBBackend backends = 8;  // l4_lb: backend list (healthy only delivered)
+  string session_affinity = 9;         // l4_lb: "none" (5-tuple hash) or "source_ip"
 }
 
 // GatewayInfo tells a GW-role host its external IP for SNAT/DNAT.

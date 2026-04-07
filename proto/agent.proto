@@ -7,10 +7,11 @@ option go_package = "github.com/tjst-t/cirrus/proto/agentpb";
 //     --go-grpc_out=proto/agentpb --go-grpc_opt=module=github.com/tjst-t/cirrus/proto/agentpb \
 //     proto/agent.proto
 
-// ControllerService is called BY workers to register and send heartbeats.
+// ControllerService is called BY workers to register, send heartbeats, and report health.
 service ControllerService {
   rpc RegisterHost(RegisterHostRequest) returns (RegisterHostResponse);
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc ReportBackendHealth(ReportBackendHealthRequest) returns (ReportBackendHealthResponse);
 }
 
 // WorkerService is called BY the controller on workers to manage VMs.
@@ -142,4 +143,22 @@ message GetVMStateRequest {
 }
 message GetVMStateResponse {
   string state = 1; // "running", "shutoff", "paused", etc.
+}
+
+// BackendHealthStatus reports the health of one backend VM in an l4_lb ingress.
+message BackendHealthStatus {
+  string ingress_id = 1;
+  string vm_id      = 2;
+  bool   healthy    = 3;
+  string message    = 4; // optional diagnostic message
+}
+
+message ReportBackendHealthRequest {
+  string host_id            = 1;
+  string registration_token = 2;
+  repeated BackendHealthStatus statuses = 3;
+}
+
+message ReportBackendHealthResponse {
+  bool accepted = 1;
 }

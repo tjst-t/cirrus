@@ -1300,6 +1300,179 @@ func (x *GetVMStateResponse) GetState() string {
 	return ""
 }
 
+// BackendHealthStatus reports the health of one backend VM in an l4_lb ingress.
+type BackendHealthStatus struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	IngressId     string                 `protobuf:"bytes,1,opt,name=ingress_id,json=ingressId,proto3" json:"ingress_id,omitempty"`
+	VmId          string                 `protobuf:"bytes,2,opt,name=vm_id,json=vmId,proto3" json:"vm_id,omitempty"`
+	Healthy       bool                   `protobuf:"varint,3,opt,name=healthy,proto3" json:"healthy,omitempty"`
+	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"` // optional diagnostic message
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BackendHealthStatus) Reset() {
+	*x = BackendHealthStatus{}
+	mi := &file_agent_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BackendHealthStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BackendHealthStatus) ProtoMessage() {}
+
+func (x *BackendHealthStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BackendHealthStatus.ProtoReflect.Descriptor instead.
+func (*BackendHealthStatus) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *BackendHealthStatus) GetIngressId() string {
+	if x != nil {
+		return x.IngressId
+	}
+	return ""
+}
+
+func (x *BackendHealthStatus) GetVmId() string {
+	if x != nil {
+		return x.VmId
+	}
+	return ""
+}
+
+func (x *BackendHealthStatus) GetHealthy() bool {
+	if x != nil {
+		return x.Healthy
+	}
+	return false
+}
+
+func (x *BackendHealthStatus) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+type ReportBackendHealthRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	HostId            string                 `protobuf:"bytes,1,opt,name=host_id,json=hostId,proto3" json:"host_id,omitempty"`
+	RegistrationToken string                 `protobuf:"bytes,2,opt,name=registration_token,json=registrationToken,proto3" json:"registration_token,omitempty"`
+	Statuses          []*BackendHealthStatus `protobuf:"bytes,3,rep,name=statuses,proto3" json:"statuses,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ReportBackendHealthRequest) Reset() {
+	*x = ReportBackendHealthRequest{}
+	mi := &file_agent_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReportBackendHealthRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReportBackendHealthRequest) ProtoMessage() {}
+
+func (x *ReportBackendHealthRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReportBackendHealthRequest.ProtoReflect.Descriptor instead.
+func (*ReportBackendHealthRequest) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *ReportBackendHealthRequest) GetHostId() string {
+	if x != nil {
+		return x.HostId
+	}
+	return ""
+}
+
+func (x *ReportBackendHealthRequest) GetRegistrationToken() string {
+	if x != nil {
+		return x.RegistrationToken
+	}
+	return ""
+}
+
+func (x *ReportBackendHealthRequest) GetStatuses() []*BackendHealthStatus {
+	if x != nil {
+		return x.Statuses
+	}
+	return nil
+}
+
+type ReportBackendHealthResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Accepted      bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReportBackendHealthResponse) Reset() {
+	*x = ReportBackendHealthResponse{}
+	mi := &file_agent_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReportBackendHealthResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReportBackendHealthResponse) ProtoMessage() {}
+
+func (x *ReportBackendHealthResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReportBackendHealthResponse.ProtoReflect.Descriptor instead.
+func (*ReportBackendHealthResponse) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *ReportBackendHealthResponse) GetAccepted() bool {
+	if x != nil {
+		return x.Accepted
+	}
+	return false
+}
+
 var File_agent_proto protoreflect.FileDescriptor
 
 const file_agent_proto_rawDesc = "" +
@@ -1395,10 +1568,23 @@ const file_agent_proto_rawDesc = "" +
 	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"*\n" +
 	"\x12GetVMStateResponse\x12\x14\n" +
-	"\x05state\x18\x01 \x01(\tR\x05state2\xc4\x01\n" +
+	"\x05state\x18\x01 \x01(\tR\x05state\"}\n" +
+	"\x13BackendHealthStatus\x12\x1d\n" +
+	"\n" +
+	"ingress_id\x18\x01 \x01(\tR\tingressId\x12\x13\n" +
+	"\x05vm_id\x18\x02 \x01(\tR\x04vmId\x12\x18\n" +
+	"\ahealthy\x18\x03 \x01(\bR\ahealthy\x12\x18\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\"\xa6\x01\n" +
+	"\x1aReportBackendHealthRequest\x12\x17\n" +
+	"\ahost_id\x18\x01 \x01(\tR\x06hostId\x12-\n" +
+	"\x12registration_token\x18\x02 \x01(\tR\x11registrationToken\x12@\n" +
+	"\bstatuses\x18\x03 \x03(\v2$.cirrus.agent.v1.BackendHealthStatusR\bstatuses\"9\n" +
+	"\x1bReportBackendHealthResponse\x12\x1a\n" +
+	"\baccepted\x18\x01 \x01(\bR\baccepted2\xb6\x02\n" +
 	"\x11ControllerService\x12[\n" +
 	"\fRegisterHost\x12$.cirrus.agent.v1.RegisterHostRequest\x1a%.cirrus.agent.v1.RegisterHostResponse\x12R\n" +
-	"\tHeartbeat\x12!.cirrus.agent.v1.HeartbeatRequest\x1a\".cirrus.agent.v1.HeartbeatResponse2\xcc\x04\n" +
+	"\tHeartbeat\x12!.cirrus.agent.v1.HeartbeatRequest\x1a\".cirrus.agent.v1.HeartbeatResponse\x12p\n" +
+	"\x13ReportBackendHealth\x12+.cirrus.agent.v1.ReportBackendHealthRequest\x1a,.cirrus.agent.v1.ReportBackendHealthResponse2\xcc\x04\n" +
 	"\rWorkerService\x12O\n" +
 	"\bCreateVM\x12 .cirrus.agent.v1.CreateVMRequest\x1a!.cirrus.agent.v1.CreateVMResponse\x12O\n" +
 	"\bDeleteVM\x12 .cirrus.agent.v1.DeleteVMRequest\x1a!.cirrus.agent.v1.DeleteVMResponse\x12L\n" +
@@ -1421,64 +1607,70 @@ func file_agent_proto_rawDescGZIP() []byte {
 	return file_agent_proto_rawDescData
 }
 
-var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
+var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_agent_proto_goTypes = []any{
-	(*RegisterHostRequest)(nil),  // 0: cirrus.agent.v1.RegisterHostRequest
-	(*RegisterHostResponse)(nil), // 1: cirrus.agent.v1.RegisterHostResponse
-	(*HeartbeatRequest)(nil),     // 2: cirrus.agent.v1.HeartbeatRequest
-	(*HeartbeatResponse)(nil),    // 3: cirrus.agent.v1.HeartbeatResponse
-	(*ResourceReport)(nil),       // 4: cirrus.agent.v1.ResourceReport
-	(*VMInfo)(nil),               // 5: cirrus.agent.v1.VMInfo
-	(*DiskSpec)(nil),             // 6: cirrus.agent.v1.DiskSpec
-	(*PortSpec)(nil),             // 7: cirrus.agent.v1.PortSpec
-	(*CloudInitSpec)(nil),        // 8: cirrus.agent.v1.CloudInitSpec
-	(*CreateVMRequest)(nil),      // 9: cirrus.agent.v1.CreateVMRequest
-	(*CreateVMResponse)(nil),     // 10: cirrus.agent.v1.CreateVMResponse
-	(*DeleteVMRequest)(nil),      // 11: cirrus.agent.v1.DeleteVMRequest
-	(*DeleteVMResponse)(nil),     // 12: cirrus.agent.v1.DeleteVMResponse
-	(*StartVMRequest)(nil),       // 13: cirrus.agent.v1.StartVMRequest
-	(*StartVMResponse)(nil),      // 14: cirrus.agent.v1.StartVMResponse
-	(*StopVMRequest)(nil),        // 15: cirrus.agent.v1.StopVMRequest
-	(*StopVMResponse)(nil),       // 16: cirrus.agent.v1.StopVMResponse
-	(*ForceStopVMRequest)(nil),   // 17: cirrus.agent.v1.ForceStopVMRequest
-	(*ForceStopVMResponse)(nil),  // 18: cirrus.agent.v1.ForceStopVMResponse
-	(*RebootVMRequest)(nil),      // 19: cirrus.agent.v1.RebootVMRequest
-	(*RebootVMResponse)(nil),     // 20: cirrus.agent.v1.RebootVMResponse
-	(*GetVMStateRequest)(nil),    // 21: cirrus.agent.v1.GetVMStateRequest
-	(*GetVMStateResponse)(nil),   // 22: cirrus.agent.v1.GetVMStateResponse
-	nil,                          // 23: cirrus.agent.v1.DiskSpec.ParamsEntry
+	(*RegisterHostRequest)(nil),         // 0: cirrus.agent.v1.RegisterHostRequest
+	(*RegisterHostResponse)(nil),        // 1: cirrus.agent.v1.RegisterHostResponse
+	(*HeartbeatRequest)(nil),            // 2: cirrus.agent.v1.HeartbeatRequest
+	(*HeartbeatResponse)(nil),           // 3: cirrus.agent.v1.HeartbeatResponse
+	(*ResourceReport)(nil),              // 4: cirrus.agent.v1.ResourceReport
+	(*VMInfo)(nil),                      // 5: cirrus.agent.v1.VMInfo
+	(*DiskSpec)(nil),                    // 6: cirrus.agent.v1.DiskSpec
+	(*PortSpec)(nil),                    // 7: cirrus.agent.v1.PortSpec
+	(*CloudInitSpec)(nil),               // 8: cirrus.agent.v1.CloudInitSpec
+	(*CreateVMRequest)(nil),             // 9: cirrus.agent.v1.CreateVMRequest
+	(*CreateVMResponse)(nil),            // 10: cirrus.agent.v1.CreateVMResponse
+	(*DeleteVMRequest)(nil),             // 11: cirrus.agent.v1.DeleteVMRequest
+	(*DeleteVMResponse)(nil),            // 12: cirrus.agent.v1.DeleteVMResponse
+	(*StartVMRequest)(nil),              // 13: cirrus.agent.v1.StartVMRequest
+	(*StartVMResponse)(nil),             // 14: cirrus.agent.v1.StartVMResponse
+	(*StopVMRequest)(nil),               // 15: cirrus.agent.v1.StopVMRequest
+	(*StopVMResponse)(nil),              // 16: cirrus.agent.v1.StopVMResponse
+	(*ForceStopVMRequest)(nil),          // 17: cirrus.agent.v1.ForceStopVMRequest
+	(*ForceStopVMResponse)(nil),         // 18: cirrus.agent.v1.ForceStopVMResponse
+	(*RebootVMRequest)(nil),             // 19: cirrus.agent.v1.RebootVMRequest
+	(*RebootVMResponse)(nil),            // 20: cirrus.agent.v1.RebootVMResponse
+	(*GetVMStateRequest)(nil),           // 21: cirrus.agent.v1.GetVMStateRequest
+	(*GetVMStateResponse)(nil),          // 22: cirrus.agent.v1.GetVMStateResponse
+	(*BackendHealthStatus)(nil),         // 23: cirrus.agent.v1.BackendHealthStatus
+	(*ReportBackendHealthRequest)(nil),  // 24: cirrus.agent.v1.ReportBackendHealthRequest
+	(*ReportBackendHealthResponse)(nil), // 25: cirrus.agent.v1.ReportBackendHealthResponse
+	nil,                                 // 26: cirrus.agent.v1.DiskSpec.ParamsEntry
 }
 var file_agent_proto_depIdxs = []int32{
 	4,  // 0: cirrus.agent.v1.HeartbeatRequest.resources:type_name -> cirrus.agent.v1.ResourceReport
 	5,  // 1: cirrus.agent.v1.ResourceReport.running_vms:type_name -> cirrus.agent.v1.VMInfo
-	23, // 2: cirrus.agent.v1.DiskSpec.params:type_name -> cirrus.agent.v1.DiskSpec.ParamsEntry
+	26, // 2: cirrus.agent.v1.DiskSpec.params:type_name -> cirrus.agent.v1.DiskSpec.ParamsEntry
 	6,  // 3: cirrus.agent.v1.CreateVMRequest.disks:type_name -> cirrus.agent.v1.DiskSpec
 	7,  // 4: cirrus.agent.v1.CreateVMRequest.ports:type_name -> cirrus.agent.v1.PortSpec
 	8,  // 5: cirrus.agent.v1.CreateVMRequest.cloud_init:type_name -> cirrus.agent.v1.CloudInitSpec
 	6,  // 6: cirrus.agent.v1.DeleteVMRequest.disks:type_name -> cirrus.agent.v1.DiskSpec
-	0,  // 7: cirrus.agent.v1.ControllerService.RegisterHost:input_type -> cirrus.agent.v1.RegisterHostRequest
-	2,  // 8: cirrus.agent.v1.ControllerService.Heartbeat:input_type -> cirrus.agent.v1.HeartbeatRequest
-	9,  // 9: cirrus.agent.v1.WorkerService.CreateVM:input_type -> cirrus.agent.v1.CreateVMRequest
-	11, // 10: cirrus.agent.v1.WorkerService.DeleteVM:input_type -> cirrus.agent.v1.DeleteVMRequest
-	13, // 11: cirrus.agent.v1.WorkerService.StartVM:input_type -> cirrus.agent.v1.StartVMRequest
-	15, // 12: cirrus.agent.v1.WorkerService.StopVM:input_type -> cirrus.agent.v1.StopVMRequest
-	17, // 13: cirrus.agent.v1.WorkerService.ForceStopVM:input_type -> cirrus.agent.v1.ForceStopVMRequest
-	19, // 14: cirrus.agent.v1.WorkerService.RebootVM:input_type -> cirrus.agent.v1.RebootVMRequest
-	21, // 15: cirrus.agent.v1.WorkerService.GetVMState:input_type -> cirrus.agent.v1.GetVMStateRequest
-	1,  // 16: cirrus.agent.v1.ControllerService.RegisterHost:output_type -> cirrus.agent.v1.RegisterHostResponse
-	3,  // 17: cirrus.agent.v1.ControllerService.Heartbeat:output_type -> cirrus.agent.v1.HeartbeatResponse
-	10, // 18: cirrus.agent.v1.WorkerService.CreateVM:output_type -> cirrus.agent.v1.CreateVMResponse
-	12, // 19: cirrus.agent.v1.WorkerService.DeleteVM:output_type -> cirrus.agent.v1.DeleteVMResponse
-	14, // 20: cirrus.agent.v1.WorkerService.StartVM:output_type -> cirrus.agent.v1.StartVMResponse
-	16, // 21: cirrus.agent.v1.WorkerService.StopVM:output_type -> cirrus.agent.v1.StopVMResponse
-	18, // 22: cirrus.agent.v1.WorkerService.ForceStopVM:output_type -> cirrus.agent.v1.ForceStopVMResponse
-	20, // 23: cirrus.agent.v1.WorkerService.RebootVM:output_type -> cirrus.agent.v1.RebootVMResponse
-	22, // 24: cirrus.agent.v1.WorkerService.GetVMState:output_type -> cirrus.agent.v1.GetVMStateResponse
-	16, // [16:25] is the sub-list for method output_type
-	7,  // [7:16] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	23, // 7: cirrus.agent.v1.ReportBackendHealthRequest.statuses:type_name -> cirrus.agent.v1.BackendHealthStatus
+	0,  // 8: cirrus.agent.v1.ControllerService.RegisterHost:input_type -> cirrus.agent.v1.RegisterHostRequest
+	2,  // 9: cirrus.agent.v1.ControllerService.Heartbeat:input_type -> cirrus.agent.v1.HeartbeatRequest
+	24, // 10: cirrus.agent.v1.ControllerService.ReportBackendHealth:input_type -> cirrus.agent.v1.ReportBackendHealthRequest
+	9,  // 11: cirrus.agent.v1.WorkerService.CreateVM:input_type -> cirrus.agent.v1.CreateVMRequest
+	11, // 12: cirrus.agent.v1.WorkerService.DeleteVM:input_type -> cirrus.agent.v1.DeleteVMRequest
+	13, // 13: cirrus.agent.v1.WorkerService.StartVM:input_type -> cirrus.agent.v1.StartVMRequest
+	15, // 14: cirrus.agent.v1.WorkerService.StopVM:input_type -> cirrus.agent.v1.StopVMRequest
+	17, // 15: cirrus.agent.v1.WorkerService.ForceStopVM:input_type -> cirrus.agent.v1.ForceStopVMRequest
+	19, // 16: cirrus.agent.v1.WorkerService.RebootVM:input_type -> cirrus.agent.v1.RebootVMRequest
+	21, // 17: cirrus.agent.v1.WorkerService.GetVMState:input_type -> cirrus.agent.v1.GetVMStateRequest
+	1,  // 18: cirrus.agent.v1.ControllerService.RegisterHost:output_type -> cirrus.agent.v1.RegisterHostResponse
+	3,  // 19: cirrus.agent.v1.ControllerService.Heartbeat:output_type -> cirrus.agent.v1.HeartbeatResponse
+	25, // 20: cirrus.agent.v1.ControllerService.ReportBackendHealth:output_type -> cirrus.agent.v1.ReportBackendHealthResponse
+	10, // 21: cirrus.agent.v1.WorkerService.CreateVM:output_type -> cirrus.agent.v1.CreateVMResponse
+	12, // 22: cirrus.agent.v1.WorkerService.DeleteVM:output_type -> cirrus.agent.v1.DeleteVMResponse
+	14, // 23: cirrus.agent.v1.WorkerService.StartVM:output_type -> cirrus.agent.v1.StartVMResponse
+	16, // 24: cirrus.agent.v1.WorkerService.StopVM:output_type -> cirrus.agent.v1.StopVMResponse
+	18, // 25: cirrus.agent.v1.WorkerService.ForceStopVM:output_type -> cirrus.agent.v1.ForceStopVMResponse
+	20, // 26: cirrus.agent.v1.WorkerService.RebootVM:output_type -> cirrus.agent.v1.RebootVMResponse
+	22, // 27: cirrus.agent.v1.WorkerService.GetVMState:output_type -> cirrus.agent.v1.GetVMStateResponse
+	18, // [18:28] is the sub-list for method output_type
+	8,  // [8:18] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_agent_proto_init() }
@@ -1492,7 +1684,7 @@ func file_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_proto_rawDesc), len(file_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   24,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

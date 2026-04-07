@@ -19,18 +19,20 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ControllerService_RegisterHost_FullMethodName = "/cirrus.agent.v1.ControllerService/RegisterHost"
-	ControllerService_Heartbeat_FullMethodName    = "/cirrus.agent.v1.ControllerService/Heartbeat"
+	ControllerService_RegisterHost_FullMethodName        = "/cirrus.agent.v1.ControllerService/RegisterHost"
+	ControllerService_Heartbeat_FullMethodName           = "/cirrus.agent.v1.ControllerService/Heartbeat"
+	ControllerService_ReportBackendHealth_FullMethodName = "/cirrus.agent.v1.ControllerService/ReportBackendHealth"
 )
 
 // ControllerServiceClient is the client API for ControllerService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// ControllerService is called BY workers to register and send heartbeats.
+// ControllerService is called BY workers to register, send heartbeats, and report health.
 type ControllerServiceClient interface {
 	RegisterHost(ctx context.Context, in *RegisterHostRequest, opts ...grpc.CallOption) (*RegisterHostResponse, error)
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
+	ReportBackendHealth(ctx context.Context, in *ReportBackendHealthRequest, opts ...grpc.CallOption) (*ReportBackendHealthResponse, error)
 }
 
 type controllerServiceClient struct {
@@ -61,14 +63,25 @@ func (c *controllerServiceClient) Heartbeat(ctx context.Context, in *HeartbeatRe
 	return out, nil
 }
 
+func (c *controllerServiceClient) ReportBackendHealth(ctx context.Context, in *ReportBackendHealthRequest, opts ...grpc.CallOption) (*ReportBackendHealthResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReportBackendHealthResponse)
+	err := c.cc.Invoke(ctx, ControllerService_ReportBackendHealth_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ControllerServiceServer is the server API for ControllerService service.
 // All implementations must embed UnimplementedControllerServiceServer
 // for forward compatibility.
 //
-// ControllerService is called BY workers to register and send heartbeats.
+// ControllerService is called BY workers to register, send heartbeats, and report health.
 type ControllerServiceServer interface {
 	RegisterHost(context.Context, *RegisterHostRequest) (*RegisterHostResponse, error)
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
+	ReportBackendHealth(context.Context, *ReportBackendHealthRequest) (*ReportBackendHealthResponse, error)
 	mustEmbedUnimplementedControllerServiceServer()
 }
 
@@ -84,6 +97,9 @@ func (UnimplementedControllerServiceServer) RegisterHost(context.Context, *Regis
 }
 func (UnimplementedControllerServiceServer) Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Heartbeat not implemented")
+}
+func (UnimplementedControllerServiceServer) ReportBackendHealth(context.Context, *ReportBackendHealthRequest) (*ReportBackendHealthResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReportBackendHealth not implemented")
 }
 func (UnimplementedControllerServiceServer) mustEmbedUnimplementedControllerServiceServer() {}
 func (UnimplementedControllerServiceServer) testEmbeddedByValue()                           {}
@@ -142,6 +158,24 @@ func _ControllerService_Heartbeat_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ControllerService_ReportBackendHealth_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReportBackendHealthRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControllerServiceServer).ReportBackendHealth(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControllerService_ReportBackendHealth_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControllerServiceServer).ReportBackendHealth(ctx, req.(*ReportBackendHealthRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ControllerService_ServiceDesc is the grpc.ServiceDesc for ControllerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -156,6 +190,10 @@ var ControllerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Heartbeat",
 			Handler:    _ControllerService_Heartbeat_Handler,
+		},
+		{
+			MethodName: "ReportBackendHealth",
+			Handler:    _ControllerService_ReportBackendHealth_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

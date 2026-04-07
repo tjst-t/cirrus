@@ -13,6 +13,7 @@ const (
 	EgressTypeVPNWireGuard  = "vpn_wireguard"
 	EgressTypeDirectConnect = "direct_connect"
 	IngressTypeDirectIP     = "direct_ip"
+	IngressTypeL4LB         = "l4_lb"
 )
 
 // NetworkStatus represents the lifecycle state of a network.
@@ -198,15 +199,16 @@ type IPPoolSpec struct {
 	Description string `json:"description,omitempty"`
 }
 
-// Ingress represents an external traffic entry rule (e.g. Direct IP DNAT).
+// Ingress represents an external traffic entry rule (e.g. Direct IP DNAT or L4 LB).
 type Ingress struct {
-	ID        uuid.UUID     `json:"id"`
-	NetworkID uuid.UUID     `json:"network_id"`
-	Type      string        `json:"type"`    // "direct_ip"
-	PublicIP  string        `json:"public_ip"`
-	IPPoolID  *uuid.UUID    `json:"ip_pool_id,omitempty"`
-	Config    IngressConfig `json:"config"`
-	CreatedAt time.Time     `json:"created_at"`
+	ID          uuid.UUID     `json:"id"`
+	NetworkID   uuid.UUID     `json:"network_id"`
+	Type        string        `json:"type"`    // "direct_ip" or "l4_lb"
+	PublicIP    string        `json:"public_ip"`
+	IPPoolID    *uuid.UUID    `json:"ip_pool_id,omitempty"`
+	Config      IngressConfig `json:"config"`
+	L4LBConfig  *L4LBConfig   `json:"l4lb_config,omitempty"` // populated for l4_lb type
+	CreatedAt   time.Time     `json:"created_at"`
 }
 
 // IngressConfig holds type-specific ingress configuration.
@@ -215,10 +217,39 @@ type IngressConfig struct {
 	TargetIP   string `json:"target_ip"`    // Private IP of the VM (resolved at create time)
 }
 
+// L4LBBackend describes one backend VM in an L4 LB ingress.
+type L4LBBackend struct {
+	VMID    string `json:"vm_id"`
+	IP      string `json:"ip"`
+	Port    int    `json:"port"`
+	Weight  int    `json:"weight"`
+	Healthy bool   `json:"healthy"`
+}
+
+// L4LBHealthCheck holds health-check configuration for an L4 LB ingress.
+type L4LBHealthCheck struct {
+	Type               string `json:"type"`                // "tcp" or "http"
+	Port               int    `json:"port"`
+	Path               string `json:"path,omitempty"`      // for http probes
+	IntervalSec        int    `json:"interval_sec"`
+	TimeoutSec         int    `json:"timeout_sec"`
+	UnhealthyThreshold int    `json:"unhealthy_threshold"`
+}
+
+// L4LBConfig holds configuration for an l4_lb ingress.
+type L4LBConfig struct {
+	Backends        []L4LBBackend   `json:"backends"`
+	ListenerPort    int             `json:"listener_port"`
+	Protocol        string          `json:"protocol"`         // "tcp"
+	HealthCheck     L4LBHealthCheck `json:"health_check"`
+	SessionAffinity string          `json:"session_affinity"` // "none" (5-tuple) or "source_ip"
+}
+
 // IngressSpec is the input for creating a new ingress rule.
 type IngressSpec struct {
-	Type     string        `json:"type"`
-	PublicIP string        `json:"public_ip"`  // Must be within an ip_pool CIDR
-	IPPoolID uuid.UUID     `json:"ip_pool_id"`
-	Config   IngressConfig `json:"config"`
+	Type        string        `json:"type"`
+	PublicIP    string        `json:"public_ip"`  // Must be within an ip_pool CIDR
+	IPPoolID    uuid.UUID     `json:"ip_pool_id"`
+	Config      IngressConfig `json:"config"`
+	L4LBConfig  *L4LBConfig   `json:"l4lb_config,omitempty"` // for l4_lb type
 }
