@@ -18,12 +18,12 @@ function getHeaders(): HeadersInit {
     'Content-Type': 'application/json',
   }
 
-  const token = localStorage.getItem('cirrus_token')
+  const token = localStorage.getItem('auth_token')
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
 
-  const tenantId = localStorage.getItem('cirrus_tenant_id')
+  const tenantId = localStorage.getItem('selected_tenant_id')
   if (tenantId) {
     headers['X-Tenant-ID'] = tenantId
   }

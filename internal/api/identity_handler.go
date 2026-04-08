@@ -357,6 +357,79 @@ func (h *identityHandlers) deleteRoleAssignment(w http.ResponseWriter, r *http.R
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// listMyTenants returns the tenants accessible to the calling user, derived
+// from their role assignments. This avoids requiring infra_admin privileges
+// just to discover which tenant(s) to use in the UI.
+func (h *identityHandlers) listMyTenants(w http.ResponseWriter, r *http.Request) {
+	user := UserFromContext(r.Context())
+
+	assignments, err := h.svc.ListRoleAssignments(r.Context(), user.ID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list role assignments"})
+		return
+	}
+
+	seen := make(map[uuid.UUID]struct{})
+	var tenants []identity.Tenant
+
+	addTenant := func(t *identity.Tenant) {
+		if _, dup := seen[t.ID]; !dup {
+			seen[t.ID] = struct{}{}
+			tenants = append(tenants, *t)
+		}
+	}
+
+	for _, ra := range assignments {
+		switch ra.ScopeType {
+		case identity.ScopeGlobal:
+			// infra_admin: return all tenants via org listing
+			orgs, listErr := h.svc.ListOrganizations(r.Context())
+			if listErr != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list organizations"})
+				return
+			}
+			for _, org := range orgs {
+				ts, listErr := h.svc.ListTenants(r.Context(), org.ID)
+				if listErr != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list tenants"})
+					return
+				}
+				for i := range ts {
+					addTenant(&ts[i])
+				}
+			}
+
+		case identity.ScopeOrganization:
+			if ra.ScopeID == nil {
+				continue
+			}
+			ts, listErr := h.svc.ListTenants(r.Context(), *ra.ScopeID)
+			if listErr != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list tenants"})
+				return
+			}
+			for i := range ts {
+				addTenant(&ts[i])
+			}
+
+		case identity.ScopeTenant:
+			if ra.ScopeID == nil {
+				continue
+			}
+			t, getErr := h.svc.GetTenant(r.Context(), *ra.ScopeID)
+			if getErr != nil {
+				continue // tenant may have been deleted
+			}
+			addTenant(t)
+		}
+	}
+
+	if tenants == nil {
+		tenants = []identity.Tenant{}
+	}
+	writeJSON(w, http.StatusOK, PagedResponse{Items: tenants, NextCursor: ""})
+}
+
 func isValidRole(r identity.Role) bool {
 	switch r {
 	case identity.RoleInfraAdmin, identity.RoleOrgAdmin, identity.RoleTenantAdmin, identity.RoleTenantMember:

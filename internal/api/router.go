@@ -80,6 +80,8 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(Auth(authn))
 
+		r.Get("/me/tenants", ih.listMyTenants)
+
 		r.Post("/organizations", ih.createOrganization)
 		r.Get("/organizations", ih.listOrganizations)
 		r.Get("/organizations/{org_id}", ih.getOrganization)
