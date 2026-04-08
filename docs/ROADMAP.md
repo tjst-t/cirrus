@@ -4,13 +4,13 @@
 
 ## Progress
 
-- Total: 45 Sprints | Done: 26 | In Progress: 0 | Remaining: 19
-- [████████████░░░░░░░] 58%
+- Total: 50 Sprints | Done: 26 | In Progress: 0 | Remaining: 24
+- [██████████░░░░░░░░░░] 52%
 
 ## Execution Order
 
-S001 → S002 → S003 → S004 → S005 → S006 → S007 → S008 → S009 → S010 → S011 → S012 → S013 → S014 → S015 → S016 → S017 → S018 → S019 → S020 → S021 → S045 → S042 → S043 → S044 → S022 → S023 → S024 → S025 → S026 → S027 → S028 → S029 → S030 → S031 → S032 → S033 → S034 → S035 → S036 → S037 → S038 → S039 → S040 → S041
-                                                                                                                                                                                              ↑ next
+S001 → S002 → S003 → S004 → S005 → S006 → S007 → S008 → S009 → S010 → S011 → S012 → S013 → S014 → S015 → S016 → S017 → S018 → S019 → S020 → S021 → S045 → S042 → S043 → S044 → S022 → S046 → S047 → S048 → S049 → S050 → S023 → S024 → S025 → S026 → S027 → S028 → S029 → S030 → S031 → S032 → S033 → S034 → S035 → S036 → S037 → S038 → S039 → S040 → S041
+                                                                                                                                                                                                     ↑ next
 
 ---
 
@@ -761,34 +761,126 @@ Phase 1 の全機能（Identity・Host・Network・Storage・Compute・Quota・E
 
 ---
 
+## Sprint S046: 管理者 UI [ ]
+
+インフラ管理者・組織管理者が Phase 1 の全管理リソース（組織・テナント・ホスト・ストレージ・Quota・Drift Event・GW ノード・IP プール）を WebUI から操作できる。
+
+### Story S046-1: 管理者として、組織・テナント・ロールを WebUI から管理したい。なぜなら、CLI を使わずにテナント払い出しができるようにしたいから。 [ ]
+
+- [ ] **Task S046-1-1**: 組織一覧・作成・削除画面（POST/GET/DELETE /api/v1/organizations）
+- [ ] **Task S046-1-2**: テナント一覧・作成・削除画面（POST/GET/DELETE /api/v1/organizations/{id}/tenants）
+- [ ] **Task S046-1-3**: ロール割り当て画面（POST/GET/DELETE /api/v1/tenants/{id}/role-assignments）
+- [ ] **Task S046-1-4**: Playwright テスト: 組織作成 → テナント作成 → ロール割り当てフロー
+
+### Story S046-2: 管理者として、ホスト・ストレージ・Flavor を WebUI から管理したい。なぜなら、コンピュートリソースの状態を一覧で把握・操作したいから。 [ ]
+
+- [ ] **Task S046-2-1**: ホスト一覧・状態遷移ボタン（activate / drain / maintenance / retire）
+- [ ] **Task S046-2-2**: Storage Backend・Volume Type・Flavor 一覧・作成・削除画面
+- [ ] **Task S046-2-3**: ゲートウェイノード登録・一覧・削除画面（/api/v1/admin/gateway-nodes）
+- [ ] **Task S046-2-4**: IP プール管理画面（/api/v1/admin/ip-pools）
+- [ ] **Task S046-2-5**: Playwright テスト: ホスト状態遷移・Flavor 作成フロー
+
+### Story S046-3: 管理者として、Quota 設定と Drift Event を WebUI から確認したい。なぜなら、テナント別のリソース上限管理と異常検知を一箇所で行いたいから。 [ ]
+
+- [ ] **Task S046-3-1**: テナント別 Quota 設定画面（vCPU / メモリ / VM 数 / ボリューム容量 / ネットワーク数 / Egress・Ingress 数）
+- [ ] **Task S046-3-2**: Drift Event ビューア（一覧・リソース種別フィルタ・ステータス確認）
+- [ ] **Task S046-3-3**: Playwright テスト: Quota 設定 → 超過エラー確認フロー
+
+---
+
+## Sprint S047: テナント UI — VM 管理 [ ]
+
+テナントメンバーが WebUI から VM のライフサイクル全体（作成・一覧・詳細・電源操作・削除）を操作できる。
+
+### Story S047-1: テナントメンバーとして、VM を WebUI から作成・管理したい。なぜなら、GUI で直感的に仮想マシンを払い出したいから。 [ ]
+
+- [ ] **Task S047-1-1**: VM 一覧画面（ステータスバッジ・Flavor・AZ 表示）
+- [ ] **Task S047-1-2**: VM 作成フォーム（名前・Flavor・AZ・ブートボリュームサイズ・ネットワーク選択）
+- [ ] **Task S047-1-3**: VM 詳細画面（スペック・状態・接続ポート・ボリューム一覧）
+- [ ] **Task S047-1-4**: VM 電源操作ボタン（start / stop / reboot）と削除
+- [ ] **Task S047-1-5**: Playwright テスト: VM 作成 → 起動 → 停止 → 削除フロー
+
+---
+
+## Sprint S048: テナント UI — ネットワーク・ボリューム [ ]
+
+テナントメンバーが WebUI からネットワーク・セキュリティ設定・ボリュームを管理できる。
+
+### Story S048-1: テナントメンバーとして、ネットワークとセキュリティポリシーを WebUI から管理したい。なぜなら、VM のネットワーク構成を GUI で完結させたいから。 [ ]
+
+- [ ] **Task S048-1-1**: Network 一覧・作成・削除画面（CIDR・AZ 表示）
+- [ ] **Task S048-1-2**: SecurityGroup 一覧・作成・削除・ルール編集画面
+- [ ] **Task S048-1-3**: SecurityPolicy（ポート/プロトコル割り当て）一覧・作成・削除画面
+- [ ] **Task S048-1-4**: Playwright テスト: Network 作成 → SecurityGroup 作成 → ルール追加フロー
+
+### Story S048-2: テナントメンバーとして、ボリュームを WebUI から管理したい。なぜなら、ストレージのプロビジョニングを GUI で行いたいから。 [ ]
+
+- [ ] **Task S048-2-1**: Volume 一覧・作成・削除画面（サイズ・Volume Type・ステータス表示）
+- [ ] **Task S048-2-2**: Volume リサイズ操作
+- [ ] **Task S048-2-3**: Playwright テスト: Volume 作成 → リサイズ → 削除フロー
+
+---
+
+## Sprint S049: テナント UI — Egress/Ingress + ダッシュボード [ ]
+
+テナントメンバーが WebUI から外部接続（Egress/Ingress）を管理でき、リソース使用状況をダッシュボードで把握できる。
+
+### Story S049-1: テナントメンバーとして、Egress と Ingress を WebUI から管理したい。なぜなら、NAT ゲートウェイや外部 IP の設定を GUI で完結させたいから。 [ ]
+
+- [ ] **Task S049-1-1**: Egress 一覧・作成（type=nat_gateway、パブリック IP 選択）・削除画面
+- [ ] **Task S049-1-2**: Ingress 一覧・作成（type=direct_ip、IP プール選択・ターゲット VM 指定）・削除画面
+- [ ] **Task S049-1-3**: Playwright テスト: Egress 作成 → Ingress 作成 → 削除フロー
+
+### Story S049-2: テナントメンバーとして、リソース使用状況をダッシュボードで把握したい。なぜなら、クォータ残量と全体状況を一目で確認したいから。 [ ]
+
+- [ ] **Task S049-2-1**: ダッシュボード画面（VM 数・ネットワーク数・ボリューム容量・vCPU/メモリ使用量のサマリカード）
+- [ ] **Task S049-2-2**: Quota 残量バー（テナント別 vCPU / メモリ / VM 数 / ボリューム容量）
+- [ ] **Task S049-2-3**: Playwright テスト: ダッシュボード表示・Quota バー更新確認
+
+---
+
+## Sprint S050: WebUI E2E テスト拡充 [ ]
+
+Phase 1 WebUI 全体の結合 E2E テストが通り、`make serve` 環境で安定してデモできる状態にする。
+
+### Story S050-1: QA エンジニアとして、Phase 1 の全テナントワークフローを E2E テストで自動検証したい。なぜなら、デグレを CI で検出できるようにしたいから。 [ ]
+
+- [ ] **Task S050-1-1**: globalSetup / globalTeardown: テスト用組織・テナント・Quota・Flavor・AZ・IP プール・GW ノードのシード
+- [ ] **Task S050-1-2**: ライフサイクル spec: 組織/テナント/ロール → ネットワーク/ボリューム/VM → start/stop/reboot → egress/ingress → 全リソース削除
+- [ ] **Task S050-1-3**: 既存 spec（login / tenant-switch / admin / vms）の通過確認・修正
+
+### Story S050-2: 開発者として、`make serve` 直後にデフォルトテナントが利用可能な状態にしたい。なぜなら、開発・デモ環境を素早く立ち上げられるようにしたいから。 [ ]
+
+- [ ] **Task S050-2-1**: `make serve` の `_seed-tenant` ステップ: default-org / default-tenant / dev-admin ロール / Quota / IP プール / GW ノード（冪等）
+- [ ] **Task S050-2-2**: `make serve` 後に Playwright 全 spec が通ることを確認
+
+---
+
 ## Sprint S023: ライブマイグレーション [ ]
 
 同一コンピュートプール内で VM をライブマイグレーションできる。Fallback パターンによるゼロパケットロス移行。
 
-### Story S023-1: Hypervisor + gRPC Migration [ ]
+### Story S023-1: VM オペレーターとして、VM をライブマイグレーションしたい。なぜなら、サービス停止なしにホストの負荷を分散したいから。 [ ]
 
 - [ ] **Task S023-1-1**: `internal/hypervisor/libvirt/libvirt.go` MigrateVM 実装（DomainMigratePerform3Params 等）
 - [ ] **Task S023-1-2**: proto/agent.proto PrepareMigration, StartMigration RPC
 - [ ] **Task S023-1-3**: worker 側: migration 準備→実行→完了の3フェーズ
+- [ ] **Task S023-1-4**: `internal/scheduler/scheduler.go` Reschedule 実装（移行元ホストの除外）
+- [ ] **Task S023-1-5**: MigrateVM: Reschedule → PrepareMigration → StartMigration → Network.BindPort 更新
 
-### Story S023-2: Scheduler Reschedule + Compute Orchestrator [ ]
+### Story S023-2: VM オペレーターとして、マイグレーション中にネットワーク断が起きないようにしたい。なぜなら、ゼロパケットロスが要件だから。 [ ]
 
-- [ ] **Task S023-2-1**: `internal/scheduler/scheduler.go` Reschedule 実装（移行元ホストの除外）
-- [ ] **Task S023-2-2**: MigrateVM: Reschedule → PrepareMigration → StartMigration → Network.BindPort 更新
+- [ ] **Task S023-2-1**: 移動先ホストにフロー + ポート準備
+- [ ] **Task S023-2-2**: 移動元ホストに Fallback 転送設定（移動先への Geneve 転送）
+- [ ] **Task S023-2-3**: 他ホストのトンネル宛先更新 + ACK 管理（タイムアウト 30 秒）
+- [ ] **Task S023-2-4**: ポート状態遷移: active→migrating→switching→draining→active
 
-### Story S023-3: Fallback パターン [ ]
+### Story S023-3: VM オペレーターとして、CLI から VM マイグレーションを指示したい。なぜなら、スクリプトや日常運用で使いたいから。 [ ]
 
-- [ ] **Task S023-3-1**: 移動先ホストにフロー + ポート準備
-- [ ] **Task S023-3-2**: 移動元ホストに Fallback 転送設定（移動先への Geneve 転送）
-- [ ] **Task S023-3-3**: 他ホストのトンネル宛先更新 + ACK 管理（タイムアウト 30 秒）
-- [ ] **Task S023-3-4**: ポート状態遷移: active→migrating→switching→draining→active
-
-### Story S023-4: テスト + CLI [ ]
-
-- [ ] **Task S023-4-1**: POST /api/v1/vms/{id}/actions (action=migrate)
-- [ ] **Task S023-4-2**: 結合テスト: VM 作成→マイグレーション→移行先で稼働確認
-- [ ] **Task S023-4-3**: cirrus-sim 障害注入: マイグレーション中の失敗→Fallback で元ホスト継続
-- [ ] **Task S023-4-4**: `cirrusctl vm migrate`
+- [ ] **Task S023-3-1**: POST /api/v1/vms/{id}/actions (action=migrate)
+- [ ] **Task S023-3-2**: 結合テスト: VM 作成→マイグレーション→移行先で稼働確認
+- [ ] **Task S023-3-3**: cirrus-sim 障害注入: マイグレーション中の失敗→Fallback で元ホスト継続
+- [ ] **Task S023-3-4**: `cirrusctl vm migrate`
 
 ---
 
