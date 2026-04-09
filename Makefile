@@ -386,7 +386,37 @@ reset-db:
 	  go run ./cmd/internal/resetdb "postgresql://cirrus:cirrus@localhost:$$SIM_POSTGRES_PORT/cirrus?sslmode=disable"; \
 	  echo "    Database reset OK."'
 
-fresh: stop serve
+fresh: build build-sim
+	@mkdir -p $(TMP_DIR)
+	@# ── 1. Stop everything ──
+	@$(MAKE) --no-print-directory stop
+	@# ── 2. Allocate ports ──
+	@$(MAKE) --no-print-directory _alloc-ports
+	@# ── 3. Start sim (postgres が起動するまで待つ) ──
+	@$(MAKE) --no-print-directory _start-sim
+	@# ── 4. Reset DB ──
+	@$(MAKE) --no-print-directory reset-db
+	@# ── 5. Start controller (migrations を実行) ──
+	@$(MAKE) --no-print-directory _start-controller
+	@# ── 6. Start worker containers ──
+	@$(MAKE) --no-print-directory _start-workers
+	@# ── 7. Seed topology ──
+	@$(MAKE) --no-print-directory _seed-topology
+	@# ── 8. Activate hosts ──
+	@$(MAKE) --no-print-directory _activate-hosts
+	@bash -c '\
+	  set -a; source $(PORTMAN_ENV); set +a; \
+	  echo ""; \
+	  echo "  ─────────────────────────────────────────"; \
+	  echo "  All services running (fresh DB)."; \
+	  echo "  Dashboard        http://localhost:$$SIM_AGGREGATOR_PORT"; \
+	  echo "  Controller API   http://localhost:$$API_PORT"; \
+	  echo "  ─────────────────────────────────────────"; \
+	  echo "  make logs        controller logs"; \
+	  echo "  make logs-sim    simulator logs"; \
+	  echo "  make logs-worker worker container logs"; \
+	  echo "  make stop        stop all"; \
+	  echo ""'
 
 # ── Storage Layer (local dev only: iSCSI + Ceph) ──
 
