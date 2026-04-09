@@ -9,6 +9,7 @@ import { AdminLayout } from './components/admin/AdminLayout'
 import { OrganizationsPage } from './pages/admin/OrganizationsPage'
 import { HostsPage } from './pages/admin/HostsPage'
 import { StoragePage } from './pages/admin/StoragePage'
+import { ComputePage } from './pages/admin/ComputePage'
 import { QuotasPage } from './pages/admin/QuotasPage'
 import { DriftEventsPage } from './pages/admin/DriftEventsPage'
 import { NetworkInfraPage } from './pages/admin/NetworkInfraPage'
@@ -43,6 +44,7 @@ createRoot(document.getElementById('root')!).render(
             <Route index element={<Navigate to="/admin/organizations" replace />} />
             <Route path="organizations" element={<OrganizationsPage />} />
             <Route path="hosts" element={<HostsPage />} />
+            <Route path="compute" element={<ComputePage />} />
             <Route path="storage" element={<StoragePage />} />
             <Route path="network" element={<NetworkInfraPage />} />
             <Route path="quotas" element={<QuotasPage />} />

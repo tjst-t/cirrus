@@ -90,10 +90,10 @@ function HostRow({ host, onActionComplete }: { host: Host; onActionComplete: () 
           </span>
         </td>
         <td className="py-3 px-4 text-sm text-[var(--color-text-secondary)]">
-          {host.vcpus_used} / {host.vcpus_total}
+          {host.resource_used?.vcpus ?? 0} / {host.resource_physical?.vcpus != null ? host.resource_physical.vcpus : '—'}
         </td>
         <td className="py-3 px-4 text-sm text-[var(--color-text-secondary)]">
-          {Math.round(host.memory_used_mb / 1024)} / {Math.round(host.memory_total_mb / 1024)} GB
+          {Math.round((host.resource_used?.memory_mb ?? 0) / 1024)} / {host.resource_physical?.memory_mb != null ? `${Math.round(host.resource_physical.memory_mb / 1024)} GB` : '—'}
         </td>
         <td className="py-3 px-4">
           <div className="flex items-center gap-1">
@@ -143,8 +143,6 @@ export function HostsPage() {
   const [form, setForm] = useState<CreateHostRequest>({
     name: '',
     address: '',
-    vcpus_total: 0,
-    memory_total_mb: 0,
   })
 
   const load = useCallback(() => {
@@ -169,7 +167,7 @@ export function HostsPage() {
       .create(form)
       .then(() => {
         setShowCreate(false)
-        setForm({ name: '', address: '', vcpus_total: 0, memory_total_mb: 0 })
+        setForm({ name: '', address: '' })
         load()
       })
       .catch((e: Error) => setCreateError(e.message))
@@ -241,36 +239,6 @@ export function HostsPage() {
               onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
               placeholder="192.168.1.10"
             />
-          </div>
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label htmlFor="host-vcpus" className="block text-sm font-medium mb-1">vCPU 数</label>
-              <Input
-                id="host-vcpus"
-                data-testid="host-vcpus-input"
-                type="number"
-                min={1}
-                value={form.vcpus_total || ''}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, vcpus_total: parseInt(e.target.value, 10) || 0 }))
-                }
-                placeholder="32"
-              />
-            </div>
-            <div className="flex-1">
-              <label htmlFor="host-memory" className="block text-sm font-medium mb-1">メモリ (MB)</label>
-              <Input
-                id="host-memory"
-                data-testid="host-memory-input"
-                type="number"
-                min={1}
-                value={form.memory_total_mb || ''}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, memory_total_mb: parseInt(e.target.value, 10) || 0 }))
-                }
-                placeholder="65536"
-              />
-            </div>
           </div>
           {createError && <ErrorMessage message={createError} />}
           <div className="flex justify-end gap-2 mt-1">
