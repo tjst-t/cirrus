@@ -1,4 +1,4 @@
-import { logout } from '@/lib/auth'
+import { logout, TOKEN_KEY, TENANT_ID_KEY } from '@/lib/auth'
 
 const BASE_URL = '/api/v1'
 
@@ -18,12 +18,12 @@ function getHeaders(): HeadersInit {
     'Content-Type': 'application/json',
   }
 
-  const token = localStorage.getItem('auth_token')
+  const token = localStorage.getItem(TOKEN_KEY)
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
 
-  const tenantId = localStorage.getItem('selected_tenant_id')
+  const tenantId = localStorage.getItem(TENANT_ID_KEY)
   if (tenantId) {
     headers['X-Tenant-ID'] = tenantId
   }

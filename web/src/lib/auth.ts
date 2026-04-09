@@ -1,5 +1,5 @@
-export const TOKEN_KEY = 'auth_token'
-export const TENANT_ID_KEY = 'selected_tenant_id'
+export const TOKEN_KEY = 'cirrus_token'
+export const TENANT_ID_KEY = 'cirrus_tenant_id'
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)

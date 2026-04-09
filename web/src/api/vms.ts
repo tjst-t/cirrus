@@ -32,8 +32,8 @@ export interface CreateVmRequest {
 export interface Flavor {
   id: string
   name: string
-  vcpu: number
-  memory_mb: number
+  vcpus: number
+  ram_mb: number
   disk_gb: number
 }
 

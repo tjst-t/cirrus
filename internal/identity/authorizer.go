@@ -135,6 +135,10 @@ const (
 	ActionListLoadBalancers  Action = "list_load_balancers"
 	ActionGetLoadBalancer    Action = "get_load_balancer"
 	ActionDeleteLoadBalancer Action = "delete_load_balancer"
+
+	// Drift event actions (infra_admin)
+	ActionListDriftEvents   Action = "list_drift_events"
+	ActionResolveDriftEvent Action = "resolve_drift_event"
 )
 
 // Resource represents the target resource of an authorization check.

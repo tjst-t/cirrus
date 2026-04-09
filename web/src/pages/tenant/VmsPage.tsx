@@ -93,7 +93,7 @@ function CreateVmDialog({ onClose, onCreated }: CreateVmDialogProps) {
             >
               {flavors.map((f) => (
                 <option key={f.id} value={f.id}>
-                  {f.name} ({f.vcpu}vCPU / {Math.round(f.memory_mb / 1024)}GB RAM / {f.disk_gb}GB)
+                  {f.name} ({f.vcpus}vCPU / {Math.round(f.ram_mb / 1024)}GB RAM / {f.disk_gb}GB)
                 </option>
               ))}
             </select>

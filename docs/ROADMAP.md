@@ -4,13 +4,13 @@
 
 ## Progress
 
-- Total: 50 Sprints | Done: 26 | In Progress: 0 | Remaining: 24
-- [██████████░░░░░░░░░░] 52%
+- Total: 50 Sprints | Done: 27 | In Progress: 0 | Remaining: 23
+- [██████████░░░░░░░░░░] 54%
 
 ## Execution Order
 
 S001 → S002 → S003 → S004 → S005 → S006 → S007 → S008 → S009 → S010 → S011 → S012 → S013 → S014 → S015 → S016 → S017 → S018 → S019 → S020 → S021 → S045 → S042 → S043 → S044 → S022 → S046 → S047 → S048 → S049 → S050 → S023 → S024 → S025 → S026 → S027 → S028 → S029 → S030 → S031 → S032 → S033 → S034 → S035 → S036 → S037 → S038 → S039 → S040 → S041
-                                                                                                                                                                                                     ↑ next
+                                                                                                                                                                                               ↑ next
 
 ---
 
@@ -761,30 +761,48 @@ Phase 1 の全機能（Identity・Host・Network・Storage・Compute・Quota・E
 
 ---
 
-## Sprint S046: 管理者 UI [ ]
+## Sprint S046: 管理者 UI [x]
 
 インフラ管理者・組織管理者が Phase 1 の全管理リソース（組織・テナント・ホスト・ストレージ・Quota・Drift Event・GW ノード・IP プール）を WebUI から操作できる。
 
-### Story S046-1: 管理者として、組織・テナント・ロールを WebUI から管理したい。なぜなら、CLI を使わずにテナント払い出しができるようにしたいから。 [ ]
+### Story S046-1: 管理者として、組織・テナント・ロールを WebUI から管理したい。なぜなら、CLI を使わずにテナント払い出しができるようにしたいから。 [x]
 
-- [ ] **Task S046-1-1**: 組織一覧・作成・削除画面（POST/GET/DELETE /api/v1/organizations）
-- [ ] **Task S046-1-2**: テナント一覧・作成・削除画面（POST/GET/DELETE /api/v1/organizations/{id}/tenants）
-- [ ] **Task S046-1-3**: ロール割り当て画面（POST/GET/DELETE /api/v1/tenants/{id}/role-assignments）
-- [ ] **Task S046-1-4**: Playwright テスト: 組織作成 → テナント作成 → ロール割り当てフロー
+- [x] **Task S046-1-1**: 組織一覧・作成・削除画面（POST/GET/DELETE /api/v1/organizations）
+- [x] **Task S046-1-2**: テナント一覧・作成・削除画面（POST/GET/DELETE /api/v1/organizations/{id}/tenants）
+- [x] **Task S046-1-3**: ロール割り当て画面（POST/GET/DELETE /api/v1/tenants/{id}/role-assignments）
+- [x] **Task S046-1-4**: Playwright テスト: 組織作成 → テナント作成 → ロール割り当てフロー
 
-### Story S046-2: 管理者として、ホスト・ストレージ・Flavor を WebUI から管理したい。なぜなら、コンピュートリソースの状態を一覧で把握・操作したいから。 [ ]
+**Acceptance Criteria (GUI):**
+- [x] State diagram confirmed with user (see sprint-logs/S046/gui-spec-S046-1.md)
+- [x] Playwright tests pass: `npx playwright test admin-s046-1`
+- [x] All interactive elements have `data-testid` attributes
+- [x] API calls are mocked in tests (no real backend dependency)
 
-- [ ] **Task S046-2-1**: ホスト一覧・状態遷移ボタン（activate / drain / maintenance / retire）
-- [ ] **Task S046-2-2**: Storage Backend・Volume Type・Flavor 一覧・作成・削除画面
-- [ ] **Task S046-2-3**: ゲートウェイノード登録・一覧・削除画面（/api/v1/admin/gateway-nodes）
-- [ ] **Task S046-2-4**: IP プール管理画面（/api/v1/admin/ip-pools）
-- [ ] **Task S046-2-5**: Playwright テスト: ホスト状態遷移・Flavor 作成フロー
+### Story S046-2: 管理者として、ホスト・ストレージ・Flavor を WebUI から管理したい。なぜなら、コンピュートリソースの状態を一覧で把握・操作したいから。 [x]
 
-### Story S046-3: 管理者として、Quota 設定と Drift Event を WebUI から確認したい。なぜなら、テナント別のリソース上限管理と異常検知を一箇所で行いたいから。 [ ]
+- [x] **Task S046-2-1**: ホスト一覧・状態遷移ボタン（activate / drain / maintenance / retire）
+- [x] **Task S046-2-2**: Storage Backend・Volume Type・Flavor 一覧・作成・削除画面
+- [x] **Task S046-2-3**: ゲートウェイノード登録・一覧・削除画面（/api/v1/admin/gateway-nodes）
+- [x] **Task S046-2-4**: IP プール管理画面（/api/v1/admin/ip-pools）
+- [x] **Task S046-2-5**: Playwright テスト: ホスト状態遷移・Flavor 作成フロー
 
-- [ ] **Task S046-3-1**: テナント別 Quota 設定画面（vCPU / メモリ / VM 数 / ボリューム容量 / ネットワーク数 / Egress・Ingress 数）
-- [ ] **Task S046-3-2**: Drift Event ビューア（一覧・リソース種別フィルタ・ステータス確認）
-- [ ] **Task S046-3-3**: Playwright テスト: Quota 設定 → 超過エラー確認フロー
+**Acceptance Criteria (GUI):**
+- [x] State diagram confirmed with user (see sprint-logs/S046/gui-spec-S046-2.md)
+- [x] Playwright tests pass: `npx playwright test admin-s046-2`
+- [x] All interactive elements have `data-testid` attributes
+- [x] API calls are mocked in tests (no real backend dependency)
+
+### Story S046-3: 管理者として、Quota 設定と Drift Event を WebUI から確認したい。なぜなら、テナント別のリソース上限管理と異常検知を一箇所で行いたいから。 [x]
+
+- [x] **Task S046-3-1**: テナント別 Quota 設定画面（vCPU / メモリ / VM 数 / ボリューム容量 / ネットワーク数 / Egress・Ingress 数）
+- [x] **Task S046-3-2**: Drift Event ビューア（一覧・リソース種別フィルタ・ステータス確認）+ バックエンド API 実装（GET/PATCH /admin/drift-events）
+- [x] **Task S046-3-3**: Playwright テスト: Quota 設定 → 超過エラー確認フロー
+
+**Acceptance Criteria (GUI):**
+- [x] State diagram confirmed with user (see sprint-logs/S046/gui-spec-S046-3.md)
+- [x] Playwright tests pass: `npx playwright test admin-s046-3`
+- [x] All interactive elements have `data-testid` attributes
+- [x] API calls are mocked in tests (no real backend dependency)
 
 ---
 

@@ -71,7 +71,7 @@ function RoleAssignmentsPanel({ tenant }: { tenant: Tenant }) {
         <span className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide">
           ロール割り当て
         </span>
-        <Button variant="secondary" size="sm" onClick={() => setShowAdd(true)}>
+        <Button variant="secondary" size="sm" onClick={() => setShowAdd(true)} data-testid="add-role-button">
           + 追加
         </Button>
       </div>
@@ -93,11 +93,20 @@ function RoleAssignmentsPanel({ tenant }: { tenant: Tenant }) {
           </thead>
           <tbody>
             {assignments.map((a) => (
-              <tr key={a.user_id} className="border-b border-[var(--color-border)] last:border-0">
+              <tr
+                key={a.user_id}
+                data-testid={`role-row-${a.user_id}`}
+                className="border-b border-[var(--color-border)] last:border-0"
+              >
                 <td className="py-1.5 font-mono text-xs">{a.user_id}</td>
                 <td className="py-1.5">{a.role}</td>
                 <td className="py-1.5 text-right">
-                  <Button variant="danger" size="sm" onClick={() => setDeleteTarget(a)}>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => setDeleteTarget(a)}
+                    data-testid={`delete-role-button-${a.user_id}`}
+                  >
                     削除
                   </Button>
                 </td>
@@ -108,12 +117,18 @@ function RoleAssignmentsPanel({ tenant }: { tenant: Tenant }) {
       )}
 
       {/* Add role assignment dialog */}
-      <Dialog open={showAdd} onClose={() => setShowAdd(false)} title="ロール割り当て追加">
+      <Dialog
+        open={showAdd}
+        onClose={() => setShowAdd(false)}
+        title="ロール割り当て追加"
+        data-testid="add-role-dialog"
+      >
         <div className="flex flex-col gap-3">
           <div>
             <label htmlFor="role-assignment-user-id" className="block text-sm font-medium mb-1">ユーザー ID</label>
             <Input
               id="role-assignment-user-id"
+              data-testid="role-user-id-input"
               value={userId}
               onChange={(e) => setUserId(e.target.value)}
               placeholder="user-uuid"
@@ -123,6 +138,7 @@ function RoleAssignmentsPanel({ tenant }: { tenant: Tenant }) {
             <label htmlFor="role-assignment-role" className="block text-sm font-medium mb-1">ロール</label>
             <select
               id="role-assignment-role"
+              data-testid="role-select"
               value={role}
               onChange={(e) => setRole(e.target.value)}
               className="flex h-9 w-full rounded border border-[var(--color-border)] bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -138,7 +154,7 @@ function RoleAssignmentsPanel({ tenant }: { tenant: Tenant }) {
             <Button variant="secondary" size="sm" onClick={() => setShowAdd(false)} disabled={saving}>
               キャンセル
             </Button>
-            <Button size="sm" onClick={handleAdd} disabled={saving}>
+            <Button size="sm" onClick={handleAdd} disabled={saving} data-testid="add-role-submit">
               {saving ? '追加中...' : '追加'}
             </Button>
           </div>
@@ -152,6 +168,8 @@ function RoleAssignmentsPanel({ tenant }: { tenant: Tenant }) {
         title="ロール割り当て削除"
         description={`ユーザー "${deleteTarget?.user_id}" のロール割り当てを削除しますか？`}
         loading={deleting}
+        data-testid="confirm-delete-dialog"
+        confirmButtonTestId="confirm-delete-button"
       />
     </div>
   )
@@ -202,7 +220,12 @@ function TenantsPanel({ org }: { org: Organization }) {
         <span className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wide">
           テナント
         </span>
-        <Button variant="secondary" size="sm" onClick={() => setShowAdd(true)}>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => setShowAdd(true)}
+          data-testid={`create-tenant-button-${org.id}`}
+        >
           + テナント追加
         </Button>
       </div>
@@ -218,6 +241,7 @@ function TenantsPanel({ org }: { org: Organization }) {
           {tenants.map((t) => (
             <div
               key={t.id}
+              data-testid={`tenant-row-${t.id}`}
               className="rounded-lg border border-[var(--color-border)] bg-white p-4"
             >
               <div className="flex items-center justify-between">
@@ -229,6 +253,7 @@ function TenantsPanel({ org }: { org: Organization }) {
                   variant="secondary"
                   size="sm"
                   onClick={() => setSelectedTenant(selectedTenant?.id === t.id ? null : t)}
+                  data-testid={`role-management-button-${t.id}`}
                 >
                   {selectedTenant?.id === t.id ? '閉じる' : 'ロール管理'}
                 </Button>
@@ -240,12 +265,18 @@ function TenantsPanel({ org }: { org: Organization }) {
       )}
 
       {/* Add tenant dialog */}
-      <Dialog open={showAdd} onClose={() => setShowAdd(false)} title="テナント作成">
+      <Dialog
+        open={showAdd}
+        onClose={() => setShowAdd(false)}
+        title="テナント作成"
+        data-testid="create-tenant-dialog"
+      >
         <div className="flex flex-col gap-3">
           <div>
             <label htmlFor="tenant-name" className="block text-sm font-medium mb-1">テナント名</label>
             <Input
               id="tenant-name"
+              data-testid="tenant-name-input"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder="my-tenant"
@@ -257,7 +288,7 @@ function TenantsPanel({ org }: { org: Organization }) {
             <Button variant="secondary" size="sm" onClick={() => setShowAdd(false)} disabled={saving}>
               キャンセル
             </Button>
-            <Button size="sm" onClick={handleCreate} disabled={saving}>
+            <Button size="sm" onClick={handleCreate} disabled={saving} data-testid="create-tenant-submit">
               {saving ? '作成中...' : '作成'}
             </Button>
           </div>
@@ -272,19 +303,20 @@ function TenantsPanel({ org }: { org: Organization }) {
 export function OrganizationsPage() {
   const [orgs, setOrgs] = useState<Organization[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [listError, setListError] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [newOrgName, setNewOrgName] = useState('')
   const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
   const [expandedOrg, setExpandedOrg] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
-    setError(null)
+    setListError(null)
     organizationsApi
       .list()
       .then(setOrgs)
-      .catch((e: Error) => setError(e.message))
+      .catch((e: Error) => setListError(e.message))
       .finally(() => setLoading(false))
   }, [])
 
@@ -295,6 +327,7 @@ export function OrganizationsPage() {
   const handleCreate = () => {
     if (!newOrgName.trim()) return
     setCreating(true)
+    setCreateError(null)
     organizationsApi
       .create({ name: newOrgName.trim() })
       .then(() => {
@@ -302,35 +335,47 @@ export function OrganizationsPage() {
         setShowCreate(false)
         load()
       })
-      .catch((e: Error) => setError(e.message))
+      .catch((e: Error) => setCreateError(e.message))
       .finally(() => setCreating(false))
+  }
+
+  const handleOpenCreate = () => {
+    setCreateError(null)
+    setShowCreate(true)
   }
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold text-[var(--color-text)]">組織・テナント管理</h1>
-        <Button size="sm" onClick={() => setShowCreate(true)}>
+        <Button size="sm" onClick={handleOpenCreate} data-testid="create-org-button">
           + 組織を作成
         </Button>
       </div>
 
-      {error && (
+      {listError && (
         <div className="mb-4">
-          <ErrorMessage message={error} />
+          <ErrorMessage message={listError} data-testid="org-list-error" />
         </div>
       )}
 
       {loading ? (
         <p className="text-sm text-[var(--color-text-secondary)]">読み込み中...</p>
       ) : orgs.length === 0 ? (
-        <div className="rounded-lg border border-[var(--color-border)] bg-white p-8 text-center">
+        <div
+          data-testid="empty-orgs"
+          className="rounded-lg border border-[var(--color-border)] bg-white p-8 text-center"
+        >
           <p className="text-sm text-[var(--color-text-secondary)]">組織がありません</p>
         </div>
       ) : (
         <div className="flex flex-col gap-4">
           {orgs.map((org) => (
-            <div key={org.id} className="rounded-lg border border-[var(--color-border)] bg-white p-5">
+            <div
+              key={org.id}
+              data-testid={`org-row-${org.id}`}
+              className="rounded-lg border border-[var(--color-border)] bg-white p-5"
+            >
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-semibold text-[var(--color-text)]">{org.name}</p>
@@ -340,6 +385,7 @@ export function OrganizationsPage() {
                   variant="secondary"
                   size="sm"
                   onClick={() => setExpandedOrg(expandedOrg === org.id ? null : org.id)}
+                  data-testid={`expand-tenants-button-${org.id}`}
                 >
                   {expandedOrg === org.id ? 'テナントを隠す' : 'テナントを表示'}
                 </Button>
@@ -351,23 +397,30 @@ export function OrganizationsPage() {
       )}
 
       {/* Create org dialog */}
-      <Dialog open={showCreate} onClose={() => setShowCreate(false)} title="組織を作成">
+      <Dialog
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        title="組織を作成"
+        data-testid="create-org-dialog"
+      >
         <div className="flex flex-col gap-3">
           <div>
             <label htmlFor="org-name" className="block text-sm font-medium mb-1">組織名</label>
             <Input
               id="org-name"
+              data-testid="org-name-input"
               value={newOrgName}
               onChange={(e) => setNewOrgName(e.target.value)}
               placeholder="my-organization"
               onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
             />
           </div>
+          {createError && <ErrorMessage message={createError} data-testid="create-org-error" />}
           <div className="flex justify-end gap-2 mt-1">
             <Button variant="secondary" size="sm" onClick={() => setShowCreate(false)} disabled={creating}>
               キャンセル
             </Button>
-            <Button size="sm" onClick={handleCreate} disabled={creating}>
+            <Button size="sm" onClick={handleCreate} disabled={creating} data-testid="create-org-submit">
               {creating ? '作成中...' : '作成'}
             </Button>
           </div>

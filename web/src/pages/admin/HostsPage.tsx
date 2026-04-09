@@ -72,7 +72,7 @@ function HostRow({ host, onActionComplete }: { host: Host; onActionComplete: () 
 
   return (
     <>
-      <tr className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-secondary)] transition-colors">
+      <tr data-testid={`host-row-${host.id}`} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg-secondary)] transition-colors">
         <td className="py-3 px-4">
           <p className="font-medium text-sm">{host.name}</p>
           <p className="text-xs font-mono text-[var(--color-text-secondary)]">{host.id}</p>
@@ -80,6 +80,7 @@ function HostRow({ host, onActionComplete }: { host: Host; onActionComplete: () 
         <td className="py-3 px-4 text-sm text-[var(--color-text-secondary)]">{host.address}</td>
         <td className="py-3 px-4">
           <span
+            data-testid={`host-status-${host.id}`}
             className={cn(
               'inline-block px-2 py-0.5 rounded text-xs font-medium',
               STATUS_COLORS[host.operational_state],
@@ -99,6 +100,7 @@ function HostRow({ host, onActionComplete }: { host: Host; onActionComplete: () 
             {actions.map((action) => (
               <Button
                 key={action}
+                data-testid={`host-action-${action}-${host.id}`}
                 variant={ACTION_VARIANTS[action]}
                 size="sm"
                 onClick={() => handleAction(action)}
@@ -125,6 +127,7 @@ function HostRow({ host, onActionComplete }: { host: Host; onActionComplete: () 
         description={`ホスト "${host.name}" を廃止しますか？この操作は元に戻せません。`}
         confirmLabel="廃止"
         loading={pending === 'retire'}
+        data-testid="confirm-retire-dialog"
       />
     </>
   )
@@ -177,7 +180,7 @@ export function HostsPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold text-[var(--color-text)]">ホスト管理</h1>
-        <Button size="sm" onClick={() => setShowCreate(true)}>
+        <Button data-testid="create-host-button" size="sm" onClick={() => setShowCreate(true)}>
           + ホストを追加
         </Button>
       </div>
@@ -191,7 +194,7 @@ export function HostsPage() {
       {loading ? (
         <p className="text-sm text-[var(--color-text-secondary)]">読み込み中...</p>
       ) : hosts.length === 0 ? (
-        <div className="rounded-lg border border-[var(--color-border)] bg-white p-8 text-center">
+        <div data-testid="empty-hosts" className="rounded-lg border border-[var(--color-border)] bg-white p-8 text-center">
           <p className="text-sm text-[var(--color-text-secondary)]">ホストがありません</p>
         </div>
       ) : (
@@ -217,12 +220,13 @@ export function HostsPage() {
       )}
 
       {/* Create host dialog */}
-      <Dialog open={showCreate} onClose={() => setShowCreate(false)} title="ホストを追加">
+      <Dialog open={showCreate} onClose={() => setShowCreate(false)} title="ホストを追加" data-testid="create-host-dialog">
         <div className="flex flex-col gap-3">
           <div>
             <label htmlFor="host-name" className="block text-sm font-medium mb-1">ホスト名</label>
             <Input
               id="host-name"
+              data-testid="host-name-input"
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               placeholder="host-01"
@@ -232,6 +236,7 @@ export function HostsPage() {
             <label htmlFor="host-address" className="block text-sm font-medium mb-1">アドレス</label>
             <Input
               id="host-address"
+              data-testid="host-address-input"
               value={form.address}
               onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
               placeholder="192.168.1.10"
@@ -242,6 +247,7 @@ export function HostsPage() {
               <label htmlFor="host-vcpus" className="block text-sm font-medium mb-1">vCPU 数</label>
               <Input
                 id="host-vcpus"
+                data-testid="host-vcpus-input"
                 type="number"
                 min={1}
                 value={form.vcpus_total || ''}
@@ -255,6 +261,7 @@ export function HostsPage() {
               <label htmlFor="host-memory" className="block text-sm font-medium mb-1">メモリ (MB)</label>
               <Input
                 id="host-memory"
+                data-testid="host-memory-input"
                 type="number"
                 min={1}
                 value={form.memory_total_mb || ''}
@@ -275,7 +282,7 @@ export function HostsPage() {
             >
               キャンセル
             </Button>
-            <Button size="sm" onClick={handleCreate} disabled={creating}>
+            <Button data-testid="create-host-submit" size="sm" onClick={handleCreate} disabled={creating}>
               {creating ? '追加中...' : '追加'}
             </Button>
           </div>

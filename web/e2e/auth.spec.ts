@@ -33,8 +33,8 @@ test.describe('認証フロー', () => {
   })
 
   test('無効なトークンでエラーが表示される', async ({ page }) => {
-    // 401 テスト用: unrouteAll() を使わず、より具体的なルートを後から登録（Playwright は後から登録が優先）
-    await page.route('/api/v1/organizations', async (route) => {
+    // LoginPage は /auth/verify に POST して 401 を受け取るとエラー表示する
+    await page.route('/api/v1/auth/verify', async (route) => {
       await route.fulfill({ status: 401, json: { error: 'unauthorized' } })
     })
 
@@ -54,6 +54,7 @@ test.describe('認証フロー', () => {
     })
 
     await page.goto('/')
-    await expect(page).toHaveURL('/login')
+    // リダイレクト先は /login または /login?redirect=... の形式
+    await expect(page).toHaveURL(/\/login/)
   })
 })

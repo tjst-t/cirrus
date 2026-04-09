@@ -11,10 +11,11 @@ test.describe('管理者 UI フロー', () => {
     // API をモック
     await page.route('/api/v1/**', async (route) => {
       const url = route.request().url()
+      const paged = { items: [], next_cursor: '' }
       if (url.includes('/organizations')) {
-        await route.fulfill({ status: 200, json: [] })
+        await route.fulfill({ status: 200, json: paged })
       } else if (url.includes('/hosts')) {
-        await route.fulfill({ status: 200, json: [] })
+        await route.fulfill({ status: 200, json: paged })
       } else if (url.includes('/storage-domains')) {
         await route.fulfill({ status: 200, json: [] })
       } else if (url.includes('/storage-backends')) {
@@ -22,7 +23,7 @@ test.describe('管理者 UI フロー', () => {
       } else if (url.includes('/volume-types')) {
         await route.fulfill({ status: 200, json: [] })
       } else {
-        await route.fulfill({ status: 200, json: [] })
+        await route.fulfill({ status: 200, json: paged })
       }
     })
   })

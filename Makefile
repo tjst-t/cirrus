@@ -306,7 +306,17 @@ _seed-topology:
 	    -H "Content-Type: application/json" \
 	    -d "{\"name\":\"default\",\"description\":\"Default sim volume type\",\"required_capabilities\":[],\"is_public\":true}" \
 	    http://localhost:$$API_PORT/api/v1/admin/volume-types >/dev/null 2>&1 || true; \
-	  echo "    Default storage backend and volume type seeded."'
+	  echo "    Default storage backend and volume type seeded."; \
+  ORG_ID=$$(curl -sf -X POST \
+    -H "Authorization: Bearer $$TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"name\":\"test-org\"}" \
+    http://localhost:$$API_PORT/api/v1/organizations | jq -r ".id" 2>/dev/null); \
+  if [ -n "$$ORG_ID" ] && [ "$$ORG_ID" != "null" ]; then \
+    PSQL_URL="postgresql://cirrus:cirrus@localhost:$$SIM_POSTGRES_PORT/cirrus?sslmode=disable"; \
+    psql "$$PSQL_URL" -c "INSERT INTO tenants (id, organization_id, name) VALUES ('\''4af01cf9-7325-4742-bf30-f1852368c1e8'\'', '\''$$ORG_ID'\'', '\''test-tenant'\'') ON CONFLICT (id) DO NOTHING" >/dev/null 2>&1 || true; \
+    echo "    Test org and tenant seeded (fixed UUID)."; \
+  fi'
 
 # ── Internal: activate hosts ──
 

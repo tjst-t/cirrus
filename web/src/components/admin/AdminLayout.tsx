@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { to: '/admin/organizations', label: '組織・テナント' },
   { to: '/admin/hosts', label: 'ホスト管理' },
   { to: '/admin/storage', label: 'ストレージ管理' },
+  { to: '/admin/network', label: 'ネットワーク管理' },
   { to: '/admin/quotas', label: 'Quota 設定' },
   { to: '/admin/drift-events', label: 'Drift Events' },
 ]

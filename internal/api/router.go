@@ -80,6 +80,11 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(Auth(authn))
 
+		// Token verification — returns 200 if the Bearer token is valid.
+		r.Post("/auth/verify", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		})
+
 		r.Get("/me/tenants", ih.listMyTenants)
 
 		r.Post("/organizations", ih.createOrganization)
@@ -242,6 +247,11 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		r.Get("/tenants/{tenant_id}/networks/{network_id}/load-balancers", lbh.listLoadBalancers)
 		r.Get("/tenants/{tenant_id}/networks/{network_id}/load-balancers/{lb_id}", lbh.getLoadBalancer)
 		r.Delete("/tenants/{tenant_id}/networks/{network_id}/load-balancers/{lb_id}", lbh.deleteLoadBalancer)
+
+		// Drift events (infra_admin)
+		dh := &driftHandlers{pool: pool, authz: authz}
+		r.Get("/admin/drift-events", dh.listDriftEvents)
+		r.Patch("/admin/drift-events/{id}", dh.resolveDriftEvent)
 	})
 
 	// SPA static files — serve web/dist if present.

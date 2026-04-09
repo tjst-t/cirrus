@@ -1,35 +1,55 @@
 import { useState, useEffect, useCallback } from 'react'
 import { organizationsApi, type Organization, type Tenant } from '@/api/organizations'
-import { quotasApi, type Quota, type UpdateQuotaRequest } from '@/api/quotas'
+import { quotaApi, type QuotaLimits } from '@/api/quota'
 import { Button } from '@/components/Button'
 import { Input } from '@/components/Input'
 import { ErrorMessage } from '@/components/admin/ErrorMessage'
 
+const QUOTA_FIELDS: Array<{ key: keyof QuotaLimits; label: string; slug: string }> = [
+  { key: 'vcpus', label: 'vCPU 上限', slug: 'vcpus' },
+  { key: 'memory_mb', label: 'メモリ上限 (MB)', slug: 'memory' },
+  { key: 'vm_count', label: 'VM 数上限', slug: 'vm-count' },
+  { key: 'volume_gb', label: 'ボリューム容量上限 (GB)', slug: 'volume-gb' },
+  { key: 'networks', label: 'ネットワーク数上限', slug: 'networks' },
+  { key: 'egresses', label: 'Egress 数上限', slug: 'egresses' },
+  { key: 'ingresses', label: 'Ingress 数上限', slug: 'ingresses' },
+]
+
 function QuotaEditor({ tenant }: { tenant: Tenant }) {
-  const [quota, setQuota] = useState<Quota | null>(null)
+  const [loaded, setLoaded] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
-  const [form, setForm] = useState<UpdateQuotaRequest>({
+  const [form, setForm] = useState<QuotaLimits>({
     vcpus: 0,
     memory_mb: 0,
     vm_count: 0,
     volume_gb: 0,
+    volumes: 0,
+    snapshots: 0,
+    networks: 0,
+    egresses: 0,
+    ingresses: 0,
   })
 
   const load = useCallback(() => {
     setLoading(true)
     setError(null)
-    quotasApi
+    quotaApi
       .get(tenant.id)
       .then((q) => {
-        setQuota(q)
+        setLoaded(true)
         setForm({
-          vcpus: q.vcpus,
-          memory_mb: q.memory_mb,
-          vm_count: q.vm_count,
-          volume_gb: q.volume_gb,
+          vcpus: q.limits.vcpus,
+          memory_mb: q.limits.memory_mb,
+          vm_count: q.limits.vm_count,
+          volume_gb: q.limits.volume_gb,
+          volumes: q.limits.volumes,
+          snapshots: q.limits.snapshots,
+          networks: q.limits.networks,
+          egresses: q.limits.egresses,
+          ingresses: q.limits.ingresses,
         })
       })
       .catch((e: Error) => setError(e.message))
@@ -50,10 +70,9 @@ function QuotaEditor({ tenant }: { tenant: Tenant }) {
     setSaving(true)
     setError(null)
     setSuccess(false)
-    quotasApi
+    quotaApi
       .update(tenant.id, form)
-      .then((q) => {
-        setQuota(q)
+      .then(() => {
         setSuccess(true)
       })
       .catch((e: Error) => setError(e.message))
@@ -66,72 +85,50 @@ function QuotaEditor({ tenant }: { tenant: Tenant }) {
 
   return (
     <div className="mt-3">
-      {error && <div className="mb-3"><ErrorMessage message={error} /></div>}
-      {quota !== null && (
+      {error && (
+        <div className="mb-3">
+          <ErrorMessage data-testid={`quota-save-error-${tenant.id}`} message={error} />
+        </div>
+      )}
+      {loaded && (
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label htmlFor={`quota-vcpus-${tenant.id}`} className="block text-xs font-medium mb-1 text-[var(--color-text-secondary)]">
-              vCPU 上限
-            </label>
-            <Input
-              id={`quota-vcpus-${tenant.id}`}
-              type="number"
-              min={0}
-              value={form.vcpus}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, vcpus: parseInt(e.target.value, 10) || 0 }))
-              }
-            />
-          </div>
-          <div>
-            <label htmlFor={`quota-memory-${tenant.id}`} className="block text-xs font-medium mb-1 text-[var(--color-text-secondary)]">
-              メモリ上限 (MB)
-            </label>
-            <Input
-              id={`quota-memory-${tenant.id}`}
-              type="number"
-              min={0}
-              value={form.memory_mb}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, memory_mb: parseInt(e.target.value, 10) || 0 }))
-              }
-            />
-          </div>
-          <div>
-            <label htmlFor={`quota-vm-count-${tenant.id}`} className="block text-xs font-medium mb-1 text-[var(--color-text-secondary)]">
-              VM 数上限
-            </label>
-            <Input
-              id={`quota-vm-count-${tenant.id}`}
-              type="number"
-              min={0}
-              value={form.vm_count}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, vm_count: parseInt(e.target.value, 10) || 0 }))
-              }
-            />
-          </div>
-          <div>
-            <label htmlFor={`quota-volume-gb-${tenant.id}`} className="block text-xs font-medium mb-1 text-[var(--color-text-secondary)]">
-              ボリューム容量上限 (GB)
-            </label>
-            <Input
-              id={`quota-volume-gb-${tenant.id}`}
-              type="number"
-              min={0}
-              value={form.volume_gb}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, volume_gb: parseInt(e.target.value, 10) || 0 }))
-              }
-            />
-          </div>
+          {QUOTA_FIELDS.map(({ key, label, slug }) => (
+            <div key={key}>
+              <label
+                htmlFor={`quota-${slug}-${tenant.id}`}
+                className="block text-xs font-medium mb-1 text-[var(--color-text-secondary)]"
+              >
+                {label}
+              </label>
+              <Input
+                id={`quota-${slug}-${tenant.id}`}
+                data-testid={`quota-${slug}-${tenant.id}`}
+                type="number"
+                min={0}
+                value={form[key]}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, [key]: parseInt(e.target.value, 10) || 0 }))
+                }
+              />
+            </div>
+          ))}
         </div>
       )}
       <div className="flex items-center justify-end gap-3 mt-3">
         {success && (
-          <span className="text-sm text-[var(--color-success)]">保存しました</span>
+          <span
+            data-testid={`quota-save-success-${tenant.id}`}
+            className="text-sm text-[var(--color-success)]"
+          >
+            保存しました
+          </span>
         )}
-        <Button size="sm" onClick={handleSave} disabled={saving || quota === null}>
+        <Button
+          data-testid={`quota-save-button-${tenant.id}`}
+          size="sm"
+          onClick={handleSave}
+          disabled={saving || !loaded}
+        >
           {saving ? '保存中...' : '保存'}
         </Button>
       </div>
@@ -169,10 +166,7 @@ function OrgSection({ org }: { org: Organization }) {
         ) : (
           <div className="flex flex-col gap-3">
             {tenants.map((t) => (
-              <div
-                key={t.id}
-                className="rounded border border-[var(--color-border)] p-3"
-              >
+              <div key={t.id} className="rounded border border-[var(--color-border)] p-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-medium text-sm">{t.name}</p>
@@ -181,6 +175,7 @@ function OrgSection({ org }: { org: Organization }) {
                   <Button
                     variant="secondary"
                     size="sm"
+                    data-testid={`quota-edit-button-${t.id}`}
                     onClick={() => setExpanded(expanded === t.id ? null : t.id)}
                   >
                     {expanded === t.id ? '閉じる' : 'Quota 編集'}
@@ -223,7 +218,10 @@ export function QuotasPage() {
       {loading ? (
         <p className="text-sm text-[var(--color-text-secondary)]">読み込み中...</p>
       ) : orgs.length === 0 ? (
-        <div className="rounded-lg border border-[var(--color-border)] bg-white p-8 text-center">
+        <div
+          data-testid="empty-orgs-quota"
+          className="rounded-lg border border-[var(--color-border)] bg-white p-8 text-center"
+        >
           <p className="text-sm text-[var(--color-text-secondary)]">組織がありません</p>
         </div>
       ) : (

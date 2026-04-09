@@ -89,10 +89,10 @@ export function DashboardPage() {
         <div className="bg-white rounded-xl border border-[var(--color-border)] p-5">
           <h3 className="text-sm font-semibold text-[var(--color-text)] mb-4">クォータ使用量</h3>
           <div className="grid grid-cols-2 gap-5">
-            <QuotaBar label="vCPU" used={quota.usage.VcpusUsed} limit={quota.limits.Vcpus} unit=" コア" />
-            <QuotaBar label="メモリ" used={Math.round(quota.usage.RAMMBUsed / 1024)} limit={Math.round(quota.limits.RAMMB / 1024)} unit=" GB" />
-            <QuotaBar label="VM 数" used={quota.usage.VMsCount} limit={quota.limits.VMs} unit=" 台" />
-            <QuotaBar label="ボリューム容量" used={quota.usage.VolumeGBUsed} limit={quota.limits.VolumeGB} unit=" GB" />
+            <QuotaBar label="vCPU" used={quota.usage.vcpus_used} limit={quota.limits.vcpus} unit=" コア" />
+            <QuotaBar label="メモリ" used={Math.round(quota.usage.memory_mb_used / 1024)} limit={Math.round(quota.limits.memory_mb / 1024)} unit=" GB" />
+            <QuotaBar label="VM 数" used={quota.usage.vm_count_used} limit={quota.limits.vm_count} unit=" 台" />
+            <QuotaBar label="ボリューム容量" used={quota.usage.volume_gb_used} limit={quota.limits.volume_gb} unit=" GB" />
           </div>
         </div>
       )}

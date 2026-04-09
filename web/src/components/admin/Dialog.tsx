@@ -8,9 +8,10 @@ interface DialogProps {
   title: string
   children: React.ReactNode
   className?: string
+  'data-testid'?: string
 }
 
-export function Dialog({ open, onClose, title, children, className }: DialogProps) {
+export function Dialog({ open, onClose, title, children, className, 'data-testid': testId }: DialogProps) {
   const overlayRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -33,6 +34,7 @@ export function Dialog({ open, onClose, title, children, className }: DialogProp
       }}
     >
       <div
+        data-testid={testId}
         className={cn(
           'bg-white rounded-xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-auto',
           className,
@@ -62,6 +64,8 @@ interface ConfirmDialogProps {
   description: string
   confirmLabel?: string
   loading?: boolean
+  'data-testid'?: string
+  confirmButtonTestId?: string
 }
 
 export function ConfirmDialog({
@@ -72,15 +76,17 @@ export function ConfirmDialog({
   description,
   confirmLabel = '削除',
   loading = false,
+  'data-testid': testId,
+  confirmButtonTestId,
 }: ConfirmDialogProps) {
   return (
-    <Dialog open={open} onClose={onClose} title={title}>
+    <Dialog open={open} onClose={onClose} title={title} data-testid={testId}>
       <p className="text-sm text-[var(--color-text-secondary)] mb-5">{description}</p>
       <div className="flex justify-end gap-2">
         <Button variant="secondary" size="sm" onClick={onClose} disabled={loading}>
           キャンセル
         </Button>
-        <Button variant="danger" size="sm" onClick={onConfirm} disabled={loading}>
+        <Button variant="danger" size="sm" onClick={onConfirm} disabled={loading} data-testid={confirmButtonTestId}>
           {loading ? '処理中...' : confirmLabel}
         </Button>
       </div>

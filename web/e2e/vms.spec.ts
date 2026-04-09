@@ -12,25 +12,25 @@ test.describe('VM 管理フロー', () => {
     await page.route('/api/v1/**', async (route) => {
       const url = route.request().url()
       if (url.includes('/vms') && route.request().method() === 'GET') {
-        await route.fulfill({ status: 200, json: [] })
+        await route.fulfill({ status: 200, json: { items: [], next_cursor: '' } })
       } else if (url.includes('/flavors')) {
         await route.fulfill({
           status: 200,
-          json: [
-            { id: 'flavor-1', name: 'm1.small', vcpu: 1, memory_mb: 1024, disk_gb: 10 },
-          ],
+          json: { items: [
+            { id: 'flavor-1', name: 'm1.small', vcpus: 1, ram_mb: 1024, disk_gb: 10 },
+          ], next_cursor: '' },
         })
       } else if (url.includes('/networks')) {
         await route.fulfill({
           status: 200,
-          json: [
+          json: { items: [
             { id: 'net-1', name: 'default', cidr: '10.0.0.0/24', status: 'active', created_at: '2024-01-01T00:00:00Z' },
-          ],
+          ], next_cursor: '' },
         })
       } else if (url.includes('/volume-types')) {
         await route.fulfill({ status: 200, json: [] })
       } else {
-        await route.fulfill({ status: 200, json: [] })
+        await route.fulfill({ status: 200, json: { items: [], next_cursor: '' } })
       }
     })
   })

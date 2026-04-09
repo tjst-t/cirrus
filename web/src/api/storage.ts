@@ -2,16 +2,33 @@ import { api } from './client'
 
 export interface StorageBackend {
   id: string
+  storage_domain_id: string
   name: string
-  type: string
-  config: Record<string, unknown>
+  driver: string
+  endpoint: string
+  total_capacity_gb: number
+  total_iops: number
+  capabilities: string[] | null
+  driver_config: Record<string, unknown>
+  state: string
   created_at: string
+  updated_at: string
 }
 
 export interface CreateStorageBackendRequest {
+  storage_domain_id: string
   name: string
-  type: string
-  config: Record<string, unknown>
+  driver: string
+  endpoint: string
+  total_capacity_gb?: number
+  total_iops?: number
+  driver_config?: Record<string, unknown>
+}
+
+export interface StorageDomain {
+  id: string
+  name: string
+  created_at: string
 }
 
 export interface AdminVolumeType {
@@ -30,7 +47,7 @@ export interface AdminFlavor {
   id: string
   name: string
   vcpus: number
-  memory_mb: number
+  ram_mb: number
   disk_gb: number
   created_at: string
 }
@@ -38,11 +55,13 @@ export interface AdminFlavor {
 export interface CreateFlavorRequest {
   name: string
   vcpus: number
-  memory_mb: number
+  ram_mb: number
   disk_gb: number
 }
 
 export const storageApi = {
+  listDomains: () => api.get<StorageDomain[]>('/storage-domains'),
+
   listBackends: () => api.get<StorageBackend[]>('/admin/storage-backends'),
   createBackend: (data: CreateStorageBackendRequest) =>
     api.post<StorageBackend>('/admin/storage-backends', data),

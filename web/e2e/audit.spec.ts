@@ -93,27 +93,25 @@ test.describe('テスト 2: ヘッダー・テナント選択', () => {
     })
 
     const errors = collectErrors(page)
-    // ダッシュボードはクラッシュするため /vms にリダイレクト後に確認
-    await page.goto(`${BASE_URL}/login`)
-    // ログインしてダッシュボードへ（/にリダイレクト）
-    await page.fill('input#token', 'dev-token')
-    await page.click('button[type="submit"]')
-    await page.waitForURL(`${BASE_URL}/`, { timeout: 10000 })
-    // ダッシュボードがクラッシュするため /vms に移動
     await page.goto(`${BASE_URL}/vms`)
     await page.waitForLoadState('networkidle')
 
-    const tenantBtn = page.locator('header').locator('button').filter({ hasText: /テナントを選択/ })
-    await expect(tenantBtn).toBeVisible({ timeout: 10000 })
-    await tenantBtn.click()
-    await page.waitForTimeout(500)
+    // テナントが1件のみの場合は自動選択されるため、「テナントを選択」または「test-tenant」どちらかが表示される
+    const switcherBtn = page.locator('header').locator('button[data-testid="tenant-switcher"]')
+    await expect(switcherBtn).toBeVisible({ timeout: 10000 })
 
-    const testTenantItem = page.locator('button', { hasText: 'test-tenant' })
-    await expect(testTenantItem).toBeVisible({ timeout: 5000 })
-    await testTenantItem.click()
-    await page.waitForTimeout(500)
+    const btnText = await switcherBtn.textContent()
+    if (btnText && btnText.includes('テナントを選択')) {
+      // 手動選択が必要なケース
+      await switcherBtn.click()
+      await page.waitForTimeout(500)
+      const testTenantItem = page.locator('button', { hasText: 'test-tenant' })
+      await expect(testTenantItem).toBeVisible({ timeout: 5000 })
+      await testTenantItem.click()
+      await page.waitForTimeout(500)
+    }
 
-    // ボタンテキストが test-tenant に変わる
+    // いずれの場合も最終的に test-tenant が選択されていること
     await expect(page.locator('header').locator('button').filter({ hasText: 'test-tenant' })).toBeVisible({ timeout: 5000 })
     if (errors.length > 0) console.log('コンソールエラー:', errors)
   })
@@ -706,12 +704,12 @@ test.describe('テスト 13: 管理者 - Drift Event', () => {
     if (errors.length > 0) console.log('コンソールエラー:', errors)
   })
 
-  test('「このページは準備中です」が表示される', async ({ page }) => {
+  test('「Drift Event ビューア」ページが表示される', async ({ page }) => {
     const errors = collectErrors(page)
     await page.goto(`${BASE_URL}/admin/drift-events`)
     await page.waitForLoadState('networkidle')
 
-    await expect(page.getByText('このページは準備中です')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('heading', { name: 'Drift Event ビューア' })).toBeVisible({ timeout: 10000 })
     if (errors.length > 0) console.log('コンソールエラー:', errors)
   })
 })

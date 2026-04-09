@@ -28,29 +28,29 @@ type ResourceDelta struct {
 
 // Usage is the current committed usage for a tenant.
 type Usage struct {
-	TenantID       uuid.UUID
-	VcpusUsed      int
-	RAMMBUsed      int
-	VolumeGBUsed   int
-	VMsCount       int
-	VolumesCount   int
-	SnapshotsCount int
-	NetworksCount  int
-	EgressesCount  int
-	IngressesCount int
+	TenantID       uuid.UUID `json:"tenant_id"`
+	VcpusUsed      int       `json:"vcpus_used"`
+	RAMMBUsed      int       `json:"memory_mb_used"`
+	VolumeGBUsed   int       `json:"volume_gb_used"`
+	VMsCount       int       `json:"vm_count_used"`
+	VolumesCount   int       `json:"volumes_used"`
+	SnapshotsCount int       `json:"snapshots_used"`
+	NetworksCount  int       `json:"networks_used"`
+	EgressesCount  int       `json:"egresses_used"`
+	IngressesCount int       `json:"ingresses_used"`
 }
 
 // Limits holds the quota limits for a tenant or org.
 type Limits struct {
-	Vcpus     int
-	RAMMB     int
-	VolumeGB  int
-	VMs       int
-	Volumes   int
-	Snapshots int
-	Networks  int
-	Egresses  int
-	Ingresses int
+	Vcpus     int `json:"vcpus"`
+	RAMMB     int `json:"memory_mb"`
+	VolumeGB  int `json:"volume_gb"`
+	VMs       int `json:"vm_count"`
+	Volumes   int `json:"volumes"`
+	Snapshots int `json:"snapshots"`
+	Networks  int `json:"networks"`
+	Egresses  int `json:"egresses"`
+	Ingresses int `json:"ingresses"`
 }
 
 // ErrQuotaExceeded is returned when a Check or Reserve operation would exceed a limit.

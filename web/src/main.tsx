@@ -11,6 +11,7 @@ import { HostsPage } from './pages/admin/HostsPage'
 import { StoragePage } from './pages/admin/StoragePage'
 import { QuotasPage } from './pages/admin/QuotasPage'
 import { DriftEventsPage } from './pages/admin/DriftEventsPage'
+import { NetworkInfraPage } from './pages/admin/NetworkInfraPage'
 import { TenantLayout } from './components/tenant/TenantLayout'
 import { DashboardPage } from './pages/tenant/DashboardPage'
 import { VmsPage } from './pages/tenant/VmsPage'
@@ -43,6 +44,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="organizations" element={<OrganizationsPage />} />
             <Route path="hosts" element={<HostsPage />} />
             <Route path="storage" element={<StoragePage />} />
+            <Route path="network" element={<NetworkInfraPage />} />
             <Route path="quotas" element={<QuotasPage />} />
             <Route path="drift-events" element={<DriftEventsPage />} />
           </Route>

@@ -56,6 +56,10 @@ func (h *networkHandlers) createNetwork(w http.ResponseWriter, r *http.Request) 
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "network with this name already exists in tenant"})
 			return
 		}
+		if errors.Is(err, network.ErrNotFound) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid tenant"})
+			return
+		}
 		if errQuotaExceeded(err) {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
 			return

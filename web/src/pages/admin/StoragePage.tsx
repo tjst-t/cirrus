@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   storageApi,
   type StorageBackend,
+  type StorageDomain,
   type AdminVolumeType,
   type AdminFlavor,
   type CreateStorageBackendRequest,
@@ -12,33 +13,13 @@ import { Button } from '@/components/Button'
 import { Input } from '@/components/Input'
 import { Dialog, ConfirmDialog } from '@/components/admin/Dialog'
 import { ErrorMessage } from '@/components/admin/ErrorMessage'
-
-// ---- Section wrapper --------------------------------------------------------
-
-function Section({
-  title,
-  action,
-  children,
-}: {
-  title: string
-  action?: React.ReactNode
-  children: React.ReactNode
-}) {
-  return (
-    <div className="rounded-lg border border-[var(--color-border)] bg-white overflow-hidden mb-6">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
-        <h2 className="font-semibold text-[var(--color-text)]">{title}</h2>
-        {action}
-      </div>
-      <div className="p-5">{children}</div>
-    </div>
-  )
-}
+import { Section } from '@/components/admin/Section'
 
 // ---- Storage Backends -------------------------------------------------------
 
 function StorageBackendsSection() {
   const [backends, setBackends] = useState<StorageBackend[]>([])
+  const [domains, setDomains] = useState<StorageDomain[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
@@ -46,19 +27,19 @@ function StorageBackendsSection() {
   const [deleteTarget, setDeleteTarget] = useState<StorageBackend | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [form, setForm] = useState<CreateStorageBackendRequest>({
+    storage_domain_id: '',
     name: '',
-    type: 'ceph',
-    config: {},
+    driver: 'ceph',
+    endpoint: '',
   })
-  const [configRaw, setConfigRaw] = useState('{}')
+  const [driverConfigRaw, setDriverConfigRaw] = useState('{}')
   const [configError, setConfigError] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
     setError(null)
-    storageApi
-      .listBackends()
-      .then(setBackends)
+    Promise.all([storageApi.listBackends(), storageApi.listDomains()])
+      .then(([b, d]) => { setBackends(b); setDomains(d) })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }, [])
@@ -66,21 +47,22 @@ function StorageBackendsSection() {
   useEffect(() => { load() }, [load])
 
   const handleCreate = () => {
-    let config: Record<string, unknown>
+    if (!form.name.trim() || !form.storage_domain_id || !form.endpoint.trim()) return
+    let driver_config: Record<string, unknown>
     try {
-      config = JSON.parse(configRaw) as Record<string, unknown>
+      driver_config = JSON.parse(driverConfigRaw) as Record<string, unknown>
       setConfigError(null)
     } catch {
-      setConfigError('設定は JSON 形式で入力してください')
+      setConfigError('Driver Config は JSON 形式で入力してください')
       return
     }
     setCreating(true)
     storageApi
-      .createBackend({ ...form, config })
+      .createBackend({ ...form, driver_config })
       .then(() => {
         setShowCreate(false)
-        setForm({ name: '', type: 'ceph', config: {} })
-        setConfigRaw('{}')
+        setForm({ storage_domain_id: '', name: '', driver: 'ceph', endpoint: '' })
+        setDriverConfigRaw('{}')
         load()
       })
       .catch((e: Error) => setError(e.message))
@@ -100,7 +82,7 @@ function StorageBackendsSection() {
   return (
     <Section
       title="Storage Backend"
-      action={<Button size="sm" onClick={() => setShowCreate(true)}>+ 追加</Button>}
+      action={<Button data-testid="create-backend-button" size="sm" onClick={() => setShowCreate(true)}>+ 追加</Button>}
     >
       {error && <div className="mb-3"><ErrorMessage message={error} /></div>}
       {loading ? (
@@ -119,12 +101,12 @@ function StorageBackendsSection() {
           </thead>
           <tbody>
             {backends.map((b) => (
-              <tr key={b.id} className="border-b border-[var(--color-border)] last:border-0">
+              <tr key={b.id} data-testid={`backend-row-${b.id}`} className="border-b border-[var(--color-border)] last:border-0">
                 <td className="py-2.5 font-medium">{b.name}</td>
-                <td className="py-2.5 text-[var(--color-text-secondary)]">{b.type}</td>
+                <td className="py-2.5 text-[var(--color-text-secondary)]">{b.driver}</td>
                 <td className="py-2.5 font-mono text-xs text-[var(--color-text-secondary)]">{b.id}</td>
                 <td className="py-2.5 text-right">
-                  <Button variant="danger" size="sm" onClick={() => setDeleteTarget(b)}>削除</Button>
+                  <Button data-testid={`delete-backend-button-${b.id}`} variant="danger" size="sm" onClick={() => setDeleteTarget(b)}>削除</Button>
                 </td>
               </tr>
             ))}
@@ -132,35 +114,51 @@ function StorageBackendsSection() {
         </table>
       )}
 
-      <Dialog open={showCreate} onClose={() => setShowCreate(false)} title="Storage Backend 作成">
+      <Dialog open={showCreate} onClose={() => setShowCreate(false)} title="Storage Backend 作成" data-testid="create-backend-dialog">
         <div className="flex flex-col gap-3">
           <div>
-            <label htmlFor="backend-name" className="block text-sm font-medium mb-1">名前</label>
-            <Input id="backend-name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="ceph-01" />
+            <label htmlFor="backend-domain" className="block text-sm font-medium mb-1">Storage Domain</label>
+            <select
+              id="backend-domain"
+              value={form.storage_domain_id}
+              onChange={(e) => setForm((f) => ({ ...f, storage_domain_id: e.target.value }))}
+              className="flex h-9 w-full rounded border border-[var(--color-border)] bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              <option value="">選択してください</option>
+              {domains.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
           </div>
           <div>
-            <label htmlFor="backend-type" className="block text-sm font-medium mb-1">タイプ</label>
+            <label htmlFor="backend-name" className="block text-sm font-medium mb-1">名前</label>
+            <Input id="backend-name" data-testid="backend-name-input" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="ceph-01" />
+          </div>
+          <div>
+            <label htmlFor="backend-driver" className="block text-sm font-medium mb-1">Driver</label>
             <select
-              id="backend-type"
-              value={form.type}
-              onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
+              id="backend-driver"
+              value={form.driver}
+              onChange={(e) => setForm((f) => ({ ...f, driver: e.target.value }))}
               className="flex h-9 w-full rounded border border-[var(--color-border)] bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
               <option value="ceph">ceph</option>
+              <option value="sim">sim</option>
               <option value="nfs">nfs</option>
-              <option value="local">local</option>
               <option value="lvm">lvm</option>
             </select>
           </div>
           <div>
-            <label htmlFor="backend-config" className="block text-sm font-medium mb-1">設定 (JSON)</label>
+            <label htmlFor="backend-endpoint" className="block text-sm font-medium mb-1">Endpoint</label>
+            <Input id="backend-endpoint" value={form.endpoint} onChange={(e) => setForm((f) => ({ ...f, endpoint: e.target.value }))} placeholder="ceph://mon1:6789/pool" />
+          </div>
+          <div>
+            <label htmlFor="backend-driver-config" className="block text-sm font-medium mb-1">Driver Config (JSON)</label>
             <textarea
-              id="backend-config"
-              value={configRaw}
-              onChange={(e) => setConfigRaw(e.target.value)}
-              rows={4}
+              id="backend-driver-config"
+              value={driverConfigRaw}
+              onChange={(e) => setDriverConfigRaw(e.target.value)}
+              rows={3}
               className="w-full rounded border border-[var(--color-border)] px-3 py-2 text-sm font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-              placeholder='{"monitors": "10.0.0.1"}'
+              placeholder='{}'
             />
             {configError && <p className="text-xs text-[var(--color-danger)] mt-1">{configError}</p>}
           </div>
@@ -178,6 +176,8 @@ function StorageBackendsSection() {
         title="Storage Backend 削除"
         description={`"${deleteTarget?.name}" を削除しますか？`}
         loading={deleting}
+        data-testid="confirm-delete-dialog"
+        confirmButtonTestId="confirm-delete-button"
       />
     </Section>
   )
@@ -240,11 +240,11 @@ function VolumeTypesSection({ backends }: { backends: StorageBackend[] }) {
           </thead>
           <tbody>
             {types.map((t) => (
-              <tr key={t.id} className="border-b border-[var(--color-border)] last:border-0">
+              <tr key={t.id} data-testid={`volume-type-row-${t.id}`} className="border-b border-[var(--color-border)] last:border-0">
                 <td className="py-2.5 font-medium">{t.name}</td>
                 <td className="py-2.5 text-[var(--color-text-secondary)]">{backendName(t.backend_id)}</td>
                 <td className="py-2.5 text-right">
-                  <Button variant="danger" size="sm" onClick={() => setDeleteTarget(t)}>削除</Button>
+                  <Button data-testid={`delete-volume-type-button-${t.id}`} variant="danger" size="sm" onClick={() => setDeleteTarget(t)}>削除</Button>
                 </td>
               </tr>
             ))}
@@ -284,6 +284,8 @@ function VolumeTypesSection({ backends }: { backends: StorageBackend[] }) {
         title="Volume Type 削除"
         description={`"${deleteTarget?.name}" を削除しますか？`}
         loading={deleting}
+        data-testid="confirm-delete-dialog"
+        confirmButtonTestId="confirm-delete-button"
       />
     </Section>
   )
@@ -299,7 +301,7 @@ function FlavorsSection() {
   const [creating, setCreating] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<AdminFlavor | null>(null)
   const [deleting, setDeleting] = useState(false)
-  const [form, setForm] = useState<CreateFlavorRequest>({ name: '', vcpus: 1, memory_mb: 1024, disk_gb: 20 })
+  const [form, setForm] = useState<CreateFlavorRequest>({ name: '', vcpus: 1, ram_mb: 1024, disk_gb: 20 })
 
   const load = useCallback(() => {
     setLoading(true)
@@ -312,7 +314,7 @@ function FlavorsSection() {
   const handleCreate = () => {
     if (!form.name.trim()) return
     setCreating(true)
-    storageApi.createFlavor(form).then(() => { setShowCreate(false); setForm({ name: '', vcpus: 1, memory_mb: 1024, disk_gb: 20 }); load() })
+    storageApi.createFlavor(form).then(() => { setShowCreate(false); setForm({ name: '', vcpus: 1, ram_mb: 1024, disk_gb: 20 }); load() })
       .catch((e: Error) => setError(e.message)).finally(() => setCreating(false))
   }
 
@@ -326,7 +328,7 @@ function FlavorsSection() {
   return (
     <Section
       title="Flavor"
-      action={<Button size="sm" onClick={() => setShowCreate(true)}>+ 追加</Button>}
+      action={<Button data-testid="create-flavor-button" size="sm" onClick={() => setShowCreate(true)}>+ 追加</Button>}
     >
       {error && <div className="mb-3"><ErrorMessage message={error} /></div>}
       {loading ? (
@@ -346,13 +348,13 @@ function FlavorsSection() {
           </thead>
           <tbody>
             {flavors.map((f) => (
-              <tr key={f.id} className="border-b border-[var(--color-border)] last:border-0">
+              <tr key={f.id} data-testid={`flavor-row-${f.id}`} className="border-b border-[var(--color-border)] last:border-0">
                 <td className="py-2.5 font-medium">{f.name}</td>
                 <td className="py-2.5 text-[var(--color-text-secondary)]">{f.vcpus}</td>
-                <td className="py-2.5 text-[var(--color-text-secondary)]">{(f.memory_mb / 1024).toFixed(1)}</td>
+                <td className="py-2.5 text-[var(--color-text-secondary)]">{(f.ram_mb / 1024).toFixed(1)}</td>
                 <td className="py-2.5 text-[var(--color-text-secondary)]">{f.disk_gb}</td>
                 <td className="py-2.5 text-right">
-                  <Button variant="danger" size="sm" onClick={() => setDeleteTarget(f)}>削除</Button>
+                  <Button data-testid={`delete-flavor-button-${f.id}`} variant="danger" size="sm" onClick={() => setDeleteTarget(f)}>削除</Button>
                 </td>
               </tr>
             ))}
@@ -360,29 +362,29 @@ function FlavorsSection() {
         </table>
       )}
 
-      <Dialog open={showCreate} onClose={() => setShowCreate(false)} title="Flavor 作成">
+      <Dialog open={showCreate} onClose={() => setShowCreate(false)} title="Flavor 作成" data-testid="create-flavor-dialog">
         <div className="flex flex-col gap-3">
           <div>
             <label htmlFor="flavor-name" className="block text-sm font-medium mb-1">名前</label>
-            <Input id="flavor-name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="standard.small" />
+            <Input id="flavor-name" data-testid="flavor-name-input" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="standard.small" />
           </div>
           <div className="flex gap-3">
             <div className="flex-1">
               <label htmlFor="flavor-vcpus" className="block text-sm font-medium mb-1">vCPU</label>
-              <Input id="flavor-vcpus" type="number" min={1} value={form.vcpus} onChange={(e) => setForm((f) => ({ ...f, vcpus: parseInt(e.target.value, 10) || 1 }))} />
+              <Input id="flavor-vcpus" data-testid="flavor-vcpus-input" type="number" min={1} value={form.vcpus} onChange={(e) => setForm((f) => ({ ...f, vcpus: parseInt(e.target.value, 10) || 1 }))} />
             </div>
             <div className="flex-1">
               <label htmlFor="flavor-memory" className="block text-sm font-medium mb-1">メモリ (MB)</label>
-              <Input id="flavor-memory" type="number" min={128} value={form.memory_mb} onChange={(e) => setForm((f) => ({ ...f, memory_mb: parseInt(e.target.value, 10) || 1024 }))} />
+              <Input id="flavor-memory" data-testid="flavor-memory-input" type="number" min={128} value={form.ram_mb} onChange={(e) => setForm((f) => ({ ...f, ram_mb: parseInt(e.target.value, 10) || 1024 }))} />
             </div>
             <div className="flex-1">
               <label htmlFor="flavor-disk" className="block text-sm font-medium mb-1">ディスク (GB)</label>
-              <Input id="flavor-disk" type="number" min={1} value={form.disk_gb} onChange={(e) => setForm((f) => ({ ...f, disk_gb: parseInt(e.target.value, 10) || 20 }))} />
+              <Input id="flavor-disk" data-testid="flavor-disk-input" type="number" min={1} value={form.disk_gb} onChange={(e) => setForm((f) => ({ ...f, disk_gb: parseInt(e.target.value, 10) || 20 }))} />
             </div>
           </div>
           <div className="flex justify-end gap-2 mt-1">
             <Button variant="secondary" size="sm" onClick={() => setShowCreate(false)} disabled={creating}>キャンセル</Button>
-            <Button size="sm" onClick={handleCreate} disabled={creating}>{creating ? '作成中...' : '作成'}</Button>
+            <Button data-testid="create-flavor-submit" size="sm" onClick={handleCreate} disabled={creating}>{creating ? '作成中...' : '作成'}</Button>
           </div>
         </div>
       </Dialog>
@@ -394,6 +396,8 @@ function FlavorsSection() {
         title="Flavor 削除"
         description={`"${deleteTarget?.name}" を削除しますか？`}
         loading={deleting}
+        data-testid="confirm-delete-dialog"
+        confirmButtonTestId="confirm-delete-button"
       />
     </Section>
   )

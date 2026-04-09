@@ -123,6 +123,18 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 - 本番: `web/dist/` を controller の chi FileServer で配信（単一プロセス）
 - **WebUI でできることはすべて REST API でも実行可能**（API ファースト原則）
 
+**管理者 UI** (`/admin/*`):
+- 組織・テナント・ロール割り当て管理（OrganizationsPage）
+- ホスト管理・状態遷移（HostsPage）
+- ストレージ Backend / Volume Type / Flavor 管理（StoragePage）
+- ゲートウェイノード・IP プール管理（NetworkInfraPage）
+- テナント別 Quota 設定（QuotasPage）
+- Drift Event ビューア・解決操作（DriftEventsPage）
+
+**テナント UI** (`/`):
+- ダッシュボード（Quota 使用量・VM 一覧）
+- VM / ネットワーク / ボリューム / Egress / Ingress 管理
+
 ### CLI (`cmd/cirrusctl/`, `internal/client/`)
 
 - cobra ベース。利用者向けトップレベル + `admin` サブコマンドで管理者向けを分離

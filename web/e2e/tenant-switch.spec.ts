@@ -9,11 +9,25 @@ const TENANTS = [
 
 // GET /api/v1/me/tenants returns paginated format: { items: [...], next_cursor: "" }
 const MY_TENANTS_RESPONSE = { items: TENANTS, next_cursor: '' };
+const EMPTY_PAGED = { items: [], next_cursor: '' };
 
 test.beforeEach(async ({ page }) => {
-  // ログイン済み状態を模擬
+  // ログイン済み状態を模擬（正しいキー名を使用）
   await page.addInitScript(() => {
-    localStorage.setItem('auth_token', 'valid-token');
+    localStorage.setItem('cirrus_token', 'valid-token');
+  });
+
+  // フォールバックモック: 未モックのルートを適切な空の応答で処理
+  await page.route('/api/v1/**', async (route) => {
+    const url = route.request().url();
+    if (url.includes('/quota')) {
+      await route.fulfill({ status: 200, json: {
+        limits: { vcpus: 10, memory_mb: 10240, vm_count: 10, volume_gb: 100, volumes: 10, snapshots: 10, networks: 5, egresses: 5, ingresses: 5 },
+        usage: { vcpus_used: 0, memory_mb_used: 0, vm_count_used: 0, volume_gb_used: 0, volumes_used: 0, snapshots_used: 0, networks_used: 0, egresses_used: 0, ingresses_used: 0 },
+      }});
+    } else {
+      await route.fulfill({ status: 200, json: EMPTY_PAGED });
+    }
   });
 });
 
@@ -56,7 +70,7 @@ test('テナント切り替え: 別テナントを選択するとページがリ
     route.fulfill({ json: MY_TENANTS_RESPONSE })
   );
   await page.addInitScript(() => {
-    localStorage.setItem('selected_tenant_id', 'tenant-1');
+    localStorage.setItem('cirrus_tenant_id', 'tenant-1');
   });
   await page.goto('/');
 
@@ -68,7 +82,7 @@ test('テナント切り替え: 別テナントを選択するとページがリ
 
   await page.waitForLoadState('load');
   expect(reloaded).toBe(true);
-  expect(await page.evaluate(() => localStorage.getItem('selected_tenant_id'))).toBe('tenant-2');
+  expect(await page.evaluate(() => localStorage.getItem('cirrus_tenant_id'))).toBe('tenant-2');
 });
 
 test('テナント切り替え: リロード後に「切り替えました」トーストが表示される', async ({ page }) => {
@@ -77,7 +91,7 @@ test('テナント切り替え: リロード後に「切り替えました」ト
   );
   // テナント切り替え後のリロードを模擬（切り替えフラグを sessionStorage に保持）
   await page.addInitScript(() => {
-    localStorage.setItem('selected_tenant_id', 'tenant-2');
+    localStorage.setItem('cirrus_tenant_id', 'tenant-2');
     sessionStorage.setItem('tenant_just_switched', 'true');
   });
   await page.goto('/');
@@ -90,7 +104,7 @@ test('テナント切り替え: 現在選択中のテナント名がヘッダー
     route.fulfill({ json: MY_TENANTS_RESPONSE })
   );
   await page.addInitScript(() => {
-    localStorage.setItem('selected_tenant_id', 'tenant-1');
+    localStorage.setItem('cirrus_tenant_id', 'tenant-1');
   });
   await page.goto('/');
   await expect(page.getByTestId('tenant-switcher-label')).toHaveText('テナントA');
