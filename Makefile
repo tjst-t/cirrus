@@ -323,14 +323,23 @@ _seed-topology:
 _activate-hosts:
 	@bash -c '\
 	  set -a; source $(PORTMAN_ENV); set +a; \
-	  echo "==> Waiting for workers to register..."; \
-	  sleep 5; \
-	  echo "==> Activating all registered hosts..."; \
+	  echo "==> Waiting for workers to register (up to 60s)..."; \
 	  TOKEN="$(firstword $(subst =, ,$(AUTH_TOKENS)))"; \
+	  for i in $$(seq 1 30); do \
+	    REG=$$(curl -sf -H "Authorization: Bearer $$TOKEN" \
+	      "http://localhost:$$API_PORT/api/v1/hosts?state=registering" 2>/dev/null | jq length 2>/dev/null || echo 0); \
+	    ACT=$$(curl -sf -H "Authorization: Bearer $$TOKEN" \
+	      "http://localhost:$$API_PORT/api/v1/hosts?state=active" 2>/dev/null | jq length 2>/dev/null || echo 0); \
+	    [ "$$REG" -ge 1 ] && break; \
+	    [ "$$ACT" -ge 1 ] && { echo "    Hosts already active, skipping wait."; break; }; \
+	    sleep 2; \
+	  done; \
+	  echo "==> Activating all registered hosts..."; \
 	  HOSTS=$$(curl -sf -H "Authorization: Bearer $$TOKEN" \
 	    "http://localhost:$$API_PORT/api/v1/hosts?state=registering"); \
 	  HOST_COUNT=$$(echo "$$HOSTS" | jq length 2>/dev/null || echo 0); \
-	  SD_ID=$$(curl -sf -H "Authorization: Bearer $$TOKEN" http://localhost:$$API_PORT/api/v1/storage-domains | jq -r ".[0].id"); \
+	  SD_ID=$$(curl -sf -H "Authorization: Bearer $$TOKEN" \
+	    "http://localhost:$$API_PORT/api/v1/storage-domains" | jq -r ".items[0].id // .[0].id // empty"); \
 	  for i in $$(seq 0 $$((HOST_COUNT - 1))); do \
 	    HOST_UUID=$$(echo "$$HOSTS" | jq -r ".[$${i}].id"); \
 	    curl -sf -X POST \
@@ -338,11 +347,13 @@ _activate-hosts:
 	      -H "Content-Type: application/json" \
 	      -d "{\"action\":\"activate\"}" \
 	      http://localhost:$$API_PORT/api/v1/hosts/$$HOST_UUID/actions >/dev/null 2>&1 || true; \
-	    curl -sf -X POST \
-	      -H "Authorization: Bearer $$TOKEN" \
-	      -H "Content-Type: application/json" \
-	      -d "{\"storage_domain_id\":\"$$SD_ID\"}" \
-	      http://localhost:$$API_PORT/api/v1/hosts/$$HOST_UUID/storage-domains >/dev/null 2>&1 || true; \
+	    if [ -n "$$SD_ID" ] && [ "$$SD_ID" != "null" ]; then \
+	      curl -sf -X POST \
+	        -H "Authorization: Bearer $$TOKEN" \
+	        -H "Content-Type: application/json" \
+	        -d "{\"storage_domain_id\":\"$$SD_ID\"}" \
+	        http://localhost:$$API_PORT/api/v1/hosts/$$HOST_UUID/storage-domains >/dev/null 2>&1 || true; \
+	    fi; \
 	  done; \
 	  echo "    Activated $$HOST_COUNT hosts and associated with default-sd"'
 

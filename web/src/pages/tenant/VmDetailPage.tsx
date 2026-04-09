@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { vmsApi, type VmDetail, type VmAction } from '@/api/vms'
+import { vmsApi, type VmDetail, type VmAction, type Flavor } from '@/api/vms'
 import { Button } from '@/components/Button'
 import { ErrorMessage } from '@/components/ErrorMessage'
 import { VmStatusBadge } from '@/components/tenant/VmStatusBadge'
@@ -18,6 +18,7 @@ export function VmDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [vm, setVm] = useState<VmDetail | null>(null)
+  const [flavor, setFlavor] = useState<Flavor | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<VmAction | null>(null)
@@ -27,7 +28,15 @@ export function VmDetailPage() {
     if (!id) return
     setLoading(true)
     vmsApi.get(id)
-      .then(setVm)
+      .then((v) => {
+        setVm(v)
+        // Fetch flavor details to display vCPU/memory
+        if (v.flavor_id) {
+          vmsApi.listFlavors()
+            .then((flavors) => setFlavor(flavors.find(f => f.id === v.flavor_id) ?? null))
+            .catch(() => { /* flavor display is optional */ })
+        }
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }, [id])
@@ -129,21 +138,28 @@ export function VmDetailPage() {
           <DetailRow label="ID" value={<span className="font-mono text-xs">{vm.id}</span>} />
           <DetailRow label="名前" value={vm.name} />
           <DetailRow label="状態" value={<VmStatusBadge status={vm.status} />} />
-          <DetailRow
-            label="vCPU"
-            value={`${vm.vcpu} コア`}
-          />
-          <DetailRow
-            label="メモリ"
-            value={`${Math.round(vm.memory_mb / 1024)} GB`}
-          />
+          {vm.error_message && (
+            <DetailRow
+              label="エラー詳細"
+              value={<span className="text-danger text-xs">{vm.error_message}</span>}
+            />
+          )}
+          {flavor ? (
+            <>
+              <DetailRow label="Flavor" value={flavor.name} />
+              <DetailRow label="vCPU" value={`${flavor.vcpus} コア`} />
+              <DetailRow label="メモリ" value={`${Math.round(flavor.ram_mb / 1024)} GB`} />
+            </>
+          ) : vm.flavor_id ? (
+            <DetailRow label="Flavor ID" value={<span className="font-mono text-xs">{vm.flavor_id}</span>} />
+          ) : null}
           <DetailRow
             label="IPアドレス"
             value={vm.ip_address ? <span className="font-mono">{vm.ip_address}</span> : '—'}
           />
           <DetailRow
             label="ネットワーク"
-            value={vm.network_name ?? <span className="font-mono text-xs">{vm.network_id}</span>}
+            value={vm.network_id ? <span className="font-mono text-xs">{vm.network_id}</span> : '—'}
           />
           {vm.host_id && (
             <DetailRow

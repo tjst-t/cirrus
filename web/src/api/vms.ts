@@ -6,19 +6,15 @@ export interface Vm {
   id: string
   name: string
   status: VmStatus
-  flavor_id: string
-  flavor_name?: string
-  network_id: string
-  network_name?: string
+  flavor_id?: string
+  network_id?: string
   ip_address?: string
-  vcpu: number
-  memory_mb: number
   created_at: string
 }
 
 export interface VmDetail extends Vm {
-  volume_ids?: string[]
   host_id?: string
+  error_message?: string
 }
 
 export interface CreateVmRequest {

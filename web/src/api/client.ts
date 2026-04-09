@@ -1,4 +1,4 @@
-import { logout, TOKEN_KEY, TENANT_ID_KEY } from '@/lib/auth'
+import { logout, clearTenantId, TOKEN_KEY, TENANT_ID_KEY } from '@/lib/auth'
 
 const BASE_URL = '/api/v1'
 
@@ -56,7 +56,18 @@ async function request<T>(
     } catch {
       errBody = await res.text()
     }
-    throw new ApiError(res.status, errBody)
+    // Use the API's error message if available
+    const apiMessage =
+      errBody !== null &&
+      typeof errBody === 'object' &&
+      'error' in (errBody as object)
+        ? (errBody as { error: string }).error
+        : undefined
+    // Clear stale tenant ID when the backend rejects it
+    if (res.status === 400 && apiMessage === 'invalid tenant') {
+      clearTenantId()
+    }
+    throw new ApiError(res.status, errBody, apiMessage)
   }
 
   if (res.status === 204) {

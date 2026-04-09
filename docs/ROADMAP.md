@@ -761,7 +761,7 @@ Phase 1 の全機能（Identity・Host・Network・Storage・Compute・Quota・E
 
 ---
 
-## Sprint S046: 管理者 UI [x]
+## Sprint S046: 管理者 UI [DONE]
 
 インフラ管理者・組織管理者が Phase 1 の全管理リソース（組織・テナント・ホスト・ストレージ・Quota・Drift Event・GW ノード・IP プール）を WebUI から操作できる。
 
