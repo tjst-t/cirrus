@@ -339,7 +339,7 @@ _activate-hosts:
 	    "http://localhost:$$API_PORT/api/v1/hosts?state=registering"); \
 	  HOST_COUNT=$$(echo "$$HOSTS" | jq length 2>/dev/null || echo 0); \
 	  SD_ID=$$(curl -sf -H "Authorization: Bearer $$TOKEN" \
-	    "http://localhost:$$API_PORT/api/v1/storage-domains" | jq -r ".items[0].id // .[0].id // empty"); \
+	    "http://localhost:$$API_PORT/api/v1/storage-domains" | jq -r ".[0].id // empty"); \
 	  for i in $$(seq 0 $$((HOST_COUNT - 1))); do \
 	    HOST_UUID=$$(echo "$$HOSTS" | jq -r ".[$${i}].id"); \
 	    curl -sf -X POST \
