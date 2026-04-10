@@ -7,9 +7,9 @@ const HOST_ACTIVE = {
   address: '192.168.1.10',
   operational_state: 'active' as const,
   capability: {},
-  resource_physical: {},
+  resource_physical: { vcpus: 32, memory_mb: 65536 },
   overcommit_ratios: {},
-  resource_used: {},
+  resource_used: { vcpus: 4, memory_mb: 8192 },
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-01T00:00:00Z',
 }
@@ -133,6 +133,25 @@ test.describe('S046-2: ホスト管理', () => {
     await expect(page.getByTestId(`host-status-${HOST_ACTIVE.id}`)).toContainText('ドレイン中')
   })
 
+  test('ホストのvCPUとメモリ使用量が正しく表示される', async ({ page }) => {
+    await authInit(page)
+    await page.route('**/api/v1/hosts', (route) => {
+      if (route.request().method() === 'GET') {
+        route.fulfill({ status: 200, json: { items: [HOST_ACTIVE], next_cursor: '' } })
+      } else {
+        route.continue()
+      }
+    })
+
+    await page.goto('/admin/hosts')
+    await expect(page.getByTestId(`host-row-${HOST_ACTIVE.id}`)).toBeVisible()
+    // vCPU: used/total = 4 / 32
+    const row = page.getByTestId(`host-row-${HOST_ACTIVE.id}`)
+    await expect(row).toContainText('4 / 32')
+    // Memory: used/total = 8192 MB → 8 GB used, 65536 MB → 64 GB total
+    await expect(row).toContainText('8 / 64 GB')
+  })
+
   test('retire 時に確認ダイアログが表示される', async ({ page }) => {
     await authInit(page)
     await page.route('**/api/v1/hosts', (route) => {
@@ -170,8 +189,6 @@ test.describe('S046-2: ホスト管理', () => {
 
     await page.getByTestId('host-name-input').fill('host-01')
     await page.getByTestId('host-address-input').fill('192.168.1.10')
-    await page.getByTestId('host-vcpus-input').fill('32')
-    await page.getByTestId('host-memory-input').fill('65536')
     await page.getByTestId('create-host-submit').click()
 
     await expect(page.getByTestId('create-host-dialog')).not.toBeVisible()
@@ -184,10 +201,9 @@ test.describe('S046-2: ホスト管理', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('S046-2: ストレージ管理', () => {
-  function mockStorage(page: import('@playwright/test').Page, opts: { backends?: typeof BACKEND_1[], volumeTypes?: typeof VOLTYPE_1[], flavors?: typeof FLAVOR_1[] } = {}) {
+  function mockStorage(page: import('@playwright/test').Page, opts: { backends?: typeof BACKEND_1[], volumeTypes?: typeof VOLTYPE_1[] } = {}) {
     const backends = opts.backends ?? [BACKEND_1]
     const volumeTypes = opts.volumeTypes ?? [VOLTYPE_1]
-    const flavors = opts.flavors ?? [FLAVOR_1]
 
     page.route('**/api/v1/storage-domains', (route) => {
       route.fulfill({ status: 200, json: [STORAGE_DOMAIN_1] })
@@ -229,27 +245,6 @@ test.describe('S046-2: ストレージ管理', () => {
         route.continue()
       }
     })
-    page.route('**/api/v1/flavors', (route) => {
-      if (route.request().method() === 'GET') {
-        route.fulfill({ status: 200, json: { items: flavors, next_cursor: '' } })
-      } else {
-        route.continue()
-      }
-    })
-    page.route('**/api/v1/admin/flavors', (route) => {
-      if (route.request().method() === 'POST') {
-        route.fulfill({ status: 201, json: FLAVOR_1 })
-      } else {
-        route.continue()
-      }
-    })
-    page.route('**/api/v1/admin/flavors/**', (route) => {
-      if (route.request().method() === 'DELETE') {
-        route.fulfill({ status: 204, body: '' })
-      } else {
-        route.continue()
-      }
-    })
   }
 
   test('ストレージ管理ページが表示される', async ({ page }) => {
@@ -259,24 +254,6 @@ test.describe('S046-2: ストレージ管理', () => {
     await page.goto('/admin/storage')
     await expect(page.getByTestId(`backend-row-${BACKEND_1.id}`)).toBeVisible()
     await expect(page.getByTestId(`volume-type-row-${VOLTYPE_1.id}`)).toBeVisible()
-    await expect(page.getByTestId(`flavor-row-${FLAVOR_1.id}`)).toBeVisible()
-  })
-
-  test('Flavor を作成できる', async ({ page }) => {
-    await authInit(page)
-    await mockStorage(page, { flavors: [] })
-
-    await page.goto('/admin/storage')
-    await page.getByTestId('create-flavor-button').click()
-    await expect(page.getByTestId('create-flavor-dialog')).toBeVisible()
-
-    await page.getByTestId('flavor-name-input').fill('m1.small')
-    await page.getByTestId('flavor-vcpus-input').fill('1')
-    await page.getByTestId('flavor-memory-input').fill('1024')
-    await page.getByTestId('flavor-disk-input').fill('20')
-    await page.getByTestId('create-flavor-submit').click()
-
-    await expect(page.getByTestId('create-flavor-dialog')).not.toBeVisible()
   })
 
   test('Storage Backend を削除するとリストから消える', async ({ page }) => {
@@ -302,9 +279,6 @@ test.describe('S046-2: ストレージ管理', () => {
     })
     await page.route('**/api/v1/volume-types', (route) => {
       route.fulfill({ status: 200, json: [] })
-    })
-    await page.route('**/api/v1/flavors', (route) => {
-      route.fulfill({ status: 200, json: { items: [], next_cursor: '' } })
     })
 
     await page.goto('/admin/storage')

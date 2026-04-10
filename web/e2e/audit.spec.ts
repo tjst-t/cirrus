@@ -649,10 +649,10 @@ test.describe('テスト 11: 管理者 - ストレージ管理', () => {
 
   test('Flavor 一覧が表示される（空でもクラッシュしない）', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/admin/storage`)
+    await page.goto(`${BASE_URL}/admin/compute`)
     await page.waitForLoadState('networkidle')
 
-    // Flavor セクションの見出しが表示される（strict mode対応: first() を使用）
+    // Flavor セクションの見出しが表示される（Flavorはコンピュート管理ページに移動）
     await expect(page.getByRole('heading', { name: 'Flavor' })).toBeVisible({ timeout: 10000 })
     const fatalErrors = errors.filter((e) => !e.includes('Warning'))
     if (fatalErrors.length > 0) console.log('コンソールエラー:', fatalErrors)

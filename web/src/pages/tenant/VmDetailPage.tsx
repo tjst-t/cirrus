@@ -122,6 +122,7 @@ export function VmDetailPage() {
             {actionLoading === 'reboot' ? '再起動中...' : '再起動'}
           </Button>
           <Button
+            data-testid="vm-delete-button"
             variant="danger"
             size="sm"
             onClick={() => setShowDeleteConfirm(true)}
@@ -141,13 +142,13 @@ export function VmDetailPage() {
           {vm.error_message && (
             <DetailRow
               label="エラー詳細"
-              value={<span className="text-danger text-xs">{vm.error_message}</span>}
+              value={<span data-testid="vm-error-message" className="text-danger text-xs">{vm.error_message}</span>}
             />
           )}
           {flavor ? (
             <>
-              <DetailRow label="Flavor" value={flavor.name} />
-              <DetailRow label="vCPU" value={`${flavor.vcpus} コア`} />
+              <DetailRow label="Flavor" value={<span data-testid="vm-flavor-name">{flavor.name}</span>} />
+              <DetailRow label="vCPU" value={<span data-testid="vm-flavor-vcpus">{flavor.vcpus} コア</span>} />
               <DetailRow label="メモリ" value={`${Math.round(flavor.ram_mb / 1024)} GB`} />
             </>
           ) : vm.flavor_id ? (
@@ -175,7 +176,7 @@ export function VmDetailPage() {
       </div>
 
       {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div data-testid="vm-delete-confirm-dialog" className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowDeleteConfirm(false)} />
           <div className="relative bg-white rounded-xl border border-[var(--color-border)] p-6 w-full max-w-sm shadow-lg">
             <h3 className="text-base font-semibold text-[var(--color-text)] mb-2">VM を削除</h3>
@@ -186,7 +187,7 @@ export function VmDetailPage() {
               <Button variant="ghost" size="sm" onClick={() => setShowDeleteConfirm(false)}>
                 キャンセル
               </Button>
-              <Button variant="danger" size="sm" onClick={handleDelete}>
+              <Button data-testid="vm-delete-confirm-button" variant="danger" size="sm" onClick={handleDelete}>
                 削除する
               </Button>
             </div>

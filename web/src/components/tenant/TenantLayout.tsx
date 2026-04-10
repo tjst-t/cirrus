@@ -32,7 +32,7 @@ export function TenantLayout() {
     // Show "switched" toast when returning from a reload after tenant switch
     if (sessionStorage.getItem('tenant_just_switched') === 'true') {
       sessionStorage.removeItem('tenant_just_switched')
-      toast.success(<span data-testid="toast-success">テナントを切り替えました</span>)
+      toast.success(<span data-testid="toast-success">テナントを切り替えました</span>, { duration: 1000 })
     }
 
     // Use /me/tenants to avoid requiring infra_admin for org listing.
