@@ -82,6 +82,12 @@ func New(port, mgmtPort string, logger *slog.Logger) *Server {
 	}
 }
 
+// DSN returns the PostgreSQL connection string. Available before Start() is called.
+func (s *Server) DSN() string {
+	return fmt.Sprintf("postgres://%s:%s@localhost:%d/%s?sslmode=disable",
+		s.config.Username, s.config.Password, s.config.Port, s.config.Database)
+}
+
 // Start starts the embedded PostgreSQL server and the management HTTP API.
 func (s *Server) Start() {
 	dataDir := s.config.DataDir

@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Snapshot represents a point-in-time snapshot of a volume.
@@ -125,6 +127,8 @@ type Stats struct {
 }
 
 // Store is a thread-safe in-memory state store for storage simulation.
+// When a db pool is attached via SetDB, all writes are persisted to PostgreSQL
+// so that state survives process restarts.
 type Store struct {
 	mu         sync.RWMutex
 	backends   map[string]*Backend
@@ -136,6 +140,7 @@ type Store struct {
 	logger     *slog.Logger
 	opCounter  int
 	timeNow    func() time.Time // injectable clock for testing
+	db         *pgxpool.Pool   // nil = no persistence
 }
 
 // NewStore creates a new empty Store.
@@ -175,6 +180,7 @@ func (s *Store) AddBackend(_ context.Context, b Backend) error {
 	stored := b
 	s.backends[b.BackendID] = &stored
 	s.logger.Info("backend registered", "backend_id", b.BackendID)
+	s.dbSaveBackend(&stored)
 	return nil
 }
 
@@ -214,6 +220,7 @@ func (s *Store) SetBackendState(_ context.Context, id string, state BackendState
 	}
 	b.State = state
 	s.logger.Info("backend state changed", "backend_id", id, "state", state)
+	s.dbSaveBackend(b)
 	return nil
 }
 
@@ -259,6 +266,7 @@ func (s *Store) CreateVolume(_ context.Context, v Volume) (*Volume, error) {
 	stored := v
 	s.volumes[v.VolumeID] = &stored
 	s.logger.Info("volume created", "volume_id", v.VolumeID, "backend_id", v.BackendID)
+	s.dbSaveVolume(&stored)
 	cp := stored
 	return &cp, nil
 }
@@ -320,6 +328,7 @@ func (s *Store) DeleteVolume(_ context.Context, id string) error {
 
 	delete(s.volumes, id)
 	s.logger.Info("volume deleted", "volume_id", id)
+	s.dbDeleteVolume(id)
 	return nil
 }
 
@@ -359,6 +368,7 @@ func (s *Store) ExtendVolume(_ context.Context, id string, newSizeGB int64) (*Vo
 
 	v.SizeGB = newSizeGB
 	s.logger.Info("volume extended", "volume_id", id, "new_size_gb", newSizeGB)
+	s.dbSaveVolume(v)
 	cp := *v
 	return &cp, nil
 }
@@ -382,6 +392,7 @@ func (s *Store) ExportVolume(_ context.Context, id string, hostID string, protoc
 		Protocol: protocol,
 	}
 	s.logger.Info("volume exported", "volume_id", id, "host_id", hostID)
+	s.dbSaveVolume(v)
 	cp := *v
 	return &cp, nil
 }
@@ -402,6 +413,7 @@ func (s *Store) UnexportVolume(_ context.Context, id string) (*Volume, error) {
 	v.State = VolumeAvailable
 	v.ExportInfo = nil
 	s.logger.Info("volume unexported", "volume_id", id)
+	s.dbSaveVolume(v)
 	cp := *v
 	return &cp, nil
 }
@@ -450,6 +462,7 @@ func (s *Store) Reset(_ context.Context) {
 	s.config = SimConfig{DefaultLatencyMs: 2, FlattenPerGBMs: 100, MigrationPerGBMs: 200}
 	s.opCounter = 0
 	s.logger.Info("state reset")
+	s.dbClearAll()
 }
 
 // CreateSnapshot creates a snapshot for a volume.
@@ -483,6 +496,8 @@ func (s *Store) CreateSnapshot(_ context.Context, volumeID string, snapshotID st
 	s.snapshots[snapshotID] = snap
 	v.Snapshots = append(v.Snapshots, snapshotID)
 	s.logger.Info("snapshot created", "snapshot_id", snapshotID, "volume_id", volumeID)
+	s.dbSaveSnapshot(snap)
+	s.dbSaveVolume(v) // update volume.Snapshots list
 	cp := *snap
 	return &cp, nil
 }
@@ -544,6 +559,10 @@ func (s *Store) DeleteSnapshot(_ context.Context, snapshotID string) error {
 
 	delete(s.snapshots, snapshotID)
 	s.logger.Info("snapshot deleted", "snapshot_id", snapshotID)
+	s.dbDeleteSnapshot(snapshotID)
+	if v, ok := s.volumes[snap.VolumeID]; ok {
+		s.dbSaveVolume(v) // update volume.Snapshots list
+	}
 	return nil
 }
 
@@ -601,6 +620,8 @@ func (s *Store) CloneFromSnapshot(_ context.Context, snapshotID string, volumeID
 	s.volumes[volumeID] = clone
 	snap.ChildClones = append(snap.ChildClones, volumeID)
 	s.logger.Info("volume cloned from snapshot", "volume_id", volumeID, "snapshot_id", snapshotID)
+	s.dbSaveVolume(clone)
+	s.dbSaveSnapshot(snap) // update child_clones
 	cp := *clone
 	return &cp, nil
 }
@@ -703,6 +724,7 @@ func (s *Store) runFlatten(_ context.Context, opID string, volumeID string, dura
 	v.ParentSnapshotID = ""
 
 	// Remove volume from snapshot's child_clones
+	var snapToSave *Snapshot
 	if snap, ok := s.snapshots[parentSnapID]; ok {
 		for i, cid := range snap.ChildClones {
 			if cid == volumeID {
@@ -710,6 +732,7 @@ func (s *Store) runFlatten(_ context.Context, opID string, volumeID string, dura
 				break
 			}
 		}
+		snapToSave = snap
 	}
 
 	op.State = OperationCompleted
@@ -717,6 +740,10 @@ func (s *Store) runFlatten(_ context.Context, opID string, volumeID string, dura
 	op.ElapsedMs = time.Since(op.StartedAt).Milliseconds()
 	op.EstimatedRemainingMs = 0
 	s.logger.Info("flatten completed", "operation_id", opID, "volume_id", volumeID)
+	s.dbSaveVolume(v)
+	if snapToSave != nil {
+		s.dbSaveSnapshot(snapToSave)
+	}
 }
 
 // GetOperation returns an operation by ID.
@@ -942,6 +969,7 @@ func (s *Store) runMigration(_ context.Context, migID, volumeID, srcBackendID, d
 	mig.ElapsedMs = time.Since(mig.StartedAt).Milliseconds()
 	mig.EstimatedRemainingMs = 0
 	s.logger.Info("migration completed", "migration_id", migID, "volume_id", volumeID)
+	s.dbSaveVolume(v)
 }
 
 // Sentinel errors for the state package.

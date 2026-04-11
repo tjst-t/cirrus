@@ -57,10 +57,11 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
-	// Create simulator instances
+	// Create simulator instances.
+	// postgres is created first so its DSN is available for storageSim.
 	pgSim := pgsim.New(*postgresPort, *postgresMgmtPort, logger.With("sim", "postgres"))
 	libvirtSim := libvirtsim.New(*libvirtPort, logger.With("sim", "libvirt-sim"))
-	storageSim := storagesim.New(*storagePort, logger.With("sim", "storage-sim"))
+	storageSim := storagesim.NewWithDB(*storagePort, pgSim.DSN(), logger.With("sim", "storage-sim"))
 
 	// Create aggregator with endpoints pointing to local simulators
 	aggregator.Version = version
