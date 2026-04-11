@@ -4,13 +4,13 @@
 
 ## Progress
 
-- Total: 51 Sprints | Done: 28 | In Progress: 0 | Remaining: 23
-- [██████████░░░░░░░░░░] 55%
+- Total: 51 Sprints | Done: 29 | In Progress: 0 | Remaining: 22
+- [███████████░░░░░░░░░] 57%
 
 ## Execution Order
 
 S001 → S002 → S003 → S004 → S005 → S006 → S007 → S008 → S009 → S010 → S011 → S012 → S013 → S014 → S015 → S016 → S017 → S018 → S019 → S020 → S021 → S045 → S042 → S043 → S044 → S022 → S046 → S047 → S048 → S049 → S050 → S051 → S023 → S024 → S025 → S026 → S027 → S028 → S029 → S030 → S031 → S032 → S033 → S034 → S035 → S036 → S037 → S038 → S039 → S040 → S041
-                                                                                                                                                                                               ↑ next
+                                                                                                                                                                                                           ↑ next
 
 ---
 
@@ -820,22 +820,34 @@ Phase 1 の全機能（Identity・Host・Network・Storage・Compute・Quota・E
 
 ---
 
-## Sprint S048: テナント UI — ネットワーク・ボリューム [ ]
+## Sprint S048: テナント UI — ネットワーク・ボリューム [DONE]
 
 テナントメンバーが WebUI からネットワーク・セキュリティ設定・ボリュームを管理できる。
 
-### Story S048-1: テナントメンバーとして、ネットワークとセキュリティポリシーを WebUI から管理したい。なぜなら、VM のネットワーク構成を GUI で完結させたいから。 [ ]
+### Story S048-1: テナントメンバーとして、ネットワークとセキュリティポリシーを WebUI から管理したい。なぜなら、VM のネットワーク構成を GUI で完結させたいから。 [x]
 
-- [ ] **Task S048-1-1**: Network 一覧・作成・削除画面（CIDR・AZ 表示）
-- [ ] **Task S048-1-2**: SecurityGroup 一覧・作成・削除・ルール編集画面
-- [ ] **Task S048-1-3**: SecurityPolicy（ポート/プロトコル割り当て）一覧・作成・削除画面
-- [ ] **Task S048-1-4**: Playwright テスト: Network 作成 → SecurityGroup 作成 → ルール追加フロー
+- [x] **Task S048-1-1**: Network 一覧・作成（CIDR 省略時は自動割り当て）・削除画面（CIDR・status 表示）
+- [x] **Task S048-1-2**: グループ（Group）一覧・作成・削除画面（ネットワーク展開パネル内）
+- [x] **Task S048-1-3**: ポリシー（Policy）一覧・作成（src_group/dst_group 選択、protocol/dst_port/priority/action）・削除画面
+- [x] **Task S048-1-4**: Playwright テスト: `web/e2e/s048-network.spec.ts`
 
-### Story S048-2: テナントメンバーとして、ボリュームを WebUI から管理したい。なぜなら、ストレージのプロビジョニングを GUI で行いたいから。 [ ]
+**Acceptance Criteria (GUI):**
+- [x] 状態遷移図確認済み（docs/sprint-logs/S048/gui-spec-S048-1.md 参照）
+- [x] Playwright テスト通過: `npx playwright test s048-network` (7/7 passed)
+- [x] すべてのインタラクティブ要素に `data-testid` 属性あり
+- [x] API コールはテスト内でモック（実バックエンド不要）
 
-- [ ] **Task S048-2-1**: Volume 一覧・作成・削除画面（サイズ・Volume Type・ステータス表示）
-- [ ] **Task S048-2-2**: Volume リサイズ操作
-- [ ] **Task S048-2-3**: Playwright テスト: Volume 作成 → リサイズ → 削除フロー
+### Story S048-2: テナントメンバーとして、ボリュームを WebUI から管理したい。なぜなら、ストレージのプロビジョニングを GUI で行いたいから。 [x]
+
+- [x] **Task S048-2-1**: Volume 一覧・作成・削除画面（サイズ・Volume Type・state バッジ表示）
+- [x] **Task S048-2-2**: Volume リサイズ操作（new_size_gb、現在値より大きい値のみ）
+- [x] **Task S048-2-3**: Playwright テスト: `web/e2e/s048-volume.spec.ts`
+
+**Acceptance Criteria (GUI):**
+- [x] 状態遷移図確認済み（docs/sprint-logs/S048/gui-spec-S048-2.md 参照）
+- [x] Playwright テスト通過: `npx playwright test s048-volume` (9/9 passed)
+- [x] すべてのインタラクティブ要素に `data-testid` 属性あり
+- [x] API コールはテスト内でモック（実バックエンド不要）
 
 ---
 

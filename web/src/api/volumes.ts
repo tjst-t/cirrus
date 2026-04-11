@@ -1,32 +1,38 @@
 import { api } from './client'
 
-export type VolumeStatus = 'available' | 'in-use' | 'creating' | 'deleting' | 'error'
+export type VolumeState = 'creating' | 'available' | 'in_use' | 'deleting' | 'error'
 
 export interface Volume {
   id: string
+  tenant_id: string
   name: string
-  size_gb: number
-  status: VolumeStatus
   volume_type_id?: string
-  volume_type_name?: string
-  attached_vm_id?: string
+  size_gb: number
+  state: VolumeState
+  az_id?: string
   created_at: string
+  updated_at: string
 }
 
 export interface CreateVolumeRequest {
   name: string
   size_gb: number
   volume_type_id?: string
+  az_id?: string
 }
 
 export interface ResizeVolumeRequest {
-  size_gb: number
+  new_size_gb: number
+}
+
+export interface JobResponse {
+  job_id: string
 }
 
 export const volumesApi = {
   list: () => api.list<Volume>('/volumes'),
-  create: (req: CreateVolumeRequest) => api.post<Volume>('/volumes', req),
-  delete: (id: string) => api.delete<void>(`/volumes/${id}`),
+  create: (req: CreateVolumeRequest) => api.post<JobResponse>('/volumes', req),
+  delete: (id: string) => api.delete<JobResponse>(`/volumes/${id}`),
   resize: (id: string, req: ResizeVolumeRequest) =>
-    api.put<Volume>(`/volumes/${id}/resize`, req),
+    api.post<JobResponse>(`/volumes/${id}/resize`, req),
 }

@@ -1,28 +1,31 @@
-import { useEffect, useState } from 'react'
-import { volumesApi, type Volume, type CreateVolumeRequest } from '@/api/volumes'
+import { useCallback, useEffect, useState } from 'react'
+import { volumesApi, type Volume, type CreateVolumeRequest, type ResizeVolumeRequest } from '@/api/volumes'
 import { vmsApi, type VolumeType } from '@/api/vms'
 import { Button } from '@/components/Button'
 import { ErrorMessage } from '@/components/ErrorMessage'
 import { cn } from '@/lib/utils'
 
-function VolumeStatusBadge({ status }: { status: Volume['status'] }) {
-  const styles: Record<Volume['status'], string> = {
+function VolumeStateBadge({ state, id }: { state: Volume['state']; id: string }) {
+  const styles: Record<Volume['state'], string> = {
     available: 'bg-success text-white',
-    'in-use': 'bg-accent text-white',
+    in_use: 'bg-accent text-white',
     creating: 'bg-warning text-white',
     deleting: 'bg-warning text-white',
     error: 'bg-danger text-white',
   }
-  const labels: Record<Volume['status'], string> = {
+  const labels: Record<Volume['state'], string> = {
     available: '利用可能',
-    'in-use': '使用中',
+    in_use: '使用中',
     creating: '作成中',
     deleting: '削除中',
     error: 'エラー',
   }
   return (
-    <span className={cn('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', styles[status])}>
-      {labels[status]}
+    <span
+      data-testid={`volume-state-${id}`}
+      className={cn('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', styles[state])}
+    >
+      {labels[state]}
     </span>
   )
 }
@@ -51,6 +54,7 @@ function CreateVolumeDialog({ onClose, onCreated }: CreateVolumeDialogProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
+    setError(null)
     try {
       const req: CreateVolumeRequest = {
         name: form.name,
@@ -68,7 +72,7 @@ function CreateVolumeDialog({ onClose, onCreated }: CreateVolumeDialogProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div data-testid="volume-create-dialog" className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white rounded-xl border border-[var(--color-border)] p-6 w-full max-w-md shadow-lg">
         <h3 className="text-base font-semibold text-[var(--color-text)] mb-4">ボリュームを作成</h3>
@@ -76,6 +80,7 @@ function CreateVolumeDialog({ onClose, onCreated }: CreateVolumeDialogProps) {
           <div>
             <label className="block text-xs font-medium text-[var(--color-text)] mb-1">名前 *</label>
             <input
+              data-testid="volume-create-name"
               type="text"
               value={form.name}
               onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
@@ -87,6 +92,7 @@ function CreateVolumeDialog({ onClose, onCreated }: CreateVolumeDialogProps) {
           <div>
             <label className="block text-xs font-medium text-[var(--color-text)] mb-1">サイズ (GB) *</label>
             <input
+              data-testid="volume-create-size"
               type="number"
               value={form.size_gb}
               onChange={(e) => setForm((p) => ({ ...p, size_gb: Number(e.target.value) }))}
@@ -95,25 +101,24 @@ function CreateVolumeDialog({ onClose, onCreated }: CreateVolumeDialogProps) {
               className="w-full h-9 px-3 text-sm border border-[var(--color-border)] rounded focus:outline-none focus:ring-2 focus:ring-accent/30"
             />
           </div>
-          {volumeTypes.length > 0 && (
-            <div>
-              <label className="block text-xs font-medium text-[var(--color-text)] mb-1">ボリュームタイプ</label>
-              <select
-                value={form.volume_type_id}
-                onChange={(e) => setForm((p) => ({ ...p, volume_type_id: e.target.value }))}
-                className="w-full h-9 px-3 text-sm border border-[var(--color-border)] rounded focus:outline-none focus:ring-2 focus:ring-accent/30 bg-white"
-              >
-                <option value="">デフォルト</option>
-                {volumeTypes.map((vt) => (
-                  <option key={vt.id} value={vt.id}>{vt.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
+          <div>
+            <label className="block text-xs font-medium text-[var(--color-text)] mb-1">ボリュームタイプ</label>
+            <select
+              data-testid="volume-create-type"
+              value={form.volume_type_id}
+              onChange={(e) => setForm((p) => ({ ...p, volume_type_id: e.target.value }))}
+              className="w-full h-9 px-3 text-sm border border-[var(--color-border)] rounded focus:outline-none focus:ring-2 focus:ring-accent/30 bg-white"
+            >
+              <option value="">デフォルト</option>
+              {volumeTypes.map((vt) => (
+                <option key={vt.id} value={vt.id}>{vt.name}</option>
+              ))}
+            </select>
+          </div>
           {error && <p className="text-xs text-danger">{error}</p>}
           <div className="flex gap-2 justify-end pt-2">
             <Button type="button" variant="ghost" size="sm" onClick={onClose}>キャンセル</Button>
-            <Button type="submit" variant="primary" size="sm" disabled={loading}>
+            <Button data-testid="volume-create-submit" type="submit" variant="primary" size="sm" disabled={loading}>
               {loading ? '作成中...' : '作成'}
             </Button>
           </div>
@@ -130,7 +135,7 @@ interface ResizeDialogProps {
 }
 
 function ResizeDialog({ volume, onClose, onResized }: ResizeDialogProps) {
-  const [sizeGb, setSizeGb] = useState(volume.size_gb)
+  const [sizeGb, setSizeGb] = useState(volume.size_gb + 1)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -141,8 +146,10 @@ function ResizeDialog({ volume, onClose, onResized }: ResizeDialogProps) {
       return
     }
     setLoading(true)
+    setError(null)
     try {
-      await volumesApi.resize(volume.id, { size_gb: sizeGb })
+      const req: ResizeVolumeRequest = { new_size_gb: sizeGb }
+      await volumesApi.resize(volume.id, req)
       onResized()
       onClose()
     } catch (e: unknown) {
@@ -153,7 +160,7 @@ function ResizeDialog({ volume, onClose, onResized }: ResizeDialogProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div data-testid="volume-resize-dialog" className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white rounded-xl border border-[var(--color-border)] p-6 w-full max-w-sm shadow-lg">
         <h3 className="text-base font-semibold text-[var(--color-text)] mb-2">ボリュームをリサイズ</h3>
@@ -164,18 +171,21 @@ function ResizeDialog({ volume, onClose, onResized }: ResizeDialogProps) {
           <div>
             <label className="block text-xs font-medium text-[var(--color-text)] mb-1">新しいサイズ (GB)</label>
             <input
+              data-testid="volume-resize-size"
               type="number"
               value={sizeGb}
               onChange={(e) => setSizeGb(Number(e.target.value))}
-              min={volume.size_gb + 1}
+              min={1}
               required
               className="w-full h-9 px-3 text-sm border border-[var(--color-border)] rounded focus:outline-none focus:ring-2 focus:ring-accent/30"
             />
           </div>
-          {error && <p className="text-xs text-danger">{error}</p>}
+          {error && (
+            <p data-testid="volume-resize-error" className="text-xs text-danger">{error}</p>
+          )}
           <div className="flex gap-2 justify-end">
             <Button type="button" variant="ghost" size="sm" onClick={onClose}>キャンセル</Button>
-            <Button type="submit" variant="primary" size="sm" disabled={loading}>
+            <Button data-testid="volume-resize-submit" type="submit" variant="primary" size="sm" disabled={loading}>
               {loading ? '処理中...' : 'リサイズ'}
             </Button>
           </div>
@@ -187,37 +197,53 @@ function ResizeDialog({ volume, onClose, onResized }: ResizeDialogProps) {
 
 export function VolumesPage() {
   const [volumes, setVolumes] = useState<Volume[]>([])
+  const [volumeTypes, setVolumeTypes] = useState<VolumeType[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [resizeVolume, setResizeVolume] = useState<Volume | null>(null)
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true)
     volumesApi.list()
       .then(setVolumes)
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
-  }
+  }, [])
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    vmsApi.listVolumeTypes()
+      .then(setVolumeTypes)
+      .catch(() => { console.warn('volume-types の取得に失敗しました') })
+  }, [load])
 
   const handleDelete = async (id: string) => {
+    setDeleting(true)
     try {
       await volumesApi.delete(id)
       setDeleteId(null)
       load()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'エラーが発生しました')
+    } finally {
+      setDeleting(false)
     }
+  }
+
+  const volumeTypeName = (vtId?: string) => {
+    if (!vtId) return '—'
+    const vt = volumeTypes.find((v) => v.id === vtId)
+    return vt ? vt.name : vtId
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-[var(--color-text)]">ボリューム管理</h2>
-        <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
+        <Button data-testid="create-volume-button" variant="primary" size="sm" onClick={() => setShowCreate(true)}>
           + ボリュームを作成
         </Button>
       </div>
@@ -234,7 +260,7 @@ export function VolumesPage() {
                 <th className="text-left px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">名前</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">サイズ</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">状態</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">アタッチ先</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">ボリュームタイプ</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">作成日時</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">操作</th>
               </tr>
@@ -243,19 +269,23 @@ export function VolumesPage() {
               {volumes.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-[var(--color-text-secondary)]">
-                    ボリュームがありません
+                    <span data-testid="volume-empty-state">ボリュームがありません</span>
                   </td>
                 </tr>
               ) : (
                 volumes.map((vol) => (
-                  <tr key={vol.id} className="border-t border-[var(--color-border)] hover:bg-[var(--color-bg-secondary)]/50">
+                  <tr
+                    key={vol.id}
+                    data-testid={`volume-row-${vol.id}`}
+                    className="border-t border-[var(--color-border)] hover:bg-[var(--color-bg-secondary)]/50"
+                  >
                     <td className="px-4 py-3 font-medium">{vol.name}</td>
                     <td className="px-4 py-3 text-[var(--color-text-secondary)]">{vol.size_gb} GB</td>
                     <td className="px-4 py-3">
-                      <VolumeStatusBadge status={vol.status} />
+                      <VolumeStateBadge state={vol.state} id={vol.id} />
                     </td>
-                    <td className="px-4 py-3 text-[var(--color-text-secondary)] font-mono text-xs">
-                      {vol.attached_vm_id ? vol.attached_vm_id.slice(0, 8) + '...' : '—'}
+                    <td className="px-4 py-3 text-[var(--color-text-secondary)] text-xs">
+                      {volumeTypeName(vol.volume_type_id)}
                     </td>
                     <td className="px-4 py-3 text-[var(--color-text-secondary)]">
                       {new Date(vol.created_at).toLocaleDateString('ja-JP')}
@@ -263,18 +293,20 @@ export function VolumesPage() {
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
                         <Button
+                          data-testid={`volume-resize-${vol.id}`}
                           variant="secondary"
                           size="sm"
                           onClick={() => setResizeVolume(vol)}
-                          disabled={vol.status === 'deleting' || vol.status === 'creating'}
+                          disabled={vol.state === 'deleting' || vol.state === 'creating'}
                         >
                           リサイズ
                         </Button>
                         <Button
+                          data-testid={`volume-delete-${vol.id}`}
                           variant="danger"
                           size="sm"
                           onClick={() => setDeleteId(vol.id)}
-                          disabled={vol.status === 'in-use'}
+                          disabled={vol.state === 'in_use'}
                         >
                           削除
                         </Button>
@@ -301,7 +333,7 @@ export function VolumesPage() {
       )}
 
       {deleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div data-testid="volume-delete-dialog" className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setDeleteId(null)} />
           <div className="relative bg-white rounded-xl border border-[var(--color-border)] p-6 w-full max-w-sm shadow-lg">
             <h3 className="text-base font-semibold text-[var(--color-text)] mb-2">ボリュームを削除</h3>
@@ -310,7 +342,7 @@ export function VolumesPage() {
             </p>
             <div className="flex gap-2 justify-end">
               <Button variant="ghost" size="sm" onClick={() => setDeleteId(null)}>キャンセル</Button>
-              <Button variant="danger" size="sm" onClick={() => handleDelete(deleteId)}>削除する</Button>
+              <Button data-testid="volume-delete-confirm" variant="danger" size="sm" disabled={deleting} onClick={() => handleDelete(deleteId)}>削除する</Button>
             </div>
           </div>
         </div>

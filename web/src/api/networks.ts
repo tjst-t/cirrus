@@ -14,51 +14,50 @@ export interface Port {
 
 export interface Network {
   id: string
+  tenant_id: string
   name: string
   cidr: string
+  vni?: number
   status: string
   created_at: string
+  updated_at: string
 }
 
 export interface CreateNetworkRequest {
   name: string
-  cidr: string
+  cidr?: string
 }
 
 export interface NetworkGroup {
   id: string
   network_id: string
   name: string
-  description?: string
   created_at: string
 }
 
 export interface CreateNetworkGroupRequest {
   name: string
-  description?: string
 }
 
 export interface NetworkPolicy {
   id: string
   network_id: string
-  name: string
-  direction: 'ingress' | 'egress'
+  src_group_id: string
+  dst_group_id: string
   protocol: string
-  port_range_min?: number
-  port_range_max?: number
-  remote_cidr?: string
-  action: 'allow' | 'deny'
+  dst_port?: number
+  priority: number
+  action: string
   created_at: string
 }
 
 export interface CreateNetworkPolicyRequest {
-  name: string
-  direction: 'ingress' | 'egress'
+  src_group_id: string
+  dst_group_id: string
   protocol: string
-  port_range_min?: number
-  port_range_max?: number
-  remote_cidr?: string
-  action: 'allow' | 'deny'
+  dst_port?: number
+  priority?: number
+  action?: string
 }
 
 export const networksApi = {
