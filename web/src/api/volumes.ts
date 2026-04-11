@@ -34,5 +34,5 @@ export const volumesApi = {
   create: (req: CreateVolumeRequest) => api.post<JobResponse>('/volumes', req),
   delete: (id: string) => api.delete<JobResponse>(`/volumes/${id}`),
   resize: (id: string, req: ResizeVolumeRequest) =>
-    api.post<JobResponse>(`/volumes/${id}/resize`, req),
+    api.post<Volume>(`/volumes/${id}/resize`, req),
 }
