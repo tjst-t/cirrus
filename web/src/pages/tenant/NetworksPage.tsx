@@ -7,25 +7,10 @@ import {
 } from '@/api/networks'
 import { Button } from '@/components/Button'
 import { ErrorMessage } from '@/components/ErrorMessage'
-
-// ---- Status Badge ----
-function StatusBadge({ status }: { status: string }) {
-  const colorMap: Record<string, string> = {
-    active: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    pending: 'bg-amber-50 text-amber-700 border-amber-200',
-    error: 'bg-red-50 text-red-700 border-red-200',
-    deleting: 'bg-slate-50 text-slate-500 border-slate-200',
-  }
-  const cls = colorMap[status] ?? 'bg-slate-50 text-slate-500 border-slate-200'
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${cls}`}>
-      {status}
-    </span>
-  )
-}
+import { StatusBadge } from '@/components/tenant/StatusBadge'
 
 // ---- Create Network Dialog ----
-function CreateNetworkDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (net: Network) => void }) {
+function CreateNetworkDialog({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [name, setName] = useState('')
   const [cidr, setCidr] = useState('')
   const [loading, setLoading] = useState(false)
@@ -37,8 +22,8 @@ function CreateNetworkDialog({ onClose, onCreated }: { onClose: () => void; onCr
     try {
       const req: { name: string; cidr?: string } = { name }
       if (cidr.trim()) req.cidr = cidr.trim()
-      const created = await networksApi.create(req)
-      onCreated(created)
+      await networksApi.create(req)
+      onCreated()
       onClose()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'エラーが発生しました')
@@ -485,16 +470,9 @@ function PoliciesPanel({ networkId, groups }: { networkId: string; groups: Netwo
 function NetworkExpandedPanel({ networkId }: { networkId: string }) {
   const [groups, setGroups] = useState<NetworkGroup[]>([])
 
-  // GroupsPanel is the single source of truth for group data.
-  // onGroupsChanged keeps this parent state in sync so PoliciesPanel
-  // always reflects the latest group list (e.g. after add/delete).
-  const handleGroupsChanged = useCallback((g: NetworkGroup[]) => {
-    setGroups(g)
-  }, [])
-
   return (
     <div className="border-t border-[var(--color-border)] px-5 py-4 grid grid-cols-2 gap-6">
-      <GroupsPanel networkId={networkId} onGroupsChanged={handleGroupsChanged} />
+      <GroupsPanel networkId={networkId} onGroupsChanged={setGroups} />
       <PoliciesPanel networkId={networkId} groups={groups} />
     </div>
   )
@@ -508,6 +486,7 @@ export function NetworksPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -521,6 +500,7 @@ export function NetworksPage() {
   useEffect(() => { load() }, [load])
 
   const handleDelete = async (id: string) => {
+    setDeleting(true)
     try {
       await networksApi.delete(id)
       setDeleteId(null)
@@ -528,6 +508,8 @@ export function NetworksPage() {
       load()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'エラーが発生しました')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -633,9 +615,7 @@ export function NetworksPage() {
       {showCreate && (
         <CreateNetworkDialog
           onClose={() => setShowCreate(false)}
-          onCreated={(net) => {
-            setNetworks((prev) => [...prev, net])
-          }}
+          onCreated={load}
         />
       )}
 
@@ -657,7 +637,7 @@ export function NetworksPage() {
             </p>
             <div className="flex gap-2 justify-end">
               <Button variant="ghost" size="sm" onClick={() => setDeleteId(null)}>キャンセル</Button>
-              <Button data-testid="network-delete-confirm" variant="danger" size="sm" onClick={() => handleDelete(deleteId)}>削除する</Button>
+              <Button data-testid="network-delete-confirm" variant="danger" size="sm" disabled={deleting} onClick={() => handleDelete(deleteId)}>削除する</Button>
             </div>
           </div>
         </div>

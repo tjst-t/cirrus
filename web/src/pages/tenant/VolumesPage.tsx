@@ -33,23 +33,17 @@ function VolumeStateBadge({ state, id }: { state: Volume['state']; id: string })
 interface CreateVolumeDialogProps {
   onClose: () => void
   onCreated: () => void
+  volumeTypes: VolumeType[]
 }
 
-function CreateVolumeDialog({ onClose, onCreated }: CreateVolumeDialogProps) {
+function CreateVolumeDialog({ onClose, onCreated, volumeTypes }: CreateVolumeDialogProps) {
   const [form, setForm] = useState<CreateVolumeRequest>({
     name: '',
     size_gb: 20,
     volume_type_id: '',
   })
-  const [volumeTypes, setVolumeTypes] = useState<VolumeType[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    vmsApi.listVolumeTypes()
-      .then(setVolumeTypes)
-      .catch(() => {})
-  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -321,7 +315,7 @@ export function VolumesPage() {
       )}
 
       {showCreate && (
-        <CreateVolumeDialog onClose={() => setShowCreate(false)} onCreated={load} />
+        <CreateVolumeDialog onClose={() => setShowCreate(false)} onCreated={load} volumeTypes={volumeTypes} />
       )}
 
       {resizeVolume && (

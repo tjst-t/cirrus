@@ -34,13 +34,20 @@ export interface StorageDomain {
 export interface AdminVolumeType {
   id: string
   name: string
-  backend_id: string
+  description: string
+  required_capabilities: string[]
+  qos_policy: Record<string, unknown> | null
+  is_public: boolean
   created_at: string
+  updated_at: string
 }
 
 export interface CreateVolumeTypeRequest {
   name: string
-  backend_id: string
+  description?: string
+  required_capabilities?: string[]
+  qos_policy?: Record<string, unknown> | null
+  is_public?: boolean
 }
 
 export interface AdminFlavor {

@@ -183,7 +183,7 @@ function StorageBackendsSection() {
 
 // ---- Volume Types -----------------------------------------------------------
 
-function VolumeTypesSection({ backends }: { backends: StorageBackend[] }) {
+function VolumeTypesSection() {
   const [types, setTypes] = useState<AdminVolumeType[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -191,7 +191,7 @@ function VolumeTypesSection({ backends }: { backends: StorageBackend[] }) {
   const [creating, setCreating] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<AdminVolumeType | null>(null)
   const [deleting, setDeleting] = useState(false)
-  const [form, setForm] = useState<CreateVolumeTypeRequest>({ name: '', backend_id: '' })
+  const [form, setForm] = useState<CreateVolumeTypeRequest>({ name: '' })
 
   const load = useCallback(() => {
     setLoading(true)
@@ -202,9 +202,9 @@ function VolumeTypesSection({ backends }: { backends: StorageBackend[] }) {
   useEffect(() => { load() }, [load])
 
   const handleCreate = () => {
-    if (!form.name.trim() || !form.backend_id) return
+    if (!form.name.trim()) return
     setCreating(true)
-    storageApi.createVolumeType(form).then(() => { setShowCreate(false); setForm({ name: '', backend_id: '' }); load() })
+    storageApi.createVolumeType(form).then(() => { setShowCreate(false); setForm({ name: '' }); load() })
       .catch((e: Error) => setError(e.message)).finally(() => setCreating(false))
   }
 
@@ -214,8 +214,6 @@ function VolumeTypesSection({ backends }: { backends: StorageBackend[] }) {
     storageApi.deleteVolumeType(deleteTarget.id).then(() => { setDeleteTarget(null); load() })
       .catch((e: Error) => setError(e.message)).finally(() => setDeleting(false))
   }
-
-  const backendName = (id: string) => backends.find((b) => b.id === id)?.name ?? id
 
   return (
     <Section
@@ -232,7 +230,8 @@ function VolumeTypesSection({ backends }: { backends: StorageBackend[] }) {
           <thead>
             <tr className="border-b border-[var(--color-border)]">
               <th className="text-left py-2 font-medium text-[var(--color-text-secondary)]">名前</th>
-              <th className="text-left py-2 font-medium text-[var(--color-text-secondary)]">Backend</th>
+              <th className="text-left py-2 font-medium text-[var(--color-text-secondary)]">説明</th>
+              <th className="text-left py-2 font-medium text-[var(--color-text-secondary)]">公開</th>
               <th />
             </tr>
           </thead>
@@ -240,7 +239,8 @@ function VolumeTypesSection({ backends }: { backends: StorageBackend[] }) {
             {types.map((t) => (
               <tr key={t.id} data-testid={`volume-type-row-${t.id}`} className="border-b border-[var(--color-border)] last:border-0">
                 <td className="py-2.5 font-medium">{t.name}</td>
-                <td className="py-2.5 text-[var(--color-text-secondary)]">{backendName(t.backend_id)}</td>
+                <td className="py-2.5 text-[var(--color-text-secondary)]">{t.description || '-'}</td>
+                <td className="py-2.5 text-[var(--color-text-secondary)]">{t.is_public ? 'はい' : 'いいえ'}</td>
                 <td className="py-2.5 text-right">
                   <Button data-testid={`delete-volume-type-button-${t.id}`} variant="danger" size="sm" onClick={() => setDeleteTarget(t)}>削除</Button>
                 </td>
@@ -257,16 +257,8 @@ function VolumeTypesSection({ backends }: { backends: StorageBackend[] }) {
             <Input id="volume-type-name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="ssd" />
           </div>
           <div>
-            <label htmlFor="volume-type-backend" className="block text-sm font-medium mb-1">Storage Backend</label>
-            <select
-              id="volume-type-backend"
-              value={form.backend_id}
-              onChange={(e) => setForm((f) => ({ ...f, backend_id: e.target.value }))}
-              className="flex h-9 w-full rounded border border-[var(--color-border)] bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            >
-              <option value="">選択してください</option>
-              {backends.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
+            <label htmlFor="volume-type-description" className="block text-sm font-medium mb-1">説明（任意）</label>
+            <Input id="volume-type-description" value={form.description ?? ''} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="SSD ボリュームタイプ" />
           </div>
           <div className="flex justify-end gap-2 mt-1">
             <Button variant="secondary" size="sm" onClick={() => setShowCreate(false)} disabled={creating}>キャンセル</Button>
@@ -292,22 +284,11 @@ function VolumeTypesSection({ backends }: { backends: StorageBackend[] }) {
 // ---- Main page --------------------------------------------------------------
 
 export function StoragePage() {
-  const [backends, setBackends] = useState<StorageBackend[]>([])
-
-  // We lift backend list here so VolumeTypes section can show backend names
-  const loadBackends = useCallback(() => {
-    storageApi.listBackends().then(setBackends).catch((e: Error) => {
-      console.error('Failed to load storage backends:', e)
-    })
-  }, [])
-
-  useEffect(() => { loadBackends() }, [loadBackends])
-
   return (
     <div>
       <h1 className="text-xl font-semibold text-[var(--color-text)] mb-6">ストレージ管理</h1>
       <StorageBackendsSection />
-      <VolumeTypesSection backends={backends} />
+      <VolumeTypesSection />
     </div>
   )
 }
