@@ -119,10 +119,11 @@ func (d *Driver) UnexportVolume(ctx context.Context, volumeID string, _ storage.
 		return fmt.Errorf("sim driver: unexport volume: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("sim driver: unexport volume: unexpected status %d", resp.StatusCode)
+	// 404 means the export record no longer exists (e.g. sim restarted) — treat as already done.
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNotFound {
+		return nil
 	}
-	return nil
+	return fmt.Errorf("sim driver: unexport volume: unexpected status %d", resp.StatusCode)
 }
 
 func (d *Driver) do(ctx context.Context, method, path string, body []byte) (*http.Response, error) {
