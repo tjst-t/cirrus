@@ -4,12 +4,12 @@
 
 ## Progress
 
-- Total: 50 Sprints | Done: 27 | In Progress: 0 | Remaining: 23
-- [██████████░░░░░░░░░░] 54%
+- Total: 51 Sprints | Done: 28 | In Progress: 0 | Remaining: 23
+- [██████████░░░░░░░░░░] 55%
 
 ## Execution Order
 
-S001 → S002 → S003 → S004 → S005 → S006 → S007 → S008 → S009 → S010 → S011 → S012 → S013 → S014 → S015 → S016 → S017 → S018 → S019 → S020 → S021 → S045 → S042 → S043 → S044 → S022 → S046 → S047 → S048 → S049 → S050 → S023 → S024 → S025 → S026 → S027 → S028 → S029 → S030 → S031 → S032 → S033 → S034 → S035 → S036 → S037 → S038 → S039 → S040 → S041
+S001 → S002 → S003 → S004 → S005 → S006 → S007 → S008 → S009 → S010 → S011 → S012 → S013 → S014 → S015 → S016 → S017 → S018 → S019 → S020 → S021 → S045 → S042 → S043 → S044 → S022 → S046 → S047 → S048 → S049 → S050 → S051 → S023 → S024 → S025 → S026 → S027 → S028 → S029 → S030 → S031 → S032 → S033 → S034 → S035 → S036 → S037 → S038 → S039 → S040 → S041
                                                                                                                                                                                                ↑ next
 
 ---
@@ -806,17 +806,17 @@ Phase 1 の全機能（Identity・Host・Network・Storage・Compute・Quota・E
 
 ---
 
-## Sprint S047: テナント UI — VM 管理 [ ]
+## Sprint S047: テナント UI — VM 管理 [DONE]
 
 テナントメンバーが WebUI から VM のライフサイクル全体（作成・一覧・詳細・電源操作・削除）を操作できる。
 
-### Story S047-1: テナントメンバーとして、VM を WebUI から作成・管理したい。なぜなら、GUI で直感的に仮想マシンを払い出したいから。 [ ]
+### Story S047-1: テナントメンバーとして、VM を WebUI から作成・管理したい。なぜなら、GUI で直感的に仮想マシンを払い出したいから。 [x]
 
-- [ ] **Task S047-1-1**: VM 一覧画面（ステータスバッジ・Flavor・AZ 表示）
-- [ ] **Task S047-1-2**: VM 作成フォーム（名前・Flavor・AZ・ブートボリュームサイズ・ネットワーク選択）
-- [ ] **Task S047-1-3**: VM 詳細画面（スペック・状態・接続ポート・ボリューム一覧）
-- [ ] **Task S047-1-4**: VM 電源操作ボタン（start / stop / reboot）と削除
-- [ ] **Task S047-1-5**: Playwright テスト: VM 作成 → 起動 → 停止 → 削除フロー
+- [x] **Task S047-1-1**: VM 一覧画面（ステータスバッジ・Flavor・AZ 表示）
+- [x] **Task S047-1-2**: VM 作成フォーム（名前・Flavor・AZ・ブートボリュームサイズ・ネットワーク選択）
+- [x] **Task S047-1-3**: VM 詳細画面（スペック・状態・接続ポート・ボリューム一覧）
+- [x] **Task S047-1-4**: VM 電源操作ボタン（start / stop / reboot）と削除
+- [x] **Task S047-1-5**: Playwright テスト: VM 作成 → 起動 → 停止 → 削除フロー
 
 ---
 
@@ -871,6 +871,37 @@ Phase 1 WebUI 全体の結合 E2E テストが通り、`make serve` 環境で安
 
 - [ ] **Task S050-2-1**: `make serve` の `_seed-tenant` ステップ: default-org / default-tenant / dev-admin ロール / Quota / IP プール / GW ノード（冪等）
 - [ ] **Task S050-2-2**: `make serve` 後に Playwright 全 spec が通ることを確認
+
+---
+
+## Sprint S051: エラー UX 改善 — GUI・CLI 全体 [ ]
+
+すべての GUI 操作および CLI コマンドでエラーが発生した際に、原因と対処方法がユーザーに伝わるメッセージが表示される。
+
+### Story S051-1: 開発者として、API エラーレスポンスに機械可読なエラーコードと詳細情報を含めたい。なぜなら、GUI・CLI がエラー種別を判別してユーザーフレンドリーなメッセージを組み立てられるようにしたいから。 [ ]
+
+- [ ] **Task S051-1-1**: エラーレスポンス構造体を定義（`{"code": "ERR_NO_HOST", "message": "...", "detail": {...}}`）
+- [ ] **Task S051-1-2**: エラーコード一覧を定義（`internal/apierror/codes.go`）: スケジューラ系（`ERR_NO_HOST`, `ERR_INSUFFICIENT_RESOURCES`）、クォータ系（`ERR_QUOTA_VCPU`, `ERR_QUOTA_MEMORY`, `ERR_QUOTA_VM_COUNT`, etc.）、認証認可系（`ERR_UNAUTHORIZED`, `ERR_FORBIDDEN`）、リソース系（`ERR_NOT_FOUND`, `ERR_CONFLICT`）
+- [ ] **Task S051-1-3**: 全 API ハンドラのエラー返却をエラーコード付き構造体に移行
+- [ ] **Task S051-1-4**: `detail` フィールドにコンテキスト情報を付与（例: クォータ超過時は `{"resource": "vcpu", "limit": 8, "requested": 2, "current": 7}`）
+
+### Story S051-2: テナントメンバー・管理者として、GUI 操作でエラーが発生した際に原因と対処方法がわかるメッセージを見たい。なぜなら、技術的なエラー文字列では何が問題でどうすればいいのかが判断できないから。 [ ]
+
+- [ ] **Task S051-2-1**: フロントエンドのエラーコード→日本語メッセージ変換マップを実装（`web/src/lib/errorMessages.ts`）
+  - `ERR_NO_HOST` → 「利用可能なホストがありません。しばらく待ってから再試行するか、AZ を変更してください。」
+  - `ERR_QUOTA_*` → 「クォータ上限に達しています（{resource}: {current}/{limit}）。不要なリソースを削除するか、管理者にクォータ増加を依頼してください。」
+  - `ERR_CONFLICT` → 「同じ名前のリソースが既に存在します。別の名前を指定してください。」
+  - その他共通エラーコード対応
+- [ ] **Task S051-2-2**: エラー表示コンポーネント改善（`web/src/components/ErrorMessage.tsx`）: エラーコード対応メッセージ + detail からの動的補完（クォータ数値の埋め込み等）
+- [ ] **Task S051-2-3**: リソースエラー状態（VM `error` ステータス等）の一覧・詳細画面への表示: エラーメッセージをツールチップまたはバナーで表示
+- [ ] **Task S051-2-4**: Playwright テスト: 各エラーコードのメッセージ表示確認（モック使用）
+
+### Story S051-3: 運用者・開発者として、cirrusctl でエラーが発生した際に原因と対処方法がわかるメッセージを見たい。なぜなら、Go の内部エラー文字列ではユーザーが原因を特定できず、スクリプトによるエラー種別の判別もできないから。 [ ]
+
+- [ ] **Task S051-3-1**: CLI エラーフォーマッタを実装（`internal/client/errors.go`）: API エラーコードを日本語メッセージ + 対処ヒントに変換
+- [ ] **Task S051-3-2**: 全 cirrusctl コマンドのエラー出力をフォーマッタ経由に統一
+- [ ] **Task S051-3-3**: `--output json` 指定時はエラーも JSON 形式で出力（スクリプト連携対応）
+- [ ] **Task S051-3-4**: ユニットテスト: エラーコード別メッセージ変換の確認
 
 ---
 

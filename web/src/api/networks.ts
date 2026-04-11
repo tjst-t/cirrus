@@ -1,5 +1,17 @@
 import { api } from './client'
 
+export interface Port {
+  id: string
+  tenant_id: string
+  network_id: string
+  vm_id?: string
+  mac_address?: string
+  ip_address?: string
+  role?: string
+  status?: string
+  created_at: string
+}
+
 export interface Network {
   id: string
   name: string

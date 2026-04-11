@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { vmsApi, type VmDetail, type VmAction, type Flavor } from '@/api/vms'
+import { type Port } from '@/api/networks'
 import { Button } from '@/components/Button'
 import { ErrorMessage } from '@/components/ErrorMessage'
 import { VmStatusBadge } from '@/components/tenant/VmStatusBadge'
+import { api } from '@/api/client'
 
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -19,6 +21,7 @@ export function VmDetailPage() {
   const navigate = useNavigate()
   const [vm, setVm] = useState<VmDetail | null>(null)
   const [flavor, setFlavor] = useState<Flavor | null>(null)
+  const [port, setPort] = useState<Port | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<VmAction | null>(null)
@@ -35,6 +38,15 @@ export function VmDetailPage() {
           vmsApi.listFlavors()
             .then((flavors) => setFlavor(flavors.find(f => f.id === v.flavor_id) ?? null))
             .catch(() => { /* flavor display is optional */ })
+        }
+        // Fetch port by network_id, filter by vm_id
+        if (v.network_id) {
+          api.get<Port[]>(`/ports?network_id=${v.network_id}`)
+            .then((ports) => {
+              const vmPort = ports.find((p) => p.vm_id === v.id) ?? null
+              setPort(vmPort)
+            })
+            .catch(() => { /* port display is optional */ })
         }
       })
       .catch((e: Error) => setError(e.message))
@@ -98,6 +110,7 @@ export function VmDetailPage() {
         <h3 className="text-sm font-semibold text-[var(--color-text)] mb-3">アクション</h3>
         <div className="flex gap-2 flex-wrap">
           <Button
+            data-testid="vm-action-start"
             variant="primary"
             size="sm"
             onClick={() => handleAction('start')}
@@ -106,6 +119,7 @@ export function VmDetailPage() {
             {actionLoading === 'start' ? '起動中...' : '起動'}
           </Button>
           <Button
+            data-testid="vm-action-stop"
             variant="secondary"
             size="sm"
             onClick={() => handleAction('stop')}
@@ -114,6 +128,7 @@ export function VmDetailPage() {
             {actionLoading === 'stop' ? '停止中...' : '停止'}
           </Button>
           <Button
+            data-testid="vm-action-reboot"
             variant="secondary"
             size="sm"
             onClick={() => handleAction('reboot')}
@@ -173,6 +188,35 @@ export function VmDetailPage() {
             value={new Date(vm.created_at).toLocaleString('ja-JP')}
           />
         </dl>
+      </div>
+
+      {/* Ports */}
+      <div className="bg-white rounded-xl border border-[var(--color-border)] p-4">
+        <h3 className="text-sm font-semibold text-[var(--color-text)] mb-2">接続ポート</h3>
+        {port ? (
+          <dl data-testid="vm-port-section">
+            <DetailRow label="ポート ID" value={<span className="font-mono text-xs">{port.id}</span>} />
+            {port.mac_address && (
+              <DetailRow label="MACアドレス" value={<span className="font-mono text-xs">{port.mac_address}</span>} />
+            )}
+            {port.ip_address && (
+              <DetailRow label="IPアドレス" value={<span className="font-mono">{port.ip_address}</span>} />
+            )}
+            {port.status && (
+              <DetailRow label="ステータス" value={port.status} />
+            )}
+          </dl>
+        ) : (
+          <p data-testid="vm-port-none" className="text-sm text-[var(--color-text-secondary)]">—</p>
+        )}
+      </div>
+
+      {/* Volumes */}
+      <div className="bg-white rounded-xl border border-[var(--color-border)] p-4">
+        <h3 className="text-sm font-semibold text-[var(--color-text)] mb-2">ボリューム</h3>
+        <p data-testid="vm-volumes-placeholder" className="text-sm text-[var(--color-text-secondary)]">
+          ボリューム情報はストレージ管理ページから確認できます。
+        </p>
       </div>
 
       {showDeleteConfirm && (

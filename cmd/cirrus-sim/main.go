@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -45,6 +46,7 @@ func main() {
 	postgresPort := flag.String("postgres", envOrDefault("POSTGRES_PORT", "5432"), "embedded PostgreSQL port")
 	postgresMgmtPort := flag.String("postgres-mgmt", envOrDefault("POSTGRES_MGMT_PORT", "8600"), "PostgreSQL management API port")
 	envFile := flag.String("env", envOrDefault("CIRRUS_SIM_ENV", ""), "environment YAML file to seed on startup")
+	workerURLs := flag.String("worker-urls", envOrDefault("WORKER_URLS", ""), "comma-separated libvirtd-sim management URLs for worker containers (e.g. http://localhost:8287,http://localhost:8288)")
 	flag.Parse()
 
 	if *showVersion {
@@ -62,8 +64,16 @@ func main() {
 
 	// Create aggregator with endpoints pointing to local simulators
 	aggregator.Version = version
+	workers := []string{fmt.Sprintf("http://localhost:%s", *libvirtPort)}
+	if *workerURLs != "" {
+		for _, u := range strings.Split(*workerURLs, ",") {
+			if u = strings.TrimSpace(u); u != "" {
+				workers = append(workers, u)
+			}
+		}
+	}
 	aggEndpoints := aggregator.Endpoints{
-		Workers:    []string{fmt.Sprintf("http://localhost:%s", *libvirtPort)},
+		Workers:    workers,
 		StorageSim: fmt.Sprintf("http://localhost:%s", *storagePort),
 		AWXSim:     fmt.Sprintf("http://localhost:%s", *awxPort),
 		CommonSim:  fmt.Sprintf("http://localhost:%s", *commonPort),

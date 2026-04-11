@@ -23,6 +23,7 @@ PID_CONTROLLER     := $(TMP_DIR)/controller.pid
 LOG_SIM            := $(TMP_DIR)/sim.log
 LOG_CONTROLLER     := $(TMP_DIR)/controller.log
 PORTMAN_ENV        := $(TMP_DIR)/portman.env
+PG_DATA_DIR        := $(TMP_DIR)/pg-data
 
 # ── Build ──
 
@@ -179,6 +180,7 @@ _start-sim:
 	@bash -c '\
 	  set -a; source $(PORTMAN_ENV); set +a; \
 	  echo "==> Starting cirrus-sim (env: $(CIRRUS_SIM_ENV))..."; \
+	  POSTGRES_DATA_DIR=$(PG_DATA_DIR) \
 	  nohup ./bin/cirrus-sim \
 	    -common=$$SIM_COMMON_PORT \
 	    -aggregator=$$SIM_AGGREGATOR_PORT \
@@ -188,6 +190,7 @@ _start-sim:
 	    -postgres=$$SIM_POSTGRES_PORT \
 	    -postgres-mgmt=$$SIM_POSTGRES_MGMT_PORT \
 	    -env=test/sim/environments/$(CIRRUS_SIM_ENV).yaml \
+	    -worker-urls=http://localhost:$$WORKER_1_PORT,http://localhost:$$WORKER_2_PORT,http://localhost:$$WORKER_3_PORT \
 	    > $(LOG_SIM) 2>&1 & \
 	  echo $$! > $(PID_SIM); \
 	  echo "    PID: $$(cat $(PID_SIM))"'
@@ -282,17 +285,17 @@ _seed-topology:
 	  curl -sf -X POST \
 	    -H "Authorization: Bearer $$TOKEN" \
 	    -H "Content-Type: application/json" \
-	    -d "{\"name\":\"m1.small\",\"vcpus\":1,\"ram_mb\":1024,\"disk_gb\":10}" \
+	    -d "{\"name\":\"m1-small\",\"vcpus\":1,\"ram_mb\":1024,\"disk_gb\":10}" \
 	    http://localhost:$$API_PORT/api/v1/admin/flavors >/dev/null 2>&1 || true; \
 	  curl -sf -X POST \
 	    -H "Authorization: Bearer $$TOKEN" \
 	    -H "Content-Type: application/json" \
-	    -d "{\"name\":\"m1.medium\",\"vcpus\":2,\"ram_mb\":4096,\"disk_gb\":20}" \
+	    -d "{\"name\":\"m1-medium\",\"vcpus\":2,\"ram_mb\":4096,\"disk_gb\":20}" \
 	    http://localhost:$$API_PORT/api/v1/admin/flavors >/dev/null 2>&1 || true; \
 	  curl -sf -X POST \
 	    -H "Authorization: Bearer $$TOKEN" \
 	    -H "Content-Type: application/json" \
-	    -d "{\"name\":\"m1.large\",\"vcpus\":4,\"ram_mb\":8192,\"disk_gb\":40}" \
+	    -d "{\"name\":\"m1-large\",\"vcpus\":4,\"ram_mb\":8192,\"disk_gb\":40}" \
 	    http://localhost:$$API_PORT/api/v1/admin/flavors >/dev/null 2>&1 || true; \
 	  echo "    Default flavors seeded."; \
 	  SD_ID=$$(curl -sf -H "Authorization: Bearer $$TOKEN" http://localhost:$$API_PORT/api/v1/storage-domains | jq -r ".[0].id"); \
@@ -390,11 +393,13 @@ fresh: build build-sim
 	@mkdir -p $(TMP_DIR)
 	@# ── 1. Stop everything ──
 	@$(MAKE) --no-print-directory stop
-	@# ── 2. Allocate ports ──
+	@# ── 2. Wipe postgres data dir (fresh = clean slate) ──
+	@rm -rf $(PG_DATA_DIR)
+	@# ── 3. Allocate ports ──
 	@$(MAKE) --no-print-directory _alloc-ports
-	@# ── 3. Start sim (postgres が起動するまで待つ) ──
+	@# ── 4. Start sim (postgres が起動するまで待つ) ──
 	@$(MAKE) --no-print-directory _start-sim
-	@# ── 4. Reset DB ──
+	@# ── 5. Reset DB ──
 	@$(MAKE) --no-print-directory reset-db
 	@# ── 5. Start controller (migrations を実行) ──
 	@$(MAKE) --no-print-directory _start-controller

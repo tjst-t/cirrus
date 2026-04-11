@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { vmsApi, type Vm, type Flavor, type VolumeType, type CreateVmRequest } from '@/api/vms'
 import { networksApi, type Network } from '@/api/networks'
+import { azApi, type AvailabilityZone } from '@/api/az'
 import { Button } from '@/components/Button'
 import { ErrorMessage } from '@/components/ErrorMessage'
 import { VmStatusBadge } from '@/components/tenant/VmStatusBadge'
@@ -16,12 +17,14 @@ function CreateVmDialog({ onClose, onCreated }: CreateVmDialogProps) {
     name: '',
     flavor_id: '',
     network_id: '',
+    az_id: '',
     volume_type_id: '',
     volume_size_gb: 20,
   })
   const [flavors, setFlavors] = useState<Flavor[]>([])
   const [networks, setNetworks] = useState<Network[]>([])
   const [volumeTypes, setVolumeTypes] = useState<VolumeType[]>([])
+  const [azList, setAzList] = useState<AvailabilityZone[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -30,11 +33,13 @@ function CreateVmDialog({ onClose, onCreated }: CreateVmDialogProps) {
       vmsApi.listFlavors(),
       networksApi.list(),
       vmsApi.listVolumeTypes(),
+      azApi.list(),
     ])
-      .then(([f, n, vt]) => {
+      .then(([f, n, vt, az]) => {
         setFlavors(f)
         setNetworks(n)
         setVolumeTypes(vt)
+        setAzList(az)
         if (f.length > 0) setForm((prev) => ({ ...prev, flavor_id: f[0].id }))
         if (n.length > 0) setForm((prev) => ({ ...prev, network_id: n[0].id }))
       })
@@ -51,6 +56,9 @@ function CreateVmDialog({ onClose, onCreated }: CreateVmDialogProps) {
         name: form.name,
         flavor_id: form.flavor_id,
         network_id: form.network_id,
+      }
+      if (form.az_id) {
+        req.az_id = form.az_id
       }
       if (form.volume_type_id) {
         req.volume_type_id = form.volume_type_id
@@ -75,6 +83,7 @@ function CreateVmDialog({ onClose, onCreated }: CreateVmDialogProps) {
           <div>
             <label className="block text-xs font-medium text-[var(--color-text)] mb-1">名前 *</label>
             <input
+              data-testid="vm-create-name"
               type="text"
               value={form.name}
               onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
@@ -86,6 +95,7 @@ function CreateVmDialog({ onClose, onCreated }: CreateVmDialogProps) {
           <div>
             <label className="block text-xs font-medium text-[var(--color-text)] mb-1">フレーバー *</label>
             <select
+              data-testid="vm-create-flavor"
               value={form.flavor_id}
               onChange={(e) => setForm((p) => ({ ...p, flavor_id: e.target.value }))}
               required
@@ -101,6 +111,7 @@ function CreateVmDialog({ onClose, onCreated }: CreateVmDialogProps) {
           <div>
             <label className="block text-xs font-medium text-[var(--color-text)] mb-1">ネットワーク *</label>
             <select
+              data-testid="vm-create-network"
               value={form.network_id}
               onChange={(e) => setForm((p) => ({ ...p, network_id: e.target.value }))}
               required
@@ -109,6 +120,22 @@ function CreateVmDialog({ onClose, onCreated }: CreateVmDialogProps) {
               {networks.map((n) => (
                 <option key={n.id} value={n.id}>
                   {n.name} ({n.cidr})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-[var(--color-text)] mb-1">アベイラビリティゾーン</label>
+            <select
+              data-testid="vm-create-az"
+              value={form.az_id}
+              onChange={(e) => setForm((p) => ({ ...p, az_id: e.target.value }))}
+              className="w-full h-9 px-3 text-sm border border-[var(--color-border)] rounded focus:outline-none focus:ring-2 focus:ring-accent/30 bg-white"
+            >
+              <option value="">自動選択</option>
+              {azList.map((az) => (
+                <option key={az.id} value={az.id}>
+                  {az.name}
                 </option>
               ))}
             </select>
@@ -151,7 +178,7 @@ function CreateVmDialog({ onClose, onCreated }: CreateVmDialogProps) {
             <Button type="button" variant="ghost" size="sm" onClick={onClose}>
               キャンセル
             </Button>
-            <Button type="submit" variant="primary" size="sm" disabled={loading}>
+            <Button data-testid="vm-create-submit" type="submit" variant="primary" size="sm" disabled={loading}>
               {loading ? '作成中...' : '作成'}
             </Button>
           </div>
@@ -163,6 +190,8 @@ function CreateVmDialog({ onClose, onCreated }: CreateVmDialogProps) {
 
 export function VmsPage() {
   const [vms, setVms] = useState<Vm[]>([])
+  const [flavors, setFlavors] = useState<Flavor[]>([])
+  const [azList, setAzList] = useState<AvailabilityZone[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
@@ -171,8 +200,16 @@ export function VmsPage() {
 
   const load = useCallback(() => {
     setLoading(true)
-    vmsApi.list()
-      .then(setVms)
+    Promise.all([
+      vmsApi.list(),
+      vmsApi.listFlavors().catch(() => [] as Flavor[]),
+      azApi.list().catch(() => [] as AvailabilityZone[]),
+    ])
+      .then(([v, f, az]) => {
+        setVms(v)
+        setFlavors(f)
+        setAzList(az)
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }, [])
@@ -201,11 +238,23 @@ export function VmsPage() {
     }
   }
 
+  const flavorName = (flavorId?: string) => {
+    if (!flavorId) return '—'
+    const f = flavors.find((f) => f.id === flavorId)
+    return f ? f.name : flavorId
+  }
+
+  const azName = (azId?: string) => {
+    if (!azId) return '—'
+    const az = azList.find((a) => a.id === azId)
+    return az ? az.name : azId
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-[var(--color-text)]">VM 管理</h2>
-        <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
+        <Button data-testid="vm-create-button" variant="primary" size="sm" onClick={() => setShowCreate(true)}>
           + VM を作成
         </Button>
       </div>
@@ -223,6 +272,8 @@ export function VmsPage() {
               <tr>
                 <th className="text-left px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">名前</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">状態</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">フレーバー</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">AZ</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">IPアドレス</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">作成日時</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">操作</th>
@@ -231,7 +282,7 @@ export function VmsPage() {
             <tbody>
               {vms.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-[var(--color-text-secondary)]">
+                  <td colSpan={7} className="px-4 py-8 text-center text-[var(--color-text-secondary)]">
                     VM がありません
                   </td>
                 </tr>
@@ -246,6 +297,12 @@ export function VmsPage() {
                     <td className="px-4 py-3">
                       <VmStatusBadge status={vm.status} />
                     </td>
+                    <td className="px-4 py-3 text-[var(--color-text-secondary)] text-xs">
+                      {flavorName(vm.flavor_id)}
+                    </td>
+                    <td className="px-4 py-3 text-[var(--color-text-secondary)] text-xs">
+                      {azName(vm.az_id)}
+                    </td>
                     <td className="px-4 py-3 text-[var(--color-text-secondary)] font-mono text-xs">
                       {vm.ip_address ?? '—'}
                     </td>
@@ -255,6 +312,7 @@ export function VmsPage() {
                     <td className="px-4 py-3">
                       <div className="flex gap-1 flex-wrap">
                         <Button
+                          data-testid={`vm-start-${vm.id}`}
                           variant="secondary"
                           size="sm"
                           onClick={() => handleAction(vm.id, 'start')}
@@ -263,6 +321,7 @@ export function VmsPage() {
                           起動
                         </Button>
                         <Button
+                          data-testid={`vm-stop-${vm.id}`}
                           variant="secondary"
                           size="sm"
                           onClick={() => handleAction(vm.id, 'stop')}
@@ -271,6 +330,7 @@ export function VmsPage() {
                           停止
                         </Button>
                         <Button
+                          data-testid={`vm-reboot-${vm.id}`}
                           variant="secondary"
                           size="sm"
                           onClick={() => handleAction(vm.id, 'reboot')}
@@ -279,6 +339,7 @@ export function VmsPage() {
                           再起動
                         </Button>
                         <Button
+                          data-testid={`vm-delete-${vm.id}`}
                           variant="danger"
                           size="sm"
                           onClick={() => setDeleteId(vm.id)}
@@ -314,7 +375,7 @@ export function VmsPage() {
               <Button variant="ghost" size="sm" onClick={() => setDeleteId(null)}>
                 キャンセル
               </Button>
-              <Button variant="danger" size="sm" onClick={() => handleDelete(deleteId)}>
+              <Button data-testid="vm-list-delete-confirm-button" variant="danger" size="sm" onClick={() => handleDelete(deleteId)}>
                 削除する
               </Button>
             </div>

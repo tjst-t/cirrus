@@ -8,6 +8,7 @@ export interface Vm {
   status: VmStatus
   flavor_id?: string
   network_id?: string
+  az_id?: string
   ip_address?: string
   created_at: string
 }
@@ -21,6 +22,7 @@ export interface CreateVmRequest {
   name: string
   flavor_id: string
   network_id: string
+  az_id?: string
   volume_type_id?: string
   volume_size_gb?: number
 }

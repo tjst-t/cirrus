@@ -29,6 +29,8 @@ test.describe('VM 管理フロー', () => {
         })
       } else if (url.includes('/volume-types')) {
         await route.fulfill({ status: 200, json: [] })
+      } else if (url.includes('/availability-zones')) {
+        await route.fulfill({ status: 200, json: [] })
       } else {
         await route.fulfill({ status: 200, json: { items: [], next_cursor: '' } })
       }
