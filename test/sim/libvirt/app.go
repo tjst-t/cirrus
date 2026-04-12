@@ -9,11 +9,13 @@ package libvirtsim
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tjst-t/cirrus/test/sim/common/pkg/fault"
 	"github.com/tjst-t/cirrus/test/sim/libvirt/internal/handler"
 	"github.com/tjst-t/cirrus/test/sim/libvirt/internal/netns"
@@ -28,10 +30,17 @@ type Server struct {
 	rpcServer  *rpc.Server
 	store      *state.Store
 	logger     *slog.Logger
+	dbDSN      string // empty = no persistence
 }
 
-// New creates a new multi-host libvirt-sim Server.
+// New creates a new multi-host libvirt-sim Server without database persistence.
 func New(port string, logger *slog.Logger) *Server {
+	return NewWithDB(port, "", logger)
+}
+
+// NewWithDB creates a new multi-host libvirt-sim Server backed by PostgreSQL persistence.
+// dsn is a postgres connection string; pass empty string to run without persistence.
+func NewWithDB(port, dsn string, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -56,10 +65,12 @@ func New(port string, logger *slog.Logger) *Server {
 		rpcServer: rpcServer,
 		store:     store,
 		logger:    logger,
+		dbDSN:     dsn,
 	}
 }
 
 // SeedHost registers a host and starts its RPC listener.
+// If the host already exists (e.g. restored from DB), it is silently skipped.
 func (s *Server) SeedHost(ctx context.Context, cfg HostConfig) error {
 	host := &state.Host{
 		HostID:             cfg.HostID,
@@ -72,7 +83,12 @@ func (s *Server) SeedHost(ctx context.Context, cfg HostConfig) error {
 		CPUOvercommitRatio: cfg.CPUOvercommitRatio,
 		MemOvercommitRatio: cfg.MemOvercommitRatio,
 	}
-	if err := s.store.AddHost(host); err != nil {
+	err := s.store.AddHost(host)
+	if err != nil {
+		if isHostExists(err) {
+			s.logger.Info("libvirt-sim: host already registered, skipping seed", "host_id", cfg.HostID)
+			return nil
+		}
 		return fmt.Errorf("add host %s: %w", cfg.HostID, err)
 	}
 	if err := s.rpcServer.StartListener(ctx, cfg.HostID, cfg.LibvirtPort); err != nil {
@@ -82,14 +98,82 @@ func (s *Server) SeedHost(ctx context.Context, cfg HostConfig) error {
 	return nil
 }
 
+// isHostExists reports whether the error indicates the host already exists.
+func isHostExists(err error) bool {
+	return errors.Is(err, state.ErrHostExists)
+}
+
 // Start starts the management API server in a goroutine.
+// If a DSN was provided, the DB is initialized and state is loaded before
+// the HTTP server begins accepting connections. RPC listeners are restarted
+// for all hosts that were restored from the database.
 func (s *Server) Start() {
 	go func() {
+		if s.dbDSN != "" {
+			if err := s.initDB(); err != nil {
+				s.logger.Error("libvirt-sim: DB init failed, running without persistence", "error", err)
+			}
+		}
 		s.logger.Info("libvirt-sim starting", "addr", s.httpServer.Addr)
 		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			s.logger.Error("libvirt-sim server failed", "error", err)
 		}
 	}()
+}
+
+// initDB connects to PostgreSQL with retries, creates the schema, and loads
+// persisted state into the in-memory store. RPC listeners are restarted for
+// each host restored from the database.
+func (s *Server) initDB() error {
+	ctx := context.Background()
+
+	var pool *pgxpool.Pool
+	var lastErr error
+	for attempt := 0; attempt < 10; attempt++ {
+		if attempt > 0 {
+			time.Sleep(500 * time.Millisecond)
+		}
+		p, err := pgxpool.New(ctx, s.dbDSN)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if err := p.Ping(ctx); err != nil {
+			p.Close()
+			lastErr = err
+			continue
+		}
+		pool = p
+		break
+	}
+	if pool == nil {
+		return fmt.Errorf("libvirt-sim: connect to postgres: %w", lastErr)
+	}
+
+	if err := state.SetupSchema(ctx, pool); err != nil {
+		pool.Close()
+		return err
+	}
+
+	s.store.SetDB(pool)
+
+	if err := s.store.LoadFromDB(ctx); err != nil {
+		return err
+	}
+
+	// Restart RPC listeners for hosts restored from DB.
+	for _, h := range s.store.ListHosts() {
+		if err := s.rpcServer.StartListener(ctx, h.HostID, h.LibvirtPort); err != nil {
+			s.logger.Error("libvirt-sim: restart RPC listener for restored host",
+				"host_id", h.HostID, "port", h.LibvirtPort, "error", err)
+		} else {
+			s.logger.Info("libvirt-sim: restored host RPC listener",
+				"host_id", h.HostID, "port", h.LibvirtPort)
+		}
+	}
+
+	s.logger.Info("libvirt-sim: DB persistence enabled", "dsn", s.dbDSN)
+	return nil
 }
 
 // Shutdown gracefully shuts down the management API and all RPC listeners.

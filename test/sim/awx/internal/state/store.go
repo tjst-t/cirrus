@@ -3,6 +3,7 @@ package state
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -11,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"encoding/json"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // JobTemplate represents an AWX job template.
@@ -60,6 +61,7 @@ type Store struct {
 	callback       CallbackConfig
 	httpClient     *http.Client
 	timers         []*time.Timer
+	db             *pgxpool.Pool // nil = no persistence
 }
 
 // NewStore creates a new Store with initialized maps.
@@ -91,6 +93,7 @@ func (s *Store) CreateTemplate(_ context.Context, name, description string, dura
 	}
 	s.templates[t.ID] = t
 	s.nextTemplateID++
+	s.dbSaveTemplate(t)
 
 	return t, nil
 }
@@ -141,6 +144,7 @@ func (s *Store) LaunchJob(ctx context.Context, templateID int64, extraVars map[s
 	}
 	s.jobs[job.ID] = job
 	s.nextJobID++
+	s.dbSaveJob(job)
 
 	duration := time.Duration(t.ExpectedDurationMs) * time.Millisecond
 	failureRate := t.FailureRate
@@ -155,6 +159,7 @@ func (s *Store) LaunchJob(ctx context.Context, templateID int64, extraVars map[s
 		job.Status = "running"
 		started := time.Now().UTC()
 		job.Started = &started
+		s.dbSaveJob(job)
 	}
 	s.mu.Unlock()
 
@@ -194,6 +199,7 @@ func (s *Store) completeJob(ctx context.Context, jobID, templateID int64, failur
 	} else {
 		job.Status = "successful"
 	}
+	s.dbSaveJob(job)
 
 	status := job.Status
 	extraVars := job.ExtraVars
@@ -276,6 +282,7 @@ func (s *Store) CancelJob(_ context.Context, id int64) (*Job, error) {
 	now := time.Now().UTC()
 	job.Status = "canceled"
 	job.Finished = &now
+	s.dbSaveJob(job)
 
 	return job, nil
 }
@@ -329,6 +336,7 @@ func (s *Store) Reset(_ context.Context) {
 		timer.Stop()
 	}
 
+	s.dbClearAll()
 	s.templates = make(map[int64]*JobTemplate)
 	s.jobs = make(map[int64]*Job)
 	s.nextTemplateID = 1

@@ -37,6 +37,12 @@ type Shutdowner interface {
 }
 
 func main() {
+	// Sub-command dispatch: "cirrus-sim seed [flags]"
+	if len(os.Args) > 1 && os.Args[1] == "seed" {
+		runSeedCommand(os.Args[2:])
+		return
+	}
+
 	showVersion := flag.Bool("version", false, "print version and exit")
 	commonPort := flag.String("common", envOrDefault("COMMON_PORT", "8000"), "common API port")
 	libvirtPort := flag.String("libvirt", envOrDefault("LIBVIRT_SIM_PORT", "8100"), "libvirt-sim management port")
@@ -60,7 +66,7 @@ func main() {
 	// Create simulator instances.
 	// postgres is created first so its DSN is available for storageSim.
 	pgSim := pgsim.New(*postgresPort, *postgresMgmtPort, logger.With("sim", "postgres"))
-	libvirtSim := libvirtsim.New(*libvirtPort, logger.With("sim", "libvirt-sim"))
+	libvirtSim := libvirtsim.NewWithDB(*libvirtPort, pgSim.DSN(), logger.With("sim", "libvirt-sim"))
 	storageSim := storagesim.NewWithDB(*storagePort, pgSim.DSN(), logger.With("sim", "storage-sim"))
 
 	// Create aggregator with endpoints pointing to local simulators
@@ -88,7 +94,7 @@ func main() {
 		{"postgres", pgSim},
 		{"common", common.New(*commonPort, logger.With("sim", "common"))},
 		{"libvirt-sim", libvirtSim},
-		{"awx-sim", awxsim.New(*awxPort, logger.With("sim", "awx-sim"))},
+		{"awx-sim", awxsim.NewWithDB(*awxPort, pgSim.DSN(), logger.With("sim", "awx-sim"))},
 		{"storage-sim", storageSim},
 		{"aggregator", aggregator.New(*aggregatorPort, aggEndpoints, logger.With("sim", "aggregator"))},
 	}

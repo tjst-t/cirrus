@@ -6,6 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Sentinel errors for domain operations.
@@ -49,6 +51,7 @@ type Store struct {
 	mu    sync.RWMutex
 	hosts map[string]*Host // key: host_id
 	ports map[int]string   // key: port, value: host_id
+	db    *pgxpool.Pool    // nil = no persistence
 
 	nextDomainID atomic.Int32
 
@@ -126,6 +129,7 @@ func (s *Store) AddHost(h *Host) error {
 
 	s.hosts[h.HostID] = h
 	s.ports[h.LibvirtPort] = h.HostID
+	s.dbSaveHost(h)
 	return nil
 }
 
@@ -177,6 +181,7 @@ func (s *Store) RemoveHost(hostID string) error {
 
 	delete(s.ports, h.LibvirtPort)
 	delete(s.hosts, hostID)
+	s.dbDeleteHost(hostID)
 	return nil
 }
 
@@ -185,6 +190,7 @@ func (s *Store) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	s.dbClearAll()
 	s.hosts = make(map[string]*Host)
 	s.ports = make(map[int]string)
 	s.nextDomainID.Store(1)
@@ -212,6 +218,7 @@ func (s *Store) DefineDomain(hostID string, d *Domain) error {
 	d.ID = -1
 	d.CreatedAt = time.Now()
 	h.Domains[d.UUIDString()] = d
+	s.dbSaveDomain(hostID, d)
 	return nil
 }
 
@@ -308,6 +315,7 @@ func (s *Store) StartDomain(hostID string, uuid string) error {
 	d.State = DomainStateRunning
 	d.ID = s.nextDomainID.Add(1) - 1
 	d.StartedAt = time.Now()
+	s.dbSaveDomain(hostID, d)
 	return nil
 }
 
@@ -326,7 +334,11 @@ func (s *Store) DestroyDomain(hostID string, uuid string) error {
 		return fmt.Errorf("domain %s: %w", uuid, ErrNoDomain)
 	}
 
-	return d.Destroy()
+	if err := d.Destroy(); err != nil {
+		return err
+	}
+	s.dbSaveDomain(hostID, d)
+	return nil
 }
 
 // ShutdownDomain gracefully stops a domain.
@@ -344,7 +356,11 @@ func (s *Store) ShutdownDomain(hostID string, uuid string) error {
 		return fmt.Errorf("domain %s: %w", uuid, ErrNoDomain)
 	}
 
-	return d.Shutdown()
+	if err := d.Shutdown(); err != nil {
+		return err
+	}
+	s.dbSaveDomain(hostID, d)
+	return nil
 }
 
 // SuspendDomain pauses a running domain.
@@ -362,7 +378,11 @@ func (s *Store) SuspendDomain(hostID string, uuid string) error {
 		return fmt.Errorf("domain %s: %w", uuid, ErrNoDomain)
 	}
 
-	return d.Suspend()
+	if err := d.Suspend(); err != nil {
+		return err
+	}
+	s.dbSaveDomain(hostID, d)
+	return nil
 }
 
 // ResumeDomain resumes a paused domain.
@@ -380,7 +400,11 @@ func (s *Store) ResumeDomain(hostID string, uuid string) error {
 		return fmt.Errorf("domain %s: %w", uuid, ErrNoDomain)
 	}
 
-	return d.Resume()
+	if err := d.Resume(); err != nil {
+		return err
+	}
+	s.dbSaveDomain(hostID, d)
+	return nil
 }
 
 // UndefineDomain removes a domain from a host (must be shutoff).
@@ -403,6 +427,7 @@ func (s *Store) UndefineDomain(hostID string, uuid string) error {
 	}
 
 	delete(h.Domains, uuid)
+	s.dbDeleteDomain(uuid)
 	return nil
 }
 
@@ -461,6 +486,7 @@ func (s *Store) MigratePrepare(destHostID string, dom *Domain) error {
 		MigrationCookie: dom.UUIDString(),
 	}
 	h.Domains[dom.UUIDString()] = placeholder
+	s.dbSaveDomain(destHostID, placeholder)
 	return nil
 }
 
@@ -489,6 +515,7 @@ func (s *Store) MigratePerform(srcHostID string, uuid string) error {
 
 	d.MigrationState = MigrationStatePerforming
 	d.MigrationCookie = uuid
+	s.dbSaveDomain(srcHostID, d)
 	return nil
 }
 
@@ -516,6 +543,7 @@ func (s *Store) MigrateFinish(destHostID string, uuid string) (*Domain, error) {
 	d.StartedAt = time.Now()
 	d.MigrationState = MigrationStateNone
 	d.MigrationCookie = ""
+	s.dbSaveDomain(destHostID, d)
 	return d, nil
 }
 
@@ -539,6 +567,7 @@ func (s *Store) MigrateConfirm(srcHostID string, uuid string) error {
 	}
 
 	delete(h.Domains, uuid)
+	s.dbDeleteDomain(uuid)
 	return nil
 }
 

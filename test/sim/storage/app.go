@@ -3,6 +3,7 @@ package storagesim
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -61,6 +62,7 @@ func NewWithDB(port, dsn string, logger *slog.Logger) *Server {
 }
 
 // SeedBackend registers a storage backend.
+// If the backend already exists (e.g. restored from DB), it is silently skipped.
 func (s *Server) SeedBackend(cfg BackendConfig) error {
 	b := state.Backend{
 		BackendID:          cfg.BackendID,
@@ -70,7 +72,11 @@ func (s *Server) SeedBackend(cfg BackendConfig) error {
 		State:              state.BackendActive,
 		OverprovisionRatio: cfg.OverprovisionRatio,
 	}
-	return s.store.AddBackend(context.Background(), b)
+	err := s.store.AddBackend(context.Background(), b)
+	if errors.Is(err, state.ErrBackendExists) {
+		return nil
+	}
+	return err
 }
 
 // BackendConfig holds the configuration for seeding a storage backend.

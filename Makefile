@@ -1,6 +1,6 @@
 .PHONY: all build test lint serve stop serve-storage stop-storage logs logs-worker logs-sim \
         clean-dev reset-db fresh proto test-unit test-mock test-integration test-smoke build-sim \
-        build-storage-servers web-install web-build test-e2e
+        build-storage-servers web-install web-build test-e2e seed _seed-sim
 
 # ── Configuration ──
 
@@ -108,10 +108,6 @@ serve: build build-sim
 	@$(MAKE) --no-print-directory _start-controller
 	@# ── 5. Start worker containers ──
 	@$(MAKE) --no-print-directory _start-workers
-	@# ── 6. Seed topology ──
-	@$(MAKE) --no-print-directory _seed-topology
-	@# ── 7. Activate hosts ──
-	@$(MAKE) --no-print-directory _activate-hosts
 	@bash -c '\
 	  set -a; source $(PORTMAN_ENV); set +a; \
 	  echo ""; \
@@ -120,11 +116,19 @@ serve: build build-sim
 	  echo "  Dashboard        http://localhost:$$SIM_AGGREGATOR_PORT"; \
 	  echo "  Controller API   http://localhost:$$API_PORT"; \
 	  echo "  ─────────────────────────────────────────"; \
+	  echo "  make seed        seed sim hosts and topology (first run)"; \
 	  echo "  make logs        controller logs"; \
 	  echo "  make logs-sim    simulator logs"; \
 	  echo "  make logs-worker worker container logs"; \
 	  echo "  make stop        stop all"; \
 	  echo ""'
+
+# ── Seed (idempotent: safe to run multiple times) ──
+
+seed:
+	@$(MAKE) --no-print-directory _seed-sim
+	@$(MAKE) --no-print-directory _seed-topology
+	@$(MAKE) --no-print-directory _activate-hosts
 
 # ── Stop ──
 
@@ -179,7 +183,7 @@ _alloc-ports:
 _start-sim:
 	@bash -c '\
 	  set -a; source $(PORTMAN_ENV); set +a; \
-	  echo "==> Starting cirrus-sim (env: $(CIRRUS_SIM_ENV))..."; \
+	  echo "==> Starting cirrus-sim..."; \
 	  POSTGRES_DATA_DIR=$(PG_DATA_DIR) \
 	  nohup ./bin/cirrus-sim \
 	    -common=$$SIM_COMMON_PORT \
@@ -189,7 +193,6 @@ _start-sim:
 	    -storage=$$SIM_STORAGE_PORT \
 	    -postgres=$$SIM_POSTGRES_PORT \
 	    -postgres-mgmt=$$SIM_POSTGRES_MGMT_PORT \
-	    -env=test/sim/environments/$(CIRRUS_SIM_ENV).yaml \
 	    -worker-urls=http://localhost:$$WORKER_1_PORT,http://localhost:$$WORKER_2_PORT,http://localhost:$$WORKER_3_PORT \
 	    > $(LOG_SIM) 2>&1 & \
 	  echo $$! > $(PID_SIM); \
@@ -204,6 +207,18 @@ _start-sim:
 	  curl -sf http://localhost:$$SIM_COMMON_PORT/api/v1/events >/dev/null 2>&1 \
 	    && echo "    cirrus-sim is ready." \
 	    || { echo "ERROR: cirrus-sim failed. Check $(LOG_SIM)"; exit 1; }'
+
+# ── Internal: seed sim hosts and storage backends ──
+
+_seed-sim:
+	@bash -c '\
+	  set -a; source $(PORTMAN_ENV); set +a; \
+	  echo "==> Seeding sim hosts and backends (env: $(CIRRUS_SIM_ENV))..."; \
+	  ./bin/cirrus-sim seed \
+	    -env=test/sim/environments/$(CIRRUS_SIM_ENV).yaml \
+	    -libvirt-url=http://localhost:$$SIM_LIBVIRT_PORT \
+	    -storage-url=http://localhost:$$SIM_STORAGE_PORT; \
+	  echo "    Sim seeded."'
 
 # ── Internal: start controller (host) ──
 
@@ -401,14 +416,12 @@ fresh: build build-sim
 	@$(MAKE) --no-print-directory _start-sim
 	@# ── 5. Reset DB ──
 	@$(MAKE) --no-print-directory reset-db
-	@# ── 5. Start controller (migrations を実行) ──
+	@# ── 6. Start controller (migrations を実行) ──
 	@$(MAKE) --no-print-directory _start-controller
-	@# ── 6. Start worker containers ──
+	@# ── 7. Start worker containers ──
 	@$(MAKE) --no-print-directory _start-workers
-	@# ── 7. Seed topology ──
-	@$(MAKE) --no-print-directory _seed-topology
-	@# ── 8. Activate hosts ──
-	@$(MAKE) --no-print-directory _activate-hosts
+	@# ── 8. Seed everything ──
+	@$(MAKE) --no-print-directory seed
 	@bash -c '\
 	  set -a; source $(PORTMAN_ENV); set +a; \
 	  echo ""; \
