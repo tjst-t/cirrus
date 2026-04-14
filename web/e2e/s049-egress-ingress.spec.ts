@@ -124,8 +124,9 @@ test.describe('S049-1-A: Egress 管理', () => {
         }
         if (route.request().method() === 'POST') {
           const body = route.request().postDataJSON()
-          // バックエンドが期待する形式: {type, config}
+          // バックエンドが期待する形式: {type, config: {public_ip}}
           expect(body.type).toBe('nat_gateway')
+          expect(body.config?.public_ip).toBeTruthy()
           created = true
           return route.fulfill({ status: 201, json: EGRESS_1 })
         }
@@ -139,13 +140,29 @@ test.describe('S049-1-A: Egress 管理', () => {
     await expect(page.getByTestId('egress-create-dialog')).toBeVisible()
     await expect(page.getByTestId('egress-type-select')).toBeVisible()
 
-    // type=nat_gateway はデフォルト選択済み
+    // type=nat_gateway はデフォルト選択済み → public_ip フィールドが表示される
+    await expect(page.getByTestId('egress-public-ip-input')).toBeVisible()
+    await page.getByTestId('egress-public-ip-input').fill('203.0.113.1')
+
     await page.getByTestId('egress-create-submit').click()
 
     await expect(page.getByTestId(`egress-row-${EGRESS_ID}`)).toBeVisible()
   })
 
-  test('Egress 作成失敗: エラーメッセージを表示する', async ({ page }) => {
+  test('Egress 作成失敗: public_ip 未入力でフロントバリデーションエラーを表示する', async ({ page }) => {
+    await page.route(
+      `**/api/v1/tenants/${TENANT_ID}/networks/${NET_ID}/egresses`,
+      (route) => route.fulfill({ status: 200, json: [] })
+    )
+
+    await page.goto('/egress')
+    await page.getByTestId('egress-create-button').click()
+    // public_ip を入力せずに送信 → バックエンドを呼ばずにエラー表示
+    await page.getByTestId('egress-create-submit').click()
+    await expect(page.getByTestId('egress-error-message')).toBeVisible()
+  })
+
+  test('Egress 作成失敗: サーバーエラー時にエラーメッセージを表示する', async ({ page }) => {
     await page.route(
       `**/api/v1/tenants/${TENANT_ID}/networks/${NET_ID}/egresses`,
       async (route) => {
@@ -158,6 +175,7 @@ test.describe('S049-1-A: Egress 管理', () => {
 
     await page.goto('/egress')
     await page.getByTestId('egress-create-button').click()
+    await page.getByTestId('egress-public-ip-input').fill('203.0.113.1')
     await page.getByTestId('egress-create-submit').click()
     await expect(page.getByTestId('egress-error-message')).toBeVisible()
   })
