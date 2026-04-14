@@ -179,6 +179,64 @@ func (h *egressHandlers) getEgress(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, sanitizeEgress(e))
 }
 
+func (h *egressHandlers) updateEgress(w http.ResponseWriter, r *http.Request) {
+	user := UserFromContext(r.Context())
+
+	n, ok := h.networkFromEgressURL(w, r)
+	if !ok {
+		return
+	}
+
+	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionCreateEgress, identity.Resource{TenantID: &n.TenantID}); err != nil || decision == identity.Deny {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	egressID, err := uuid.Parse(chi.URLParam(r, "egress_id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid egress ID"})
+		return
+	}
+
+	// Verify egress belongs to this network.
+	e, err := h.svc.GetEgress(r.Context(), egressID)
+	if err != nil {
+		if errors.Is(err, network.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "egress not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get egress"})
+		return
+	}
+	if e.NetworkID != n.ID {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "egress not found"})
+		return
+	}
+
+	var config network.EgressConfig
+	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	updated, err := h.svc.UpdateEgressConfig(r.Context(), egressID, config)
+	if err != nil {
+		if errors.Is(err, network.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "egress not found"})
+			return
+		}
+		if errors.Is(err, network.ErrInvalidState) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		h.logger.Error("failed to update egress", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update egress"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, sanitizeEgress(updated))
+}
+
 func (h *egressHandlers) deleteEgress(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 

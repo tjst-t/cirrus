@@ -164,6 +164,75 @@ func (h *ingressHandlers) getIngress(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, ingress)
 }
 
+func (h *ingressHandlers) updateIngress(w http.ResponseWriter, r *http.Request) {
+	networkID, err := uuid.Parse(chi.URLParam(r, "network_id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid network id"})
+		return
+	}
+
+	ingressID, err := uuid.Parse(chi.URLParam(r, "ingress_id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid ingress id"})
+		return
+	}
+
+	nw, err := h.svc.GetNetwork(r.Context(), networkID)
+	if err != nil {
+		if errors.Is(err, network.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "network not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get network"})
+		return
+	}
+
+	user := UserFromContext(r.Context())
+	tenantID := nw.TenantID
+	decision, authErr := h.authz.Authorize(r.Context(), user, identity.ActionCreateIngress, identity.Resource{TenantID: &tenantID})
+	if authErr != nil || decision == identity.Deny {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	// Verify ingress belongs to this network.
+	existing, err := h.svc.GetIngress(r.Context(), ingressID)
+	if err != nil {
+		if errors.Is(err, network.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "ingress not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get ingress"})
+		return
+	}
+	if existing.NetworkID != networkID {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "ingress not found"})
+		return
+	}
+
+	var config network.IngressConfig
+	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	updated, err := h.svc.UpdateIngressConfig(r.Context(), ingressID, config)
+	if err != nil {
+		if errors.Is(err, network.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "ingress not found"})
+			return
+		}
+		if errors.Is(err, network.ErrInvalidState) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update ingress"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, updated)
+}
+
 func (h *ingressHandlers) deleteIngress(w http.ResponseWriter, r *http.Request) {
 	networkID, err := uuid.Parse(chi.URLParam(r, "network_id"))
 	if err != nil {

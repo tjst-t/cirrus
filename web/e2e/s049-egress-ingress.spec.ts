@@ -234,6 +234,52 @@ test.describe('S049-1-A: Egress 管理', () => {
     await page.goto('/egress')
     await expect(page.getByTestId('egress-no-network-message')).toBeVisible()
   })
+
+  test('Egress 編集: public_ip を変更して保存できる', async ({ page }) => {
+    const updated = { ...EGRESS_1, config: { public_ip: '203.0.113.99' } }
+    let patched = false
+    await page.route(
+      `**/api/v1/tenants/${TENANT_ID}/networks/${NET_ID}/egresses`,
+      (route) => route.fulfill({ status: 200, json: patched ? [updated] : [EGRESS_1] })
+    )
+    await page.route(
+      `**/api/v1/tenants/${TENANT_ID}/networks/${NET_ID}/egresses/${EGRESS_ID}`,
+      async (route) => {
+        if (route.request().method() === 'PATCH') {
+          const body = route.request().postDataJSON()
+          expect(body.public_ip).toBeTruthy()
+          patched = true
+          return route.fulfill({ status: 200, json: updated })
+        }
+        return route.continue()
+      }
+    )
+
+    await page.goto('/egress')
+    await expect(page.getByTestId(`egress-row-${EGRESS_ID}`)).toBeVisible()
+
+    await page.getByTestId(`egress-edit-button-${EGRESS_ID}`).click()
+    await expect(page.getByTestId(`egress-edit-dialog-${EGRESS_ID}`)).toBeVisible()
+
+    await page.getByTestId(`egress-edit-public-ip-input-${EGRESS_ID}`).fill('203.0.113.99')
+    await page.getByTestId(`egress-edit-submit-${EGRESS_ID}`).click()
+
+    await expect(page.getByTestId(`egress-public-ip-${EGRESS_ID}`)).toHaveText('203.0.113.99')
+    expect(patched).toBe(true)
+  })
+
+  test('Egress 編集: public_ip 未入力でバリデーションエラーを表示する', async ({ page }) => {
+    await page.route(
+      `**/api/v1/tenants/${TENANT_ID}/networks/${NET_ID}/egresses`,
+      (route) => route.fulfill({ status: 200, json: [EGRESS_1] })
+    )
+
+    await page.goto('/egress')
+    await page.getByTestId(`egress-edit-button-${EGRESS_ID}`).click()
+    await page.getByTestId(`egress-edit-public-ip-input-${EGRESS_ID}`).fill('')
+    await page.getByTestId(`egress-edit-submit-${EGRESS_ID}`).click()
+    await expect(page.getByTestId(`egress-edit-error-${EGRESS_ID}`)).toBeVisible()
+  })
 })
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -254,7 +300,7 @@ test.describe('S049-1-B: Ingress 管理', () => {
     await page.route('**/api/v1/admin/ip-pools', (route) =>
       route.fulfill({ status: 200, json: [POOL_1] })
     )
-    await page.route('**/api/v1/tenants/*/vms', (route) =>
+    await page.route('**/api/v1/vms', (route) =>
       route.fulfill({ status: 200, json: { items: [VM_1], next_cursor: '' } })
     )
   })
@@ -374,5 +420,82 @@ test.describe('S049-1-B: Ingress 管理', () => {
     )
     await page.goto('/ingress')
     await expect(page.getByTestId('ingress-error-message')).toBeVisible()
+  })
+
+  test('Ingress 一覧: ターゲット VM 名が表示される', async ({ page }) => {
+    await page.route(
+      `**/api/v1/networks/${NET_ID}/ingresses`,
+      (route) => route.fulfill({ status: 200, json: [INGRESS_1] })
+    )
+    await page.goto('/ingress')
+    await expect(page.getByTestId(`ingress-target-vm-name-${INGRESS_ID}`)).toHaveText('web-server')
+  })
+
+  test('Ingress 編集: ターゲット VM を変更して保存できる', async ({ page }) => {
+    const NEW_VM_ID = 'vm-0000-0000-0000-000000000002'
+    const NEW_VM = { ...VM_1, id: NEW_VM_ID, name: 'app-server' }
+    await page.route('**/api/v1/vms', (route) =>
+      route.fulfill({ status: 200, json: { items: [VM_1, NEW_VM], next_cursor: '' } })
+    )
+    const updatedIngress = { ...INGRESS_1, config: { target_vm_id: NEW_VM_ID, target_ip: '' } }
+    let patched = false
+    await page.route(
+      `**/api/v1/networks/${NET_ID}/ingresses`,
+      (route) => route.fulfill({ status: 200, json: patched ? [updatedIngress] : [INGRESS_1] })
+    )
+    await page.route(
+      `**/api/v1/networks/${NET_ID}/ingresses/${INGRESS_ID}`,
+      async (route) => {
+        if (route.request().method() === 'PATCH') {
+          const body = route.request().postDataJSON()
+          expect(body.target_vm_id).toBeTruthy()
+          patched = true
+          return route.fulfill({ status: 200, json: updatedIngress })
+        }
+        return route.continue()
+      }
+    )
+
+    await page.goto('/ingress')
+    await expect(page.getByTestId(`ingress-row-${INGRESS_ID}`)).toBeVisible()
+
+    await page.getByTestId(`ingress-edit-button-${INGRESS_ID}`).click()
+    await expect(page.getByTestId(`ingress-edit-dialog-${INGRESS_ID}`)).toBeVisible()
+
+    await page.getByTestId(`ingress-edit-target-vm-select-${INGRESS_ID}`).selectOption(NEW_VM_ID)
+    await page.getByTestId(`ingress-edit-submit-${INGRESS_ID}`).click()
+
+    expect(patched).toBe(true)
+  })
+
+  test('Ingress 編集: ターゲット IP を変更して保存できる', async ({ page }) => {
+    const ingressWithIp = { ...INGRESS_1, config: { target_vm_id: '', target_ip: '10.0.0.5' } }
+    let patched = false
+    await page.route(
+      `**/api/v1/networks/${NET_ID}/ingresses`,
+      (route) => route.fulfill({ status: 200, json: patched ? [{ ...ingressWithIp, config: { target_vm_id: '', target_ip: '10.0.0.99' } }] : [ingressWithIp] })
+    )
+    await page.route(
+      `**/api/v1/networks/${NET_ID}/ingresses/${INGRESS_ID}`,
+      async (route) => {
+        if (route.request().method() === 'PATCH') {
+          const body = route.request().postDataJSON()
+          expect(body.target_ip).toBeTruthy()
+          patched = true
+          return route.fulfill({ status: 200, json: { ...ingressWithIp, config: { target_vm_id: '', target_ip: '10.0.0.99' } } })
+        }
+        return route.continue()
+      }
+    )
+
+    await page.goto('/ingress')
+    await page.getByTestId(`ingress-edit-button-${INGRESS_ID}`).click()
+    await expect(page.getByTestId(`ingress-edit-dialog-${INGRESS_ID}`)).toBeVisible()
+
+    // no VM selected → target IP input is visible
+    await page.getByTestId(`ingress-edit-target-ip-input-${INGRESS_ID}`).fill('10.0.0.99')
+    await page.getByTestId(`ingress-edit-submit-${INGRESS_ID}`).click()
+
+    expect(patched).toBe(true)
   })
 })

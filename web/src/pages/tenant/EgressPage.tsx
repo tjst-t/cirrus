@@ -99,6 +99,91 @@ function CreateEgressDialog({
   )
 }
 
+// ---- Edit Egress Dialog ----
+function EditEgressDialog({
+  tenantId,
+  networkId,
+  egress,
+  onClose,
+  onUpdated,
+}: {
+  tenantId: string
+  networkId: string
+  egress: Egress
+  onClose: () => void
+  onUpdated: () => void
+}) {
+  const [publicIp, setPublicIp] = useState(egress.config?.public_ip ?? '')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (egress.type === 'nat_gateway' && !publicIp.trim()) {
+      setError('パブリック IP を入力してください')
+      return
+    }
+    setLoading(true)
+    setError(null)
+    try {
+      await egressApi.update(tenantId, networkId, egress.id, {
+        public_ip: egress.type === 'nat_gateway' ? publicIp.trim() : undefined,
+      })
+      onUpdated()
+      onClose()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'エラーが発生しました')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div data-testid={`egress-edit-dialog-${egress.id}`} className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl border border-[var(--color-border)] p-6 w-full max-w-md shadow-xl">
+        <div className="flex items-center gap-3 mb-5">
+          <h3 className="text-base font-semibold text-[var(--color-text)]">Egress を編集</h3>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-[var(--color-text)] mb-1.5">タイプ</label>
+            <p className="text-sm text-[var(--color-text-secondary)]">{egress.type}</p>
+          </div>
+          {egress.type === 'nat_gateway' && (
+            <div>
+              <label className="block text-xs font-medium text-[var(--color-text)] mb-1.5">
+                パブリック IP <span className="text-red-500">*</span>
+              </label>
+              <input
+                data-testid={`egress-edit-public-ip-input-${egress.id}`}
+                type="text"
+                value={publicIp}
+                onChange={(e) => setPublicIp(e.target.value)}
+                className="w-full h-9 px-3 text-sm border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50 transition-all"
+                placeholder="203.0.113.1"
+              />
+            </div>
+          )}
+          {error && <ErrorMessage message={error} data-testid={`egress-edit-error-${egress.id}`} />}
+          <div className="flex gap-2 justify-end pt-1">
+            <Button type="button" variant="ghost" size="sm" onClick={onClose}>キャンセル</Button>
+            <Button
+              data-testid={`egress-edit-submit-${egress.id}`}
+              type="submit"
+              variant="primary"
+              size="sm"
+              disabled={loading}
+            >
+              {loading ? '保存中...' : '保存'}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 // ---- Main Page ----
 export function EgressPage() {
   const { tenantId } = useTenant()
@@ -109,6 +194,7 @@ export function EgressPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
+  const [editEgress, setEditEgress] = useState<Egress | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
 
@@ -260,14 +346,24 @@ export function EgressPage() {
                           </Button>
                         </span>
                       ) : (
-                        <Button
-                          data-testid={`egress-delete-button-${eg.id}`}
-                          variant="danger"
-                          size="sm"
-                          onClick={() => setDeleteId(eg.id)}
-                        >
-                          削除
-                        </Button>
+                        <span className="flex items-center justify-end gap-2">
+                          <Button
+                            data-testid={`egress-edit-button-${eg.id}`}
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditEgress(eg)}
+                          >
+                            編集
+                          </Button>
+                          <Button
+                            data-testid={`egress-delete-button-${eg.id}`}
+                            variant="danger"
+                            size="sm"
+                            onClick={() => setDeleteId(eg.id)}
+                          >
+                            削除
+                          </Button>
+                        </span>
                       )}
                     </td>
                   </tr>
@@ -285,6 +381,17 @@ export function EgressPage() {
           networkId={selectedNetwork}
           onClose={() => setShowCreate(false)}
           onCreated={load}
+        />
+      )}
+
+      {/* Edit Dialog */}
+      {editEgress && tenantId && selectedNetwork && (
+        <EditEgressDialog
+          tenantId={tenantId}
+          networkId={selectedNetwork}
+          egress={editEgress}
+          onClose={() => setEditEgress(null)}
+          onUpdated={load}
         />
       )}
     </div>

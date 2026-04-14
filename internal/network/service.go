@@ -49,6 +49,7 @@ type Service interface {
 	CreateEgress(ctx context.Context, networkID uuid.UUID, spec EgressSpec) (*Egress, error)
 	GetEgress(ctx context.Context, id uuid.UUID) (*Egress, error)
 	ListEgresses(ctx context.Context, networkID uuid.UUID) ([]Egress, error)
+	UpdateEgressConfig(ctx context.Context, egressID uuid.UUID, config EgressConfig) (*Egress, error)
 	DeleteEgress(ctx context.Context, id uuid.UUID) error
 
 	// IP Pools (admin)
@@ -61,6 +62,7 @@ type Service interface {
 	CreateIngress(ctx context.Context, networkID uuid.UUID, spec IngressSpec) (*Ingress, error)
 	GetIngress(ctx context.Context, id uuid.UUID) (*Ingress, error)
 	ListIngresses(ctx context.Context, networkID uuid.UUID) ([]Ingress, error)
+	UpdateIngressConfig(ctx context.Context, ingressID uuid.UUID, config IngressConfig) (*Ingress, error)
 	DeleteIngress(ctx context.Context, id uuid.UUID) error
 
 	// UpdateBackendHealth updates the healthy state of a backend VM in an l4_lb ingress.

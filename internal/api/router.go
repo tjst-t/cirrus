@@ -224,6 +224,7 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 			r.Post("/", eh.createEgress)
 			r.Get("/", eh.listEgresses)
 			r.Get("/{egress_id}", eh.getEgress)
+			r.Patch("/{egress_id}", eh.updateEgress)
 			r.Delete("/{egress_id}", eh.deleteEgress)
 		})
 
@@ -239,6 +240,7 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		r.Post("/networks/{network_id}/ingresses", ingh.createIngress)
 		r.Get("/networks/{network_id}/ingresses", ingh.listIngresses)
 		r.Get("/networks/{network_id}/ingresses/{ingress_id}", ingh.getIngress)
+		r.Patch("/networks/{network_id}/ingresses/{ingress_id}", ingh.updateIngress)
 		r.Delete("/networks/{network_id}/ingresses/{ingress_id}", ingh.deleteIngress)
 
 		// Internal Load Balancers (tenant-scoped, nested under tenant/network)

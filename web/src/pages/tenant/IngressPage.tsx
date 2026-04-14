@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ingressApi, type Ingress, type IpPool } from '@/api/ingress'
+import { ingressApi, type Ingress, type IpPool, type IngressConfig } from '@/api/ingress'
 import { networksApi, type Network } from '@/api/networks'
 import { vmsApi, type Vm } from '@/api/vms'
 import { Button } from '@/components/Button'
@@ -148,6 +148,108 @@ function CreateIngressDialog({
   )
 }
 
+// ---- Edit Ingress Dialog ----
+function EditIngressDialog({
+  networkId,
+  ingress,
+  vms,
+  onClose,
+  onUpdated,
+}: {
+  networkId: string
+  ingress: Ingress
+  vms: Vm[]
+  onClose: () => void
+  onUpdated: () => void
+}) {
+  const [targetVmId, setTargetVmId] = useState(ingress.config?.target_vm_id ?? '')
+  const [targetIp, setTargetIp] = useState(ingress.config?.target_ip ?? '')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!targetVmId && !targetIp.trim()) {
+      setError('ターゲット VM またはターゲット IP を指定してください')
+      return
+    }
+    setLoading(true)
+    setError(null)
+    const config: IngressConfig = {
+      target_vm_id: targetVmId || '',
+      target_ip: targetVmId ? '' : targetIp.trim(),
+    }
+    try {
+      await ingressApi.update(networkId, ingress.id, config)
+      onUpdated()
+      onClose()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'エラーが発生しました')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div data-testid={`ingress-edit-dialog-${ingress.id}`} className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl border border-[var(--color-border)] p-6 w-full max-w-md shadow-xl">
+        <div className="flex items-center gap-3 mb-5">
+          <h3 className="text-base font-semibold text-[var(--color-text)]">Ingress を編集</h3>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-[var(--color-text)] mb-1.5">パブリック IP</label>
+            <p className="text-sm text-[var(--color-text-secondary)]">{ingress.public_ip}</p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-[var(--color-text)] mb-1.5">ターゲット VM（任意）</label>
+            <select
+              data-testid={`ingress-edit-target-vm-select-${ingress.id}`}
+              value={targetVmId}
+              onChange={(e) => setTargetVmId(e.target.value)}
+              className="w-full h-9 px-3 text-sm border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50 transition-all bg-white"
+            >
+              <option value="">なし</option>
+              {vms.map((v) => (
+                <option key={v.id} value={v.id}>{v.name}</option>
+              ))}
+            </select>
+          </div>
+          {!targetVmId && (
+            <div>
+              <label className="block text-xs font-medium text-[var(--color-text)] mb-1.5">
+                ターゲット IP <span className="text-red-500">*</span>
+              </label>
+              <input
+                data-testid={`ingress-edit-target-ip-input-${ingress.id}`}
+                type="text"
+                value={targetIp}
+                onChange={(e) => setTargetIp(e.target.value)}
+                className="w-full h-9 px-3 text-sm border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50 transition-all"
+                placeholder="10.0.0.10"
+              />
+            </div>
+          )}
+          {error && <ErrorMessage message={error} data-testid={`ingress-edit-error-${ingress.id}`} />}
+          <div className="flex gap-2 justify-end pt-1">
+            <Button type="button" variant="ghost" size="sm" onClick={onClose}>キャンセル</Button>
+            <Button
+              data-testid={`ingress-edit-submit-${ingress.id}`}
+              type="submit"
+              variant="primary"
+              size="sm"
+              disabled={loading}
+            >
+              {loading ? '保存中...' : '保存'}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 // ---- Main Page ----
 export function IngressPage() {
   const [networks, setNetworks] = useState<Network[]>([])
@@ -158,6 +260,7 @@ export function IngressPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
+  const [editIngress, setEditIngress] = useState<Ingress | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
 
@@ -200,6 +303,8 @@ export function IngressPage() {
       setDeleting(false)
     }
   }
+
+  const vmName = (vmId: string) => vms.find((v) => v.id === vmId)?.name ?? vmId
 
   return (
     <div className="space-y-5">
@@ -261,6 +366,7 @@ export function IngressPage() {
               <tr>
                 <th className="text-left px-4 py-2.5 font-medium text-[var(--color-text-secondary)]">タイプ</th>
                 <th className="text-left px-4 py-2.5 font-medium text-[var(--color-text-secondary)]">パブリック IP</th>
+                <th className="text-left px-4 py-2.5 font-medium text-[var(--color-text-secondary)]">ターゲット</th>
                 <th />
               </tr>
             </thead>
@@ -276,6 +382,11 @@ export function IngressPage() {
                   </td>
                   <td data-testid={`ingress-public-ip-${ig.id}`} className="px-4 py-3 text-[var(--color-text-secondary)]">
                     {ig.public_ip ?? '—'}
+                  </td>
+                  <td data-testid={`ingress-target-${ig.id}`} className="px-4 py-3 text-[var(--color-text-secondary)]">
+                    {ig.config?.target_vm_id
+                      ? <span data-testid={`ingress-target-vm-name-${ig.id}`}>{vmName(ig.config.target_vm_id)}</span>
+                      : ig.config?.target_ip ?? '—'}
                   </td>
                   <td className="px-4 py-3 text-right">
                     {deleteId === ig.id ? (
@@ -300,14 +411,24 @@ export function IngressPage() {
                         </Button>
                       </span>
                     ) : (
-                      <Button
-                        data-testid={`ingress-delete-button-${ig.id}`}
-                        variant="danger"
-                        size="sm"
-                        onClick={() => setDeleteId(ig.id)}
-                      >
-                        削除
-                      </Button>
+                      <span className="flex items-center justify-end gap-2">
+                        <Button
+                          data-testid={`ingress-edit-button-${ig.id}`}
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditIngress(ig)}
+                        >
+                          編集
+                        </Button>
+                        <Button
+                          data-testid={`ingress-delete-button-${ig.id}`}
+                          variant="danger"
+                          size="sm"
+                          onClick={() => setDeleteId(ig.id)}
+                        >
+                          削除
+                        </Button>
+                      </span>
                     )}
                   </td>
                 </tr>
@@ -326,6 +447,17 @@ export function IngressPage() {
           onClose={() => setShowCreate(false)}
           onCreated={load}
           onError={(msg) => setError(msg)}
+        />
+      )}
+
+      {/* Edit Dialog */}
+      {editIngress && selectedNetwork && (
+        <EditIngressDialog
+          networkId={selectedNetwork}
+          ingress={editIngress}
+          vms={vms}
+          onClose={() => setEditIngress(null)}
+          onUpdated={load}
         />
       )}
     </div>

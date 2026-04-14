@@ -866,6 +866,30 @@ func (s *Store) ListEgresses(ctx context.Context, networkID uuid.UUID) ([]Egress
 	return egresses, rows.Err()
 }
 
+func (s *Store) UpdateEgressConfig(ctx context.Context, egressID uuid.UUID, config EgressConfig) (*Egress, error) {
+	configJSON, err := json.Marshal(config)
+	if err != nil {
+		return nil, fmt.Errorf("egress: update: marshal config: %w", err)
+	}
+	var e Egress
+	var rawConfig []byte
+	err = s.pool.QueryRow(ctx,
+		`UPDATE egresses SET config = $1 WHERE id = $2
+		 RETURNING id, network_id, type, config`,
+		configJSON, egressID,
+	).Scan(&e.ID, &e.NetworkID, &e.Type, &rawConfig)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("egress: update: %w", ErrNotFound)
+		}
+		return nil, wrapErr("egress: update", err)
+	}
+	if err := json.Unmarshal(rawConfig, &e.Config); err != nil {
+		return nil, fmt.Errorf("egress: update: unmarshal config: %w", err)
+	}
+	return &e, nil
+}
+
 func (s *Store) DeleteEgress(ctx context.Context, id uuid.UUID) error {
 	// Delete and fetch tenant_id atomically via CTE to avoid a separate round-trip.
 	var tenantID uuid.UUID
@@ -1161,6 +1185,30 @@ func (s *Store) ListIngresses(ctx context.Context, networkID uuid.UUID) ([]Ingre
 		ingresses = append(ingresses, ing)
 	}
 	return ingresses, rows.Err()
+}
+
+func (s *Store) UpdateIngressConfig(ctx context.Context, ingressID uuid.UUID, config IngressConfig) (*Ingress, error) {
+	configJSON, err := json.Marshal(config)
+	if err != nil {
+		return nil, fmt.Errorf("ingress: update: marshal config: %w", err)
+	}
+	var ing Ingress
+	var rawConfig []byte
+	err = s.pool.QueryRow(ctx,
+		`UPDATE ingresses SET config = $1 WHERE id = $2
+		 RETURNING id, network_id, type, host(public_ip), ip_pool_id, config, created_at`,
+		configJSON, ingressID,
+	).Scan(&ing.ID, &ing.NetworkID, &ing.Type, &ing.PublicIP, &ing.IPPoolID, &rawConfig, &ing.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("ingress: update: %w", ErrNotFound)
+		}
+		return nil, wrapErr("ingress: update", err)
+	}
+	if err := s.unmarshalIngressConfig(&ing, rawConfig); err != nil {
+		return nil, fmt.Errorf("ingress: update: unmarshal config: %w", err)
+	}
+	return &ing, nil
 }
 
 func (s *Store) DeleteIngress(ctx context.Context, id uuid.UUID) error {

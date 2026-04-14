@@ -39,6 +39,8 @@ export const ingressApi = {
     api.get<Ingress[]>(`/networks/${networkId}/ingresses`),
   create: (networkId: string, req: CreateIngressRequest) =>
     api.post<Ingress>(`/networks/${networkId}/ingresses`, req),
+  update: (networkId: string, id: string, config: IngressConfig) =>
+    api.patch<Ingress>(`/networks/${networkId}/ingresses/${id}`, config),
   delete: (networkId: string, id: string) =>
     api.delete<void>(`/networks/${networkId}/ingresses/${id}`),
   listIpPools: () =>

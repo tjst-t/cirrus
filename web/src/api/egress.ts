@@ -22,6 +22,8 @@ export const egressApi = {
     api.get<Egress[]>(`/tenants/${tenantId}/networks/${networkId}/egresses`),
   create: (tenantId: string, networkId: string, req: CreateEgressRequest) =>
     api.post<Egress>(`/tenants/${tenantId}/networks/${networkId}/egresses`, req),
+  update: (tenantId: string, networkId: string, id: string, config: EgressConfig) =>
+    api.patch<Egress>(`/tenants/${tenantId}/networks/${networkId}/egresses/${id}`, config),
   delete: (tenantId: string, networkId: string, id: string) =>
     api.delete<void>(`/tenants/${tenantId}/networks/${networkId}/egresses/${id}`),
 }
