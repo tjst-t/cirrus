@@ -128,6 +128,34 @@ func (o *Orchestrator) setVMHost(ctx context.Context, vmID, hostID uuid.UUID) er
 	return err
 }
 
+// resolveAZForHost returns the AZ associated with the given host via
+// host_storage_domains → az_storage_domains → availability_zones.
+// Returns uuid.Nil when no AZ is linked.
+func (o *Orchestrator) resolveAZForHost(ctx context.Context, hostID uuid.UUID) (uuid.UUID, error) {
+	var azID uuid.UUID
+	err := o.pool.QueryRow(ctx,
+		`SELECT az.id
+		 FROM availability_zones az
+		 JOIN az_storage_domains azsd ON azsd.az_id = az.id
+		 JOIN host_storage_domains hsd ON hsd.storage_domain_id = azsd.storage_domain_id
+		 WHERE hsd.host_id = $1
+		 LIMIT 1`,
+		hostID,
+	).Scan(&azID)
+	if err != nil {
+		return uuid.Nil, nil // no AZ found — not an error
+	}
+	return azID, nil
+}
+
+func (o *Orchestrator) setVMAZ(ctx context.Context, vmID, azID uuid.UUID) error {
+	_, err := o.pool.Exec(ctx,
+		`UPDATE vms SET az_id = $1, updated_at = $2 WHERE id = $3`,
+		azID, time.Now(), vmID,
+	)
+	return err
+}
+
 func (o *Orchestrator) insertVMVolume(ctx context.Context, vmID, volumeID uuid.UUID, device string) error {
 	_, err := o.pool.Exec(ctx,
 		`INSERT INTO vm_volumes (id, vm_id, volume_id, device) VALUES ($1, $2, $3, $4)

@@ -1,4 +1,4 @@
-import { logout, clearTenantId, TOKEN_KEY, TENANT_ID_KEY } from '@/lib/auth'
+import { clearTenantId, TOKEN_KEY, TENANT_ID_KEY } from '@/lib/auth'
 
 const BASE_URL = '/api/v1'
 
@@ -44,8 +44,9 @@ async function request<T>(
   })
 
   if (res.status === 401) {
-    // Clear stale credentials (token + tenant_id) and redirect to login
-    logout()
+    // Throw without calling logout() here so callers can decide how to handle.
+    // Pages that receive a 401 can clear their own state (e.g., clearTenant)
+    // and let ProtectedRoute handle the redirect when the token is truly gone.
     throw new ApiError(401, null, 'Unauthorized')
   }
 

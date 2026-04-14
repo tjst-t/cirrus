@@ -421,6 +421,13 @@ func (o *Orchestrator) buildVM(ctx context.Context, vmID uuid.UUID, spec CreateV
 		return fmt.Errorf("persist host: %w", err)
 	}
 
+	// 2b. If no AZ was requested, resolve the placed host's AZ and record it.
+	if spec.AZID == uuid.Nil {
+		if resolvedAZ, err := o.resolveAZForHost(ctx, hostID); err == nil && resolvedAZ != uuid.Nil {
+			_ = o.setVMAZ(ctx, vmID, resolvedAZ)
+		}
+	}
+
 	vmName := fmt.Sprintf("vm-%s", vmID.String()[:8])
 
 	// 3. Create network port (idempotent: check if already exists)

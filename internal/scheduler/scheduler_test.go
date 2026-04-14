@@ -284,3 +284,53 @@ func TestSchedule_InsufficientResources(t *testing.T) {
 		t.Fatal("expected error for insufficient resources, got nil")
 	}
 }
+
+func TestSchedule_NilAZ_WithVolumeType_UsesAllStorageDomains(t *testing.T) {
+	// Regression: when az_id is omitted (uuid.Nil), scheduling with a volume_type_id
+	// must still succeed if storage domains and host→SD links exist.
+	sdID := uuid.New()
+	hostID := uuid.New()
+
+	sd := topology.StorageDomain{ID: sdID, Name: "default-sd"}
+	backendID := uuid.New()
+	backend := storage.Backend{
+		ID:              backendID,
+		StorageDomainID: sdID,
+		Name:            "sim-backend",
+		State:           storage.BackendStateActive,
+		TotalCapacityGB: 1000,
+		Capabilities:    mustJSON([]string{}),
+	}
+
+	hostSvc := &fakeHostSvc{
+		hosts: map[uuid.UUID]*host.Host{
+			hostID: {ID: hostID, OperationalState: host.StateActive},
+		},
+	}
+	storageSvc := &fakeStorageSvc{
+		// backendsForAZ is unused when azID == uuid.Nil
+		backendsFromHost: []storage.Backend{backend},
+	}
+	topologySvc := &fakeTopologySvc{
+		reachableHosts: []uuid.UUID{hostID},
+		storageDomains: []topology.StorageDomain{sd},
+	}
+
+	sched := scheduler.New(hostSvc, storageSvc, topologySvc)
+
+	vtID := uuid.New()
+	result, err := sched.Schedule(context.Background(), scheduler.ScheduleSpec{
+		AZID:         uuid.Nil, // no AZ specified
+		Flavor:       &flavor.Flavor{VCPUs: 2, RAMMB: 4096},
+		VolumeTypeID: &vtID,
+	})
+	if err != nil {
+		t.Fatalf("expected success with nil AZID, got: %v", err)
+	}
+	if result.HostID != hostID {
+		t.Errorf("expected host %s, got %s", hostID, result.HostID)
+	}
+	if result.BackendID == nil || *result.BackendID != backendID {
+		t.Errorf("expected backend %s, got %v", backendID, result.BackendID)
+	}
+}

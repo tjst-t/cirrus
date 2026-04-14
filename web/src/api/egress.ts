@@ -1,26 +1,27 @@
 import { api } from './client'
 
-export interface EgressGateway {
-  id: string
-  name: string
-  network_id: string
-  network_name?: string
+export interface EgressConfig {
   public_ip?: string
-  status: string
-  created_at: string
 }
 
-export interface CreateEgressGatewayRequest {
-  name: string
+export interface Egress {
+  id: string
   network_id: string
+  type: string
+  config: EgressConfig
+}
+
+export interface CreateEgressRequest {
+  type: string
+  config?: EgressConfig
 }
 
 export const egressApi = {
   // Egress is scoped to tenant + network: /tenants/{tenant_id}/networks/{network_id}/egresses
   list: (tenantId: string, networkId: string) =>
-    api.get<EgressGateway[]>(`/tenants/${tenantId}/networks/${networkId}/egresses`),
-  create: (tenantId: string, networkId: string, req: CreateEgressGatewayRequest) =>
-    api.post<EgressGateway>(`/tenants/${tenantId}/networks/${networkId}/egresses`, req),
+    api.get<Egress[]>(`/tenants/${tenantId}/networks/${networkId}/egresses`),
+  create: (tenantId: string, networkId: string, req: CreateEgressRequest) =>
+    api.post<Egress>(`/tenants/${tenantId}/networks/${networkId}/egresses`, req),
   delete: (tenantId: string, networkId: string, id: string) =>
     api.delete<void>(`/tenants/${tenantId}/networks/${networkId}/egresses/${id}`),
 }

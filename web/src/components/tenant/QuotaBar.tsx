@@ -6,16 +6,22 @@ interface QuotaBarProps {
   limit: number
   unit?: string
   className?: string
+  'data-testid'?: string
 }
 
-export function QuotaBar({ label, used, limit, unit = '', className }: QuotaBarProps) {
+export function QuotaBar({ label, used, limit, unit = '', className, 'data-testid': testId }: QuotaBarProps) {
   const unlimited = limit === 0
   const pct = unlimited ? 0 : Math.min((used / limit) * 100, 100)
+  const isFull = !unlimited && used >= limit
   const isWarning = !unlimited && pct >= 80
   const isDanger = !unlimited && pct >= 95
 
   return (
-    <div className={cn('space-y-1', className)}>
+    <div
+      className={cn('space-y-1', className)}
+      data-testid={testId}
+      data-full={isFull ? 'true' : undefined}
+    >
       <div className="flex items-center justify-between text-xs">
         <span className="font-medium text-[var(--color-text)]">{label}</span>
         <span className="text-[var(--color-text-secondary)]">
@@ -28,7 +34,7 @@ export function QuotaBar({ label, used, limit, unit = '', className }: QuotaBarP
             <div
               className={cn(
                 'h-full rounded-full transition-all duration-300',
-                isDanger
+                isFull || isDanger
                   ? 'bg-danger'
                   : isWarning
                     ? 'bg-warning'

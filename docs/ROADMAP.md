@@ -4,8 +4,8 @@
 
 ## Progress
 
-- Total: 51 Sprints | Done: 29 | In Progress: 0 | Remaining: 22
-- [███████████░░░░░░░░░] 57%
+- Total: 51 Sprints | Done: 30 | In Progress: 0 | Remaining: 21
+- [████████████░░░░░░░░] 59%
 
 ## Execution Order
 
@@ -851,21 +851,34 @@ Phase 1 の全機能（Identity・Host・Network・Storage・Compute・Quota・E
 
 ---
 
-## Sprint S049: テナント UI — Egress/Ingress + ダッシュボード [ ]
+## Sprint S049: テナント UI — Egress/Ingress + ダッシュボード [DONE]
 
 テナントメンバーが WebUI から外部接続（Egress/Ingress）を管理でき、リソース使用状況をダッシュボードで把握できる。
 
-### Story S049-1: テナントメンバーとして、Egress と Ingress を WebUI から管理したい。なぜなら、NAT ゲートウェイや外部 IP の設定を GUI で完結させたいから。 [ ]
+### Story S049-1: テナントメンバーとして、Egress と Ingress を WebUI から管理したい。なぜなら、NAT ゲートウェイや外部 IP の設定を GUI で完結させたいから。 [x]
 
-- [ ] **Task S049-1-1**: Egress 一覧・作成（type=nat_gateway、パブリック IP 選択）・削除画面
-- [ ] **Task S049-1-2**: Ingress 一覧・作成（type=direct_ip、IP プール選択・ターゲット VM 指定）・削除画面
-- [ ] **Task S049-1-3**: Playwright テスト: Egress 作成 → Ingress 作成 → 削除フロー
+- [x] **Task S049-1-0**: `web/src/api/egress.ts` / `ingress.ts` の型をバックエンド実装に合わせて修正（`name`/`status` 削除、`config` 構造体対応、作成リクエスト形式修正）
+- [x] **Task S049-1-1**: Egress 一覧・作成（type=nat_gateway）・削除画面を正しい API 型で実装。全インタラクティブ要素に `data-testid` 付与
+- [x] **Task S049-1-2**: Ingress 一覧・作成（type=direct_ip、IP プール選択・ターゲット VM 指定）・削除画面を正しい API 型で実装。全インタラクティブ要素に `data-testid` 付与
+- [x] **Task S049-1-3**: Playwright テスト pass: `npx playwright test web/e2e/s049-egress-ingress.spec.ts`
 
-### Story S049-2: テナントメンバーとして、リソース使用状況をダッシュボードで把握したい。なぜなら、クォータ残量と全体状況を一目で確認したいから。 [ ]
+**Acceptance Criteria (GUI):**
+- [x] 状態遷移図確認済み（docs/sprint-logs/S049/gui-spec-S049-1.md）
+- [x] Playwright テスト pass: `npx playwright test web/e2e/s049-egress-ingress.spec.ts` (15/15)
+- [x] 全インタラクティブ要素に `data-testid` 属性あり
+- [x] API モック使用（実バックエンド不要）
 
-- [ ] **Task S049-2-1**: ダッシュボード画面（VM 数・ネットワーク数・ボリューム容量・vCPU/メモリ使用量のサマリカード）
-- [ ] **Task S049-2-2**: Quota 残量バー（テナント別 vCPU / メモリ / VM 数 / ボリューム容量）
-- [ ] **Task S049-2-3**: Playwright テスト: ダッシュボード表示・Quota バー更新確認
+### Story S049-2: テナントメンバーとして、リソース使用状況をダッシュボードで把握したい。なぜなら、クォータ残量と全体状況を一目で確認したいから。 [x]
+
+- [x] **Task S049-2-1**: ダッシュボード画面（VM 数・ネットワーク数・ボリューム容量・vCPU/メモリ使用量のサマリカード）。データソースは `GET /api/v1/tenants/{id}/quota` の `usage` フィールドのみ
+- [x] **Task S049-2-2**: Quota 残量バー（vCPU / メモリ / VM 数 / ボリューム容量 / ネットワーク数 / ボリューム数 / Egress 数 / Ingress 数）。上限到達時に `data-full="true"` を付与
+- [x] **Task S049-2-3**: Playwright テスト pass: `npx playwright test web/e2e/s049-dashboard.spec.ts`
+
+**Acceptance Criteria (GUI):**
+- [x] 状態遷移図確認済み（docs/sprint-logs/S049/gui-spec-S049-2.md）
+- [x] Playwright テスト pass: `npx playwright test web/e2e/s049-dashboard.spec.ts` (5/5)
+- [x] 全インタラクティブ要素に `data-testid` 属性あり
+- [x] API モック使用（実バックエンド不要）
 
 ---
 

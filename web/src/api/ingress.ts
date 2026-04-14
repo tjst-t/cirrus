@@ -1,34 +1,46 @@
 import { api } from './client'
 
-export interface IngressEndpoint {
+export interface IngressConfig {
+  target_vm_id: string
+  target_ip: string
+}
+
+export interface Ingress {
   id: string
-  name: string
   network_id: string
-  network_name?: string
-  vm_id?: string
-  vm_name?: string
-  port: number
-  protocol: string
-  public_ip?: string
-  public_port?: number
-  status: string
+  type: string
+  public_ip: string
+  ip_pool_id?: string
+  config: IngressConfig
   created_at: string
 }
 
-export interface CreateIngressEndpointRequest {
+export interface CreateIngressRequest {
+  type: string
+  public_ip: string
+  ip_pool_id: string
+  config: {
+    target_vm_id?: string
+    target_ip?: string
+  }
+}
+
+export interface IpPool {
+  id: string
   name: string
-  network_id: string
-  vm_id?: string
-  port: number
-  protocol: string
+  cidr: string
+  description: string
+  created_at: string
 }
 
 export const ingressApi = {
   // Ingress is scoped to network: /networks/{network_id}/ingresses
   list: (networkId: string) =>
-    api.get<IngressEndpoint[]>(`/networks/${networkId}/ingresses`),
-  create: (networkId: string, req: Omit<CreateIngressEndpointRequest, 'network_id'>) =>
-    api.post<IngressEndpoint>(`/networks/${networkId}/ingresses`, req),
+    api.get<Ingress[]>(`/networks/${networkId}/ingresses`),
+  create: (networkId: string, req: CreateIngressRequest) =>
+    api.post<Ingress>(`/networks/${networkId}/ingresses`, req),
   delete: (networkId: string, id: string) =>
     api.delete<void>(`/networks/${networkId}/ingresses/${id}`),
+  listIpPools: () =>
+    api.get<IpPool[]>('/admin/ip-pools'),
 }

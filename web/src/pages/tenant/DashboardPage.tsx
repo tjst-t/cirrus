@@ -1,16 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { quotaApi, type TenantQuota } from '@/api/quota'
-import { vmsApi, type Vm } from '@/api/vms'
+import { ApiError } from '@/api/client'
 import { useTenant } from '@/hooks/useTenant'
 import { QuotaBar } from '@/components/tenant/QuotaBar'
-import { VmStatusBadge } from '@/components/tenant/VmStatusBadge'
-import { cn } from '@/lib/utils'
+import { ErrorMessage } from '@/components/ErrorMessage'
 
 export function DashboardPage() {
-  const { tenantId } = useTenant()
+  const { tenantId, clearTenant } = useTenant()
   const [quota, setQuota] = useState<TenantQuota | null>(null)
-  const [vms, setVms] = useState<Vm[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -21,120 +18,186 @@ export function DashboardPage() {
     }
     setLoading(true)
     setError(null)
-    Promise.all([
-      quotaApi.get(tenantId),
-      vmsApi.list(5),
-    ])
-      .then(([q, vs]) => {
-        setQuota(q)
-        setVms(vs)
+    quotaApi
+      .get(tenantId)
+      .then((q) => setQuota(q))
+      .catch((e: Error) => {
+        // 401 means the current tenant credential is no longer valid.
+        // Clear the tenant selection so the user can pick a valid one.
+        if (e instanceof ApiError && e.status === 401) {
+          clearTenant()
+        } else {
+          setError(e.message)
+        }
       })
-      .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [tenantId])
+  }, [tenantId, clearTenant])
 
-  // useMemo must be called unconditionally (hooks rules)
-  const statusCount = useMemo(
-    () => vms.reduce<Record<string, number>>((acc, vm) => {
-      acc[vm.status] = (acc[vm.status] ?? 0) + 1
-      return acc
-    }, {}),
-    [vms]
-  )
-
+  // ── テナント未選択 ──
   if (!tenantId) {
     return (
-      <div className="flex items-center justify-center h-64 text-[var(--color-text-secondary)] text-sm">
+      <div
+        data-testid="dashboard-no-tenant-message"
+        className="flex items-center justify-center h-64 text-[var(--color-text-secondary)] text-sm"
+      >
         ヘッダーからテナントを選択してください
       </div>
     )
   }
 
+  // ── ローディング ──
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64 text-[var(--color-text-secondary)] text-sm">
+      <div
+        data-testid="dashboard-loading"
+        className="flex items-center justify-center h-64 text-[var(--color-text-secondary)] text-sm"
+      >
         読み込み中...
       </div>
     )
   }
 
+  // ── エラー ──
   if (error) {
-    return (
-      <div className="rounded-xl border border-danger/30 bg-danger/5 p-4 text-sm text-danger">
-        エラー: {error}
-      </div>
-    )
+    return <ErrorMessage data-testid="dashboard-error-message" message={error} />
   }
+
+  // ── データなし（念のため） ──
+  if (!quota) {
+    return null
+  }
+
+  const { limits, usage } = quota
+  const memUsedGb = Math.floor(usage.memory_mb_used / 1024)
+  const memLimitGb = Math.floor(limits.memory_mb / 1024)
 
   return (
     <div className="space-y-5">
       <h2 className="text-lg font-semibold text-[var(--color-text)]">ダッシュボード</h2>
 
-      {/* Status summary cards */}
-      <div className="grid grid-cols-3 gap-4">
-        {(['running', 'stopped', 'error'] as const).map((s) => {
-          const label = { running: '実行中', stopped: '停止', error: 'エラー' }[s]
-          const color = { running: 'text-success', stopped: 'text-[var(--color-text-secondary)]', error: 'text-danger' }[s]
-          return (
-            <div key={s} className="bg-white rounded-xl border border-[var(--color-border)] p-4">
-              <p className="text-xs text-[var(--color-text-secondary)] mb-1">{label} VM</p>
-              <p className={cn('text-2xl font-semibold', color)}>{statusCount[s] ?? 0}</p>
-            </div>
-          )
-        })}
+      {/* ── サマリカード ── */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+        {/* VM 数 */}
+        <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
+          <p className="text-xs text-[var(--color-text-secondary)] mb-1">VM 数</p>
+          <p
+            className="text-2xl font-semibold text-[var(--color-text)]"
+            data-testid="dashboard-vm-count"
+          >
+            {usage.vm_count_used}
+          </p>
+          <p className="text-xs text-[var(--color-text-secondary)] mt-1">台</p>
+        </div>
+
+        {/* ネットワーク数 */}
+        <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
+          <p className="text-xs text-[var(--color-text-secondary)] mb-1">ネットワーク数</p>
+          <p
+            className="text-2xl font-semibold text-[var(--color-text)]"
+            data-testid="dashboard-network-count"
+          >
+            {usage.networks_used}
+          </p>
+          <p className="text-xs text-[var(--color-text-secondary)] mt-1">個</p>
+        </div>
+
+        {/* ボリューム容量 */}
+        <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
+          <p className="text-xs text-[var(--color-text-secondary)] mb-1">ボリューム容量</p>
+          <p
+            className="text-2xl font-semibold text-[var(--color-text)]"
+            data-testid="dashboard-volume-gb"
+          >
+            {usage.volume_gb_used}
+          </p>
+          <p className="text-xs text-[var(--color-text-secondary)] mt-1">GB</p>
+        </div>
+
+        {/* vCPU */}
+        <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
+          <p className="text-xs text-[var(--color-text-secondary)] mb-1">vCPU</p>
+          <p
+            className="text-2xl font-semibold text-[var(--color-text)]"
+            data-testid="dashboard-vcpu-usage"
+          >
+            {usage.vcpus_used} / {limits.vcpus}
+          </p>
+          <p className="text-xs text-[var(--color-text-secondary)] mt-1">コア</p>
+        </div>
+
+        {/* メモリ */}
+        <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
+          <p className="text-xs text-[var(--color-text-secondary)] mb-1">メモリ</p>
+          <p
+            className="text-2xl font-semibold text-[var(--color-text)]"
+            data-testid="dashboard-memory-usage"
+          >
+            {memUsedGb} / {memLimitGb} GB
+          </p>
+        </div>
       </div>
 
-      {/* Quota section */}
-      {quota && (
-        <div className="bg-white rounded-xl border border-[var(--color-border)] p-5">
-          <h3 className="text-sm font-semibold text-[var(--color-text)] mb-4">クォータ使用量</h3>
-          <div className="grid grid-cols-2 gap-5">
-            <QuotaBar label="vCPU" used={quota.usage.vcpus_used} limit={quota.limits.vcpus} unit=" コア" />
-            <QuotaBar label="メモリ" used={Math.round(quota.usage.memory_mb_used / 1024)} limit={Math.round(quota.limits.memory_mb / 1024)} unit=" GB" />
-            <QuotaBar label="VM 数" used={quota.usage.vm_count_used} limit={quota.limits.vm_count} unit=" 台" />
-            <QuotaBar label="ボリューム容量" used={quota.usage.volume_gb_used} limit={quota.limits.volume_gb} unit=" GB" />
-          </div>
+      {/* ── Quota バー ── */}
+      <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-5">
+        <h3 className="text-sm font-semibold text-[var(--color-text)] mb-4">クォータ使用量</h3>
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+          <QuotaBar
+            data-testid="quota-bar-vcpus"
+            label="vCPU"
+            used={usage.vcpus_used}
+            limit={limits.vcpus}
+            unit=" コア"
+          />
+          <QuotaBar
+            data-testid="quota-bar-memory"
+            label="メモリ"
+            used={memUsedGb}
+            limit={memLimitGb}
+            unit=" GB"
+          />
+          <QuotaBar
+            data-testid="quota-bar-vm-count"
+            label="VM 数"
+            used={usage.vm_count_used}
+            limit={limits.vm_count}
+            unit=" 台"
+          />
+          <QuotaBar
+            data-testid="quota-bar-volume-gb"
+            label="ボリューム容量"
+            used={usage.volume_gb_used}
+            limit={limits.volume_gb}
+            unit=" GB"
+          />
+          <QuotaBar
+            data-testid="quota-bar-networks"
+            label="ネットワーク数"
+            used={usage.networks_used}
+            limit={limits.networks}
+            unit=" 個"
+          />
+          <QuotaBar
+            data-testid="quota-bar-volumes"
+            label="ボリューム数"
+            used={usage.volumes_used}
+            limit={limits.volumes}
+            unit=" 個"
+          />
+          <QuotaBar
+            data-testid="quota-bar-egresses"
+            label="Egress 数"
+            used={usage.egresses_used}
+            limit={limits.egresses}
+            unit=" 個"
+          />
+          <QuotaBar
+            data-testid="quota-bar-ingresses"
+            label="Ingress 数"
+            used={usage.ingresses_used}
+            limit={limits.ingresses}
+            unit=" 個"
+          />
         </div>
-      )}
-
-      {/* Recent VMs */}
-      <div className="bg-white rounded-xl border border-[var(--color-border)] p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-[var(--color-text)]">最新 VM（最大5件）</h3>
-          <Link to="/vms" className="text-xs text-accent hover:underline">
-            すべて表示 →
-          </Link>
-        </div>
-        {vms.length === 0 ? (
-          <p className="text-sm text-[var(--color-text-secondary)]">VM がありません</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[var(--color-border)]">
-                <th className="text-left py-2 pr-4 text-xs font-medium text-[var(--color-text-secondary)]">名前</th>
-                <th className="text-left py-2 pr-4 text-xs font-medium text-[var(--color-text-secondary)]">状態</th>
-                <th className="text-left py-2 text-xs font-medium text-[var(--color-text-secondary)]">作成日時</th>
-              </tr>
-            </thead>
-            <tbody>
-              {vms.map((vm) => (
-                <tr key={vm.id} className="border-b border-[var(--color-border)] last:border-0">
-                  <td className="py-2 pr-4">
-                    <Link to={`/vms/${vm.id}`} className="text-accent hover:underline font-medium">
-                      {vm.name}
-                    </Link>
-                  </td>
-                  <td className="py-2 pr-4">
-                    <VmStatusBadge status={vm.status} />
-                  </td>
-                  <td className="py-2 text-[var(--color-text-secondary)]">
-                    {new Date(vm.created_at).toLocaleDateString('ja-JP')}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
       </div>
     </div>
   )

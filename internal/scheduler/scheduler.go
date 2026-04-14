@@ -175,28 +175,29 @@ func (s *DefaultScheduler) Schedule(ctx context.Context, spec ScheduleSpec) (*Sc
 
 // storageDomainIDsForAZ resolves storage domain IDs for an AZ by querying
 // the topology service for all active storage domains then cross-referencing
-// via the storage domain association. We use a direct DB query via topology.
+// via the storage domain association.
 func (s *DefaultScheduler) storageDomainIDsForAZ(ctx context.Context, azID uuid.UUID) ([]uuid.UUID, error) {
-	// Topology lists all storage domains; we filter by those linked to this AZ
-	// via the topology → az_storage_domains path. We use the topology service
-	// to get compute-pool-like info, but here we directly enumerate:
 	all, err := s.topologySvc.ListStorageDomains(ctx)
 	if err != nil {
 		return nil, err
 	}
-	// Cross-check: for each storage domain, test if any of its compute pool
-	// hosts exist in the AZ. A simpler approach: ListActiveBackendsForAZ from
-	// storage then collect unique storage_domain_ids.
+	// When no AZ is specified, all storage domains are candidates.
+	if azID == uuid.Nil {
+		ids := make([]uuid.UUID, 0, len(all))
+		for _, sd := range all {
+			ids = append(ids, sd.ID)
+		}
+		return ids, nil
+	}
+	// Filter to storage domains that have at least one active backend in the given AZ.
 	backendsInAZ, err := s.storageSvc.ListBackendsForAZ(ctx, azID)
 	if err != nil {
 		return nil, err
 	}
-
 	sdSet := make(map[uuid.UUID]struct{})
 	for _, b := range backendsInAZ {
 		sdSet[b.StorageDomainID] = struct{}{}
 	}
-	// Ensure the storage domains exist in topology
 	var ids []uuid.UUID
 	for _, sd := range all {
 		if _, ok := sdSet[sd.ID]; ok {
