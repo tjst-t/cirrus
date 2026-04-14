@@ -18,15 +18,23 @@ function CreateEgressDialog({
   onCreated: () => void
 }) {
   const [egressType, setEgressType] = useState('nat_gateway')
+  const [publicIp, setPublicIp] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (egressType === 'nat_gateway' && !publicIp.trim()) {
+      setError('パブリック IP を入力してください')
+      return
+    }
     setLoading(true)
     setError(null)
     try {
-      await egressApi.create(tenantId, networkId, { type: egressType, config: {} })
+      await egressApi.create(tenantId, networkId, {
+        type: egressType,
+        config: egressType === 'nat_gateway' ? { public_ip: publicIp.trim() } : {},
+      })
       onCreated()
       onClose()
     } catch (e: unknown) {
@@ -57,6 +65,21 @@ function CreateEgressDialog({
               <option value="nat_gateway">nat_gateway</option>
             </select>
           </div>
+          {egressType === 'nat_gateway' && (
+            <div>
+              <label className="block text-xs font-medium text-[var(--color-text)] mb-1.5">
+                パブリック IP <span className="text-red-500">*</span>
+              </label>
+              <input
+                data-testid="egress-public-ip-input"
+                type="text"
+                value={publicIp}
+                onChange={(e) => setPublicIp(e.target.value)}
+                className="w-full h-9 px-3 text-sm border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50 transition-all"
+                placeholder="203.0.113.1"
+              />
+            </div>
+          )}
           {error && <ErrorMessage message={error} data-testid="egress-error-message" />}
           <div className="flex gap-2 justify-end pt-1">
             <Button type="button" variant="ghost" size="sm" onClick={onClose}>キャンセル</Button>
