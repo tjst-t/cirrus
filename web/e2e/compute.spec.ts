@@ -65,6 +65,10 @@ test.describe('コンピュート管理 (Flavor CRUD)', () => {
     })
     await page.route('**/api/v1/admin/flavors', (route) => {
       if (route.request().method() === 'POST') {
+        const body = route.request().postDataJSON()
+        expect(body.name).toBeTruthy()
+        expect(body.vcpus).toBeGreaterThan(0)
+        expect(body.ram_mb).toBeGreaterThan(0)
         created = true
         route.fulfill({ status: 201, json: FLAVOR_1 })
       } else {

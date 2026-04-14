@@ -63,6 +63,8 @@ test.describe('S048-1: ネットワーク管理', () => {
         return route.fulfill({ status: 200, json: { items, next_cursor: '' } })
       }
       if (route.request().method() === 'POST') {
+        const body = JSON.parse(route.request().postData() ?? '{}')
+        expect(body.name).toBeTruthy()
         networkCreated = true
         return route.fulfill({ status: 201, json: NET_1 })
       }
@@ -140,6 +142,8 @@ test.describe('S048-1: ネットワーク管理', () => {
         return route.fulfill({ status: 200, json: { items: groups, next_cursor: '' } })
       }
       if (route.request().method() === 'POST') {
+        const body = JSON.parse(route.request().postData() ?? '{}')
+        expect(body.name).toBeTruthy()
         groups = [GROUP_A]
         return route.fulfill({ status: 201, json: GROUP_A })
       }

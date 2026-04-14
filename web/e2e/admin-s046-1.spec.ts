@@ -91,6 +91,8 @@ test.describe('S046-1: 組織作成', () => {
         callCount++
         route.fulfill({ status: 200, json: { items, next_cursor: '' } })
       } else if (route.request().method() === 'POST') {
+        const body = route.request().postDataJSON()
+        expect(body.name).toBeTruthy()
         route.fulfill({ status: 201, json: ORG_1 })
       } else {
         route.continue()
@@ -164,6 +166,8 @@ test.describe('S046-1: テナント作成', () => {
         tenantCallCount++
         route.fulfill({ status: 200, json: { items, next_cursor: '' } })
       } else if (route.request().method() === 'POST') {
+        const body = route.request().postDataJSON()
+        expect(body.name).toBeTruthy()
         route.fulfill({ status: 201, json: TENANT_1 })
       } else {
         route.continue()
@@ -208,6 +212,9 @@ test.describe('S046-1: ロール割り当て', () => {
         roleCallCount++
         route.fulfill({ status: 200, json: items })
       } else if (route.request().method() === 'POST') {
+        const body = route.request().postDataJSON()
+        expect(body.user_id).toBeTruthy()
+        expect(body.role).toBeTruthy()
         route.fulfill({ status: 201, json: ROLE_1 })
       } else {
         route.continue()

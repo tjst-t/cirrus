@@ -177,6 +177,9 @@ test.describe('S046-2: ホスト管理', () => {
         callCount++
         route.fulfill({ status: 200, json: { items, next_cursor: '' } })
       } else if (route.request().method() === 'POST') {
+        const body = route.request().postDataJSON()
+        expect(body.name).toBeTruthy()
+        expect(body.address).toBeTruthy()
         route.fulfill({ status: 201, json: HOST_ACTIVE })
       } else {
         route.continue()
@@ -350,6 +353,10 @@ test.describe('S046-2: ネットワーク管理 (GW ノード)', () => {
       if (route.request().method() === 'GET') {
         route.fulfill({ status: 200, json: created ? [GW_NODE_1] : [] })
       } else if (route.request().method() === 'POST') {
+        const body = route.request().postDataJSON()
+        expect(body.host_id).toBeTruthy()
+        expect(body.external_ip).toBeTruthy()
+        expect(body.internal_ip).toBeTruthy()
         created = true
         route.fulfill({ status: 201, json: GW_NODE_1 })
       } else {
@@ -415,6 +422,9 @@ test.describe('S046-2: ネットワーク管理 (GW ノード)', () => {
       if (route.request().method() === 'GET') {
         route.fulfill({ status: 200, json: created ? [IP_POOL_1] : [] })
       } else if (route.request().method() === 'POST') {
+        const body = route.request().postDataJSON()
+        expect(body.name).toBeTruthy()
+        expect(body.cidr).toBeTruthy()
         created = true
         route.fulfill({ status: 201, json: IP_POOL_1 })
       } else {

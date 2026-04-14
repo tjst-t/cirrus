@@ -59,6 +59,9 @@ test.describe('VM ライフサイクルフロー', () => {
 
       // VM create
       if (url.match(/\/api\/v1\/vms$/) && method === 'POST') {
+        const body = JSON.parse(route.request().postData() ?? '{}')
+        expect(body.name).toBeTruthy()
+        expect(body.flavor_id).toBeTruthy()
         vmCreated = true
         vmStatus = 'stopped'
         return route.fulfill({ status: 201, json: makeVm('stopped') })
