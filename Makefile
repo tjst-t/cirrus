@@ -1,10 +1,9 @@
 .PHONY: all build test lint serve stop serve-storage stop-storage logs logs-worker logs-sim \
         clean-dev reset-db fresh proto test-unit test-mock test-integration test-smoke build-sim \
-        build-storage-servers web-install web-build test-e2e seed _seed-sim
+        build-storage-servers web-install web-build test-e2e test-e2e-serve seed _seed-tenant
 
 # ── Configuration ──
 
-CIRRUS_SIM_ENV     ?= small
 AUTH_TOKENS        ?= dev-token=dev-admin
 REGISTRATION_TOKEN ?= dev-registration-token
 
@@ -91,6 +90,17 @@ test-integration:
 test-e2e: web-install
 	cd web && PLAYWRIGHT_CHROMIUM_PATH=$(shell ls $(HOME)/.cache/ms-playwright/chromium-*/chrome-linux*/chrome 2>/dev/null | head -1) npx playwright test --reporter=list
 
+test-e2e-serve: web-install
+	@[ -f $(PORTMAN_ENV) ] || { echo "ERROR: run 'make serve && make seed' first"; exit 1; }
+	@bash -c '\
+	  set -a; source $(PORTMAN_ENV); set +a; \
+	  cd web && \
+	    PLAYWRIGHT_CHROMIUM_PATH=$(shell ls $(HOME)/.cache/ms-playwright/chromium-*/chrome-linux*/chrome 2>/dev/null | head -1) \
+	    BASE_URL=http://localhost:$$API_PORT \
+	    E2E_TOKEN=dev-token \
+	    E2E_TENANT_ID=4af01cf9-7325-4742-bf30-f1852368c1e8 \
+	    npx playwright test --reporter=list 2>&1'
+
 lint:
 	golangci-lint run ./...
 
@@ -126,9 +136,9 @@ serve: build build-sim
 # ── Seed (idempotent: safe to run multiple times) ──
 
 seed:
-	@$(MAKE) --no-print-directory _seed-sim
 	@$(MAKE) --no-print-directory _seed-topology
 	@$(MAKE) --no-print-directory _activate-hosts
+	@$(MAKE) --no-print-directory _seed-tenant
 
 # ── Stop ──
 
@@ -208,18 +218,6 @@ _start-sim:
 	    && echo "    cirrus-sim is ready." \
 	    || { echo "ERROR: cirrus-sim failed. Check $(LOG_SIM)"; exit 1; }'
 
-# ── Internal: seed sim hosts and storage backends ──
-
-_seed-sim:
-	@bash -c '\
-	  set -a; source $(PORTMAN_ENV); set +a; \
-	  echo "==> Seeding sim hosts and backends (env: $(CIRRUS_SIM_ENV))..."; \
-	  ./bin/cirrus-sim seed \
-	    -env=test/sim/environments/$(CIRRUS_SIM_ENV).yaml \
-	    -libvirt-url=http://localhost:$$SIM_LIBVIRT_PORT \
-	    -storage-url=http://localhost:$$SIM_STORAGE_PORT; \
-	  echo "    Sim seeded."'
-
 # ── Internal: start controller (host) ──
 
 _start-controller:
@@ -263,6 +261,7 @@ _start-workers:
 	    WORKER_1_PORT=$$WORKER_1_PORT \
 	    WORKER_2_PORT=$$WORKER_2_PORT \
 	    WORKER_3_PORT=$$WORKER_3_PORT \
+	    SIM_POSTGRES_PORT=$$SIM_POSTGRES_PORT \
 	    $(COMPOSE) up -d --build 2>&1 | tail -5; \
 	  echo "    Workers started."'
 
@@ -325,6 +324,11 @@ _seed-topology:
 	    -d "{\"name\":\"default\",\"description\":\"Default sim volume type\",\"required_capabilities\":[],\"is_public\":true}" \
 	    http://localhost:$$API_PORT/api/v1/admin/volume-types >/dev/null 2>&1 || true; \
 	  echo "    Default storage backend and volume type seeded."; \
+	  curl -sf -X POST \
+	    -H "Content-Type: application/json" \
+	    -d "{\"backend_id\":\"ceph-pool-ssd\",\"total_capacity_gb\":102400,\"total_iops\":100000,\"capabilities\":[\"ssd\",\"snapshot\",\"clone\",\"live_migration\"],\"overprovision_ratio\":1.5}" \
+	    http://localhost:$$SIM_STORAGE_PORT/sim/backends >/dev/null 2>&1 || true; \
+	  echo "    Storage-sim backend seeded."; \
   ORG_ID=$$(curl -sf -X POST \
     -H "Authorization: Bearer $$TOKEN" \
     -H "Content-Type: application/json" \
@@ -335,6 +339,51 @@ _seed-topology:
     psql "$$PSQL_URL" -c "INSERT INTO tenants (id, organization_id, name) VALUES ('\''4af01cf9-7325-4742-bf30-f1852368c1e8'\'', '\''$$ORG_ID'\'', '\''test-tenant'\'') ON CONFLICT (id) DO NOTHING" >/dev/null 2>&1 || true; \
     echo "    Test org and tenant seeded (fixed UUID)."; \
   fi'
+
+# ── Internal: seed tenant resources (quota, IP pool, GW node) ──
+
+_seed-tenant:
+	@bash -c '\
+	  set -a; source $(PORTMAN_ENV); set +a; \
+	  echo "==> Seeding tenant resources..."; \
+	  TOKEN="$(firstword $(subst =, ,$(AUTH_TOKENS)))"; \
+	  TENANT_ID="4af01cf9-7325-4742-bf30-f1852368c1e8"; \
+	  curl -sf -X PUT \
+	    -H "Authorization: Bearer $$TOKEN" \
+	    -H "Content-Type: application/json" \
+	    -d "{\"vcpus\":20,\"memory_mb\":20480,\"vm_count\":10,\"volume_gb\":500,\"volumes\":20,\"snapshots\":20,\"networks\":10,\"egresses\":10,\"ingresses\":10}" \
+	    http://localhost:$$API_PORT/api/v1/tenants/$$TENANT_ID/quota >/dev/null 2>&1 || true; \
+	  echo "    Tenant quota set."; \
+	  EXISTING_POOL_ID=$$(curl -sf -H "Authorization: Bearer $$TOKEN" \
+	    http://localhost:$$API_PORT/api/v1/admin/ip-pools | jq -r ".[] | select(.name==\"default-pool\") | .id" 2>/dev/null || echo ""); \
+	  if [ -z "$$EXISTING_POOL_ID" ]; then \
+	    curl -sf -X POST \
+	      -H "Authorization: Bearer $$TOKEN" \
+	      -H "Content-Type: application/json" \
+	      -d "{\"name\":\"default-pool\",\"cidr\":\"203.0.113.0/24\",\"description\":\"Default public IP pool\"}" \
+	      http://localhost:$$API_PORT/api/v1/admin/ip-pools >/dev/null 2>&1 || true; \
+	    echo "    IP pool created."; \
+	  else \
+	    echo "    IP pool already exists, skipping."; \
+	  fi; \
+	  FIRST_HOST_ID=$$(curl -sf -H "Authorization: Bearer $$TOKEN" \
+	    "http://localhost:$$API_PORT/api/v1/hosts?state=active" 2>/dev/null | jq -r ".[0].id // empty"); \
+	  if [ -n "$$FIRST_HOST_ID" ] && [ "$$FIRST_HOST_ID" != "null" ]; then \
+	    EXISTING_GW_ID=$$(curl -sf -H "Authorization: Bearer $$TOKEN" \
+	      http://localhost:$$API_PORT/api/v1/admin/gateway-nodes | jq -r ".[] | select(.host_id==\"$$FIRST_HOST_ID\") | .id" 2>/dev/null | head -1 || echo ""); \
+	    if [ -z "$$EXISTING_GW_ID" ]; then \
+	      curl -sf -X POST \
+	        -H "Authorization: Bearer $$TOKEN" \
+	        -H "Content-Type: application/json" \
+	        -d "{\"host_id\":\"$$FIRST_HOST_ID\",\"external_ip\":\"203.0.113.1\",\"internal_ip\":\"10.100.0.200\"}" \
+	        http://localhost:$$API_PORT/api/v1/admin/gateway-nodes >/dev/null 2>&1 || true; \
+	      echo "    GW node created."; \
+	    else \
+	      echo "    GW node already exists, skipping."; \
+	    fi; \
+	  else \
+	    echo "    No active hosts found, skipping GW node creation."; \
+	  fi'
 
 # ── Internal: activate hosts ──
 

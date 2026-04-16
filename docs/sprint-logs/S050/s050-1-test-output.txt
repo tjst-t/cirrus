@@ -1,0 +1,182 @@
+
+Running 176 tests using 2 workers
+
+  ✓    1 [chromium] › e2e/admin-s046-1.spec.ts:33:3 › S046-1: 組織一覧 › 空の状態が表示される (1.4s)
+  ✓    2 [chromium] › e2e/admin-s046-2.spec.ts:51:3 › S046-2: ホスト管理 › ホスト一覧が表示される (1.5s)
+  ✓    3 [chromium] › e2e/admin-s046-1.spec.ts:49:3 › S046-1: 組織一覧 › 組織リストが表示される (1.1s)
+  ✓    4 [chromium] › e2e/admin-s046-2.spec.ts:66:3 › S046-2: ホスト管理 › 空のホスト一覧が表示される (1.2s)
+  ✓    5 [chromium] › e2e/admin-s046-1.spec.ts:64:3 › S046-1: 組織一覧 › API 失敗時にエラーが表示される (962ms)
+  ✓    6 [chromium] › e2e/admin-s046-2.spec.ts:80:3 › S046-2: ホスト管理 › active ホストに drain / maintenance ボタンが表示される (1.5s)
+  ✓    7 [chromium] › e2e/admin-s046-1.spec.ts:84:3 › S046-1: 組織作成 › 組織を作成するとリストに追加される (1.5s)
+  ✓    8 [chromium] › e2e/admin-s046-2.spec.ts:97:3 › S046-2: ホスト管理 › maintenance ホストに activate / retire ボタンが表示される (1.1s)
+  ✓    9 [chromium] › e2e/admin-s046-1.spec.ts:113:3 › S046-1: 組織作成 › 名前が空の場合は送信できない (1.3s)
+  ✓   10 [chromium] › e2e/admin-s046-2.spec.ts:112:3 › S046-2: ホスト管理 › drain アクション後にステータスが更新される (1.6s)
+  ✓   11 [chromium] › e2e/admin-s046-1.spec.ts:126:3 › S046-1: 組織作成 › 作成 API 失敗時にダイアログ内にエラーが表示される (1.5s)
+  ✓   12 [chromium] › e2e/admin-s046-2.spec.ts:136:3 › S046-2: ホスト管理 › ホストのvCPUとメモリ使用量が正しく表示される (1.3s)
+  ✓   13 [chromium] › e2e/admin-s046-1.spec.ts:152:3 › S046-1: テナント作成 › 組織を展開してテナントを作成できる (1.6s)
+  ✓   14 [chromium] › e2e/admin-s046-2.spec.ts:155:3 › S046-2: ホスト管理 › retire 時に確認ダイアログが表示される (1.2s)
+  ✓   16 [chromium] › e2e/admin-s046-2.spec.ts:170:3 › S046-2: ホスト管理 › ホスト作成フォームを開いて送信できる (1.3s)
+  ✓   15 [chromium] › e2e/admin-s046-1.spec.ts:195:3 › S046-1: ロール割り当て › ロールを追加できる (1.5s)
+  ✓   17 [chromium] › e2e/admin-s046-2.spec.ts:253:3 › S046-2: ストレージ管理 › ストレージ管理ページが表示される (810ms)
+  ✓   18 [chromium] › e2e/admin-s046-1.spec.ts:238:3 › S046-1: ロール割り当て › ロールを削除できる（確認ダイアログ） (1.2s)
+  ✓   19 [chromium] › e2e/admin-s046-2.spec.ts:262:3 › S046-2: ストレージ管理 › Storage Backend を削除するとリストから消える (737ms)
+  ✓   20 [chromium] › e2e/admin-s046-1.spec.ts:278:3 › S046-1: ロール割り当て › ユーザーID が空の場合はロール追加できない (764ms)
+  ✓   21 [chromium] › e2e/admin-s046-2.spec.ts:339:3 › S046-2: ネットワーク管理 (GW ノード) › GW ノードが空の場合は空状態が表示される (469ms)
+  ✓   22 [chromium] › e2e/admin-s046-3.spec.ts:80:3 › S046-3: Quota 設定 › テナントの Quota を表示できる (715ms)
+  ✓   23 [chromium] › e2e/admin-s046-2.spec.ts:348:3 › S046-2: ネットワーク管理 (GW ノード) › GW ノードを作成できる (953ms)
+  ✓   24 [chromium] › e2e/admin-s046-3.spec.ts:103:3 › S046-3: Quota 設定 › Quota を変更して保存できる (800ms)
+  ✓   25 [chromium] › e2e/admin-s046-2.spec.ts:383:3 › S046-2: ネットワーク管理 (GW ノード) › GW ノードを削除できる (932ms)
+  ✓   26 [chromium] › e2e/admin-s046-3.spec.ts:132:3 › S046-3: Quota 設定 › Quota 保存失敗時にエラーが表示される (830ms)
+  ✓   27 [chromium] › e2e/admin-s046-2.spec.ts:414:3 › S046-2: ネットワーク管理 (GW ノード) › IP プールを作成できる (823ms)
+  ✓   28 [chromium] › e2e/admin-s046-3.spec.ts:152:3 › S046-3: Quota 設定 › 組織がない場合は空状態が表示される (510ms)
+  ✓   29 [chromium] › e2e/admin.spec.ts:31:3 › 管理者 UI フロー › 組織一覧ページが表示される (605ms)
+  ✓   30 [chromium] › e2e/admin-s046-3.spec.ts:172:3 › S046-3: Drift Event ビューア › Drift Event 一覧が表示される (602ms)
+  ✓   31 [chromium] › e2e/admin.spec.ts:37:3 › 管理者 UI フロー › 組織一覧が空の場合は「組織がありません」と表示される (631ms)
+  ✓   32 [chromium] › e2e/admin-s046-3.spec.ts:184:3 › S046-3: Drift Event ビューア › イベントがない場合は空状態が表示される (675ms)
+  ✓   33 [chromium] › e2e/admin.spec.ts:42:3 › 管理者 UI フロー › 組織作成ボタンが表示される (547ms)
+  ✓   34 [chromium] › e2e/admin-s046-3.spec.ts:194:3 › S046-3: Drift Event ビューア › resource_type フィルタで絞り込める (753ms)
+  ✓   35 [chromium] › e2e/admin.spec.ts:48:3 › 管理者 UI フロー › ホスト一覧ページが表示される (597ms)
+  ✓   36 [chromium] › e2e/admin-s046-3.spec.ts:212:3 › S046-3: Drift Event ビューア › status フィルタで open イベントのみ表示できる (744ms)
+  ✓   37 [chromium] › e2e/admin.spec.ts:54:3 › 管理者 UI フロー › ホスト一覧が空の場合は「ホストがありません」と表示される (510ms)
+  ✓   39 [chromium] › e2e/admin.spec.ts:59:3 › 管理者 UI フロー › /admin にアクセスすると /admin/organizations にリダイレクトされる (550ms)
+  -   40 [chromium] › e2e/audit.spec.ts:32:3 › テスト 1: 認証 › ログインページが表示される
+  -   41 [chromium] › e2e/audit.spec.ts:41:3 › テスト 1: 認証 › dev-token でログインすると / にリダイレクトされる
+  -   42 [chromium] › e2e/audit.spec.ts:59:3 › テスト 2: ヘッダー・テナント選択 › ヘッダーに「テナントを選択」ボタンが表示される
+  -   43 [chromium] › e2e/audit.spec.ts:71:3 › テスト 2: ヘッダー・テナント選択 › ドロップダウンに test-tenant が表示される
+  -   44 [chromium] › e2e/audit.spec.ts:89:3 › テスト 2: ヘッダー・テナント選択 › test-tenant を選択するとボタンテキストが変わる
+  -   45 [chromium] › e2e/audit.spec.ts:128:3 › テスト 3: ダッシュボード › ダッシュボードが表示される（真っ白にならない）
+  -   46 [chromium] › e2e/audit.spec.ts:154:3 › テスト 4: VM 管理 › VM 一覧ページが表示される
+  -   47 [chromium] › e2e/audit.spec.ts:168:3 › テスト 4: VM 管理 › VM 作成ボタンが存在する
+  -   48 [chromium] › e2e/audit.spec.ts:178:3 › テスト 4: VM 管理 › VM 作成ダイアログが開く
+  -   49 [chromium] › e2e/audit.spec.ts:190:3 › テスト 4: VM 管理 › VM 作成ダイアログに Flavor 選択がある
+  -   50 [chromium] › e2e/audit.spec.ts:205:3 › テスト 4: VM 管理 › VM 作成ダイアログに Network 選択がある
+  -   51 [chromium] › e2e/audit.spec.ts:222:3 › テスト 4: VM 管理 › VM 作成ダイアログをキャンセルできる
+  -   52 [chromium] › e2e/audit.spec.ts:244:3 › テスト 5: ネットワーク管理 › ネットワーク一覧ページが表示される
+  -   53 [chromium] › e2e/audit.spec.ts:259:3 › テスト 5: ネットワーク管理 › ネットワーク作成ボタンが存在する
+  -   54 [chromium] › e2e/audit.spec.ts:269:3 › テスト 5: ネットワーク管理 › ネットワーク作成ダイアログが開く
+  -   55 [chromium] › e2e/audit.spec.ts:280:3 › テスト 5: ネットワーク管理 › ネットワーク作成フォームに名前と CIDR を入力して作成できる
+  -   56 [chromium] › e2e/audit.spec.ts:313:3 › テスト 6: ボリューム管理 › ボリューム一覧ページが表示される
+  -   57 [chromium] › e2e/audit.spec.ts:323:3 › テスト 6: ボリューム管理 › 「ボリュームがありません」または一覧が表示される
+  -   58 [chromium] › e2e/audit.spec.ts:336:3 › テスト 6: ボリューム管理 › ボリューム作成ダイアログが開く
+  -   59 [chromium] › e2e/audit.spec.ts:351:3 › テスト 6: ボリューム管理 › ボリューム作成ダイアログに Volume Type 選択肢が表示される
+  -   60 [chromium] › e2e/audit.spec.ts:375:3 › テスト 7: Egress 管理 › Egress ページが表示される（真っ白にならない）
+  -   61 [chromium] › e2e/audit.spec.ts:391:3 › テスト 7: Egress 管理 › テナント選択メッセージまたはネットワーク選択ドロップダウンが表示される
+  -   62 [chromium] › e2e/audit.spec.ts:423:3 › テスト 8: Ingress 管理 › Ingress ページが表示される（真っ白にならない）
+  -   63 [chromium] › e2e/audit.spec.ts:439:3 › テスト 8: Ingress 管理 › ネットワーク選択ドロップダウンが表示される
+  -   64 [chromium] › e2e/audit.spec.ts:464:3 › テスト 9: 管理者 - 組織管理 › 組織管理ページが表示される
+  -   65 [chromium] › e2e/audit.spec.ts:473:3 › テスト 9: 管理者 - 組織管理 › test-org が一覧に表示される
+  -   66 [chromium] › e2e/audit.spec.ts:482:3 › テスト 9: 管理者 - 組織管理 › 「テナントを表示」をクリックするとテナントが展開され test-tenant が表示される
+  -   67 [chromium] › e2e/audit.spec.ts:499:3 › テスト 9: 管理者 - 組織管理 › 「ロール管理」をクリックするとロール割り当てパネルが開く（真っ白にならない）
+  -   68 [chromium] › e2e/audit.spec.ts:523:3 › テスト 9: 管理者 - 組織管理 › ロール割り当てが表示される（空リストでもクラッシュしない）
+  -   69 [chromium] › e2e/audit.spec.ts:554:3 › テスト 10: 管理者 - ホスト管理 › ホスト管理ページが表示される
+  -   70 [chromium] › e2e/audit.spec.ts:563:3 › テスト 10: 管理者 - ホスト管理 › ホスト一覧に worker-1, worker-2, worker-3 が表示される
+  -   71 [chromium] › e2e/audit.spec.ts:574:3 › テスト 10: 管理者 - ホスト管理 › 各ホストの operational_state が表示される
+  -   72 [chromium] › e2e/audit.spec.ts:595:3 › テスト 10: 管理者 - ホスト管理 › アクションボタンが表示される
+  -   73 [chromium] › e2e/audit.spec.ts:618:3 › テスト 11: 管理者 - ストレージ管理 › ストレージ管理ページが表示される（真っ白にならない）
+  -   74 [chromium] › e2e/audit.spec.ts:628:3 › テスト 11: 管理者 - ストレージ管理 › Storage Backend 一覧に sim-backend が表示される
+  -   75 [chromium] › e2e/audit.spec.ts:637:3 › テスト 11: 管理者 - ストレージ管理 › Volume Type 一覧が表示される
+  -   76 [chromium] › e2e/audit.spec.ts:647:3 › テスト 11: 管理者 - ストレージ管理 › Flavor 一覧が表示される（空でもクラッシュしない）
+  -   77 [chromium] › e2e/audit.spec.ts:666:3 › テスト 12: 管理者 - Quota 設定 › Quota 設定ページが表示される
+  -   78 [chromium] › e2e/audit.spec.ts:676:3 › テスト 12: 管理者 - Quota 設定 › テナント一覧が表示される
+  -   79 [chromium] › e2e/audit.spec.ts:694:3 › テスト 13: 管理者 - Drift Event › Drift Event ページが表示される（真っ白にならない）
+  -   80 [chromium] › e2e/audit.spec.ts:704:3 › テスト 13: 管理者 - Drift Event › 「Drift Event ビューア」ページが表示される
+  ✓   38 [chromium] › e2e/admin-s046-3.spec.ts:231:3 › S046-3: Drift Event ビューア › open イベントを解決済みにできる (659ms)
+  ✓   81 [chromium] › e2e/admin-s046-3.spec.ts:264:3 › S046-3: Drift Event ビューア › resolved イベントには解決ボタンが表示されない (528ms)
+  ✓   82 [chromium] › e2e/auth.spec.ts:16:3 › 認証フロー › ログインページが表示される (525ms)
+  ✓   84 [chromium] › e2e/compute.spec.ts:38:3 › コンピュート管理 (Flavor CRUD) › Flavor 一覧が表示される (563ms)
+  ✓   83 [chromium] › e2e/auth.spec.ts:24:3 › 認証フロー › 有効なトークンでログインするとダッシュボードにリダイレクトされる (661ms)
+  ✓   85 [chromium] › e2e/compute.spec.ts:47:3 › コンピュート管理 (Flavor CRUD) › Flavor がない場合は空メッセージが表示される (679ms)
+  ✓   86 [chromium] › e2e/auth.spec.ts:35:3 › 認証フロー › 無効なトークンでエラーが表示される (779ms)
+  ✓   88 [chromium] › e2e/auth.spec.ts:49:3 › 認証フロー › 未認証状態で保護ルートにアクセスすると /login にリダイレクトされる (643ms)
+  -   89 [chromium] › e2e/lifecycle.spec.ts:67:3 › テナントワークフロー ライフサイクル › ネットワーク作成: ネットワーク一覧に表示される
+  -   90 [chromium] › e2e/lifecycle.spec.ts:95:3 › テナントワークフロー ライフサイクル › ボリューム作成: ボリューム一覧に表示される
+  -   91 [chromium] › e2e/lifecycle.spec.ts:117:3 › テナントワークフロー ライフサイクル › VM 作成: VM 一覧に表示される
+  -   92 [chromium] › e2e/lifecycle.spec.ts:146:3 › テナントワークフロー ライフサイクル › VM 起動: ステータスが running になる
+  -   93 [chromium] › e2e/lifecycle.spec.ts:160:3 › テナントワークフロー ライフサイクル › VM 停止: ステータスが stopped になる
+  -   94 [chromium] › e2e/lifecycle.spec.ts:174:3 › テナントワークフロー ライフサイクル › VM 再起動: ステータスが running になる（reboot 後）
+  -   95 [chromium] › e2e/lifecycle.spec.ts:194:3 › テナントワークフロー ライフサイクル › Egress 作成: Egress 一覧に表示される
+  -   96 [chromium] › e2e/lifecycle.spec.ts:227:3 › テナントワークフロー ライフサイクル › Ingress 作成: Ingress 一覧に表示される
+  -   97 [chromium] › e2e/lifecycle.spec.ts:272:3 › テナントワークフロー ライフサイクル › 全リソース削除: VM/Egress/Ingress/Volume/Network が削除される
+  ✓   87 [chromium] › e2e/compute.spec.ts:55:3 › コンピュート管理 (Flavor CRUD) › Flavor を作成できる (1.0s)
+  ✓   98 [chromium] › e2e/login.spec.ts:5:1 › ログイン: トークン未入力時はログインボタンが無効 (730ms)
+  ✓  100 [chromium] › e2e/login.spec.ts:10:1 › ログイン: トークン入力後はログインボタンが有効 (533ms)
+  ✓   99 [chromium] › e2e/compute.spec.ts:93:3 › コンピュート管理 (Flavor CRUD) › Flavor を削除できる (1.2s)
+  ✓  101 [chromium] › e2e/login.spec.ts:16:1 › ログイン: 256文字を超えるトークンはログインボタンが無効 (710ms)
+  ✓  102 [chromium] › e2e/compute.spec.ts:121:3 › コンピュート管理 (Flavor CRUD) › Flavor テーブルに vCPU / メモリ / ディスクが表示される (951ms)
+  ✓  103 [chromium] › e2e/login.spec.ts:22:1 › ログイン: 送信中はボタンが無効化されスピナーが表示される (671ms)
+  ✓  104 [chromium] › e2e/s048-network.spec.ts:49:3 › S048-1: ネットワーク管理 › ネットワーク一覧: ネットワークが存在しない場合に空状態を表示する (630ms)
+  ✓  105 [chromium] › e2e/login.spec.ts:33:1 › ログイン: 成功後にデフォルトのテナント管理画面にリダイレクト (642ms)
+  ✓  107 [chromium] › e2e/login.spec.ts:43:1 › ログイン: redirect パラメータがある場合、ログイン後に元のURLへ遷移 (653ms)
+  ✓  106 [chromium] › e2e/s048-network.spec.ts:58:3 › S048-1: ネットワーク管理 › ネットワーク作成: 名前とCIDRを入力して作成できる (1.0s)
+  ✓  108 [chromium] › e2e/login.spec.ts:53:1 › ログイン: 未認証状態でページにアクセスするとログインページにリダイレクト (446ms)
+  ✓  110 [chromium] › e2e/login.spec.ts:58:1 › ログイン: 401エラー時にインラインエラーメッセージが表示される (607ms)
+  ✓  109 [chromium] › e2e/s048-network.spec.ts:89:3 › S048-1: ネットワーク管理 › ネットワーク作成: CIDRを省略すると自動割り当てで作成できる (1.1s)
+  ✓  111 [chromium] › e2e/login.spec.ts:70:1 › ログイン: サーバーエラー時にトースト通知が表示される (759ms)
+  ✓  112 [chromium] › e2e/s048-network.spec.ts:111:3 › S048-1: ネットワーク管理 › ネットワーク削除: 確認後に削除される (1.0s)
+  ✓  113 [chromium] › e2e/login.spec.ts:81:1 › ログイン: ネットワーク障害時にトースト通知が表示される (599ms)
+  ✓  115 [chromium] › e2e/s048-volume.spec.ts:46:3 › S048-2: ボリューム管理 › ボリューム一覧: ボリュームが存在しない場合に空状態を表示する (614ms)
+  ✓  114 [chromium] › e2e/s048-network.spec.ts:134:3 › S048-1: ネットワーク管理 › グループ管理: ネットワーク行を展開してグループを作成・削除できる (1.5s)
+  ✓  116 [chromium] › e2e/s048-volume.spec.ts:55:3 › S048-2: ボリューム管理 › ボリューム一覧: stateバッジが正しく表示される (527ms)
+  ✓  118 [chromium] › e2e/s048-volume.spec.ts:70:3 › S048-2: ボリューム管理 › ボリューム作成: 名前とサイズを入力して作成できる（202 job_id） (835ms)
+  ✓  117 [chromium] › e2e/s048-network.spec.ts:181:3 › S048-1: ネットワーク管理 › ポリシー管理: src/dstグループを選択してポリシーを作成・削除できる (1.5s)
+  ✓  119 [chromium] › e2e/s048-volume.spec.ts:102:3 › S048-2: ボリューム管理 › ボリューム作成: ボリュームタイプを選択して作成できる (812ms)
+  ✓  120 [chromium] › e2e/s048-network.spec.ts:236:3 › S048-1: ネットワーク管理 › ネットワーク一覧: API失敗時にエラーメッセージを表示する (527ms)
+  ✓  121 [chromium] › e2e/s048-volume.spec.ts:122:3 › S048-2: ボリューム管理 › ボリュームリサイズ: new_size_gbを指定してリサイズできる (917ms)
+  ✓  122 [chromium] › e2e/s049-dashboard.spec.ts:87:3 › S049-2: ダッシュボード › ダッシュボード: サマリカードと Quota バーを表示する (734ms)
+  ✓  123 [chromium] › e2e/s048-volume.spec.ts:143:3 › S048-2: ボリューム管理 › ボリュームリサイズ: 現在のサイズ以下を指定するとエラーになる (924ms)
+  ✓  124 [chromium] › e2e/s049-dashboard.spec.ts:113:3 › S049-2: ダッシュボード › ダッシュボード: Quota 上限到達時にバーが100%表示になる (852ms)
+  ✓  125 [chromium] › e2e/s048-volume.spec.ts:157:3 › S048-2: ボリューム管理 › ボリューム削除: available状態のボリュームを確認後に削除できる (1.2s)
+  ✓  126 [chromium] › e2e/s049-dashboard.spec.ts:125:3 › S049-2: ダッシュボード › ダッシュボード: quota API エラー時にエラーメッセージを表示する (1.2s)
+  ✓  128 [chromium] › e2e/s049-dashboard.spec.ts:137:3 › S049-2: ダッシュボード › ダッシュボード: テナント未選択時に案内メッセージを表示する (1.0s)
+  ✓  127 [chromium] › e2e/s048-volume.spec.ts:182:3 › S048-2: ボリューム管理 › ボリューム削除: in_use状態のボリュームは削除ボタンが無効化される (1.2s)
+  ✓  130 [chromium] › e2e/s048-volume.spec.ts:190:3 › S048-2: ボリューム管理 › ボリューム一覧: API失敗時にエラーメッセージを表示する (1.0s)
+  ✓  129 [chromium] › e2e/s049-dashboard.spec.ts:149:3 › S049-2: ダッシュボード › ダッシュボード: ローディング中はスケルトンまたはスピナーを表示する (1.1s)
+  -  131 [chromium] › e2e/serve-check.spec.ts:7:1 › WebUI is accessible via make serve
+  ✓  132 [chromium] › e2e/tenant-switch.spec.ts:34:1 › テナント切り替え: ロード中はヘッダーにスピナーが表示される (1.2s)
+  ✓  133 [chromium] › e2e/s049-egress-ingress.spec.ts:96:3 › S049-1-A: Egress 管理 › Egress 一覧: ネットワーク未選択時またはegress 0件で空状態を表示する (1.5s)
+  ✓  134 [chromium] › e2e/tenant-switch.spec.ts:42:1 › テナント切り替え: テナント一覧取得成功後にドロップダウンが表示される (1.4s)
+  ✓  135 [chromium] › e2e/s049-egress-ingress.spec.ts:106:3 › S049-1-A: Egress 管理 › Egress 一覧: egress が存在する場合にテーブルで表示する (1.7s)
+  ✓  136 [chromium] › e2e/tenant-switch.spec.ts:51:1 › テナント切り替え: テナントが1件のみでもドロップダウンが表示される (1.4s)
+  ✓  138 [chromium] › e2e/tenant-switch.spec.ts:59:1 › テナント切り替え: テナント一覧取得失敗時にドロップダウンが無効化されトーストが表示される (1.0s)
+  ✓  137 [chromium] › e2e/s049-egress-ingress.spec.ts:117:3 › S049-1-A: Egress 管理 › Egress 作成: NAT ゲートウェイを作成して一覧に反映される (2.0s)
+  ✓  140 [chromium] › e2e/s049-egress-ingress.spec.ts:152:3 › S049-1-A: Egress 管理 › Egress 作成失敗: public_ip 未入力でフロントバリデーションエラーを表示する (1.2s)
+  ✓  139 [chromium] › e2e/tenant-switch.spec.ts:68:1 › テナント切り替え: 別テナントを選択するとページがリロードされる (1.8s)
+  ✓  142 [chromium] › e2e/tenant-switch.spec.ts:88:1 › テナント切り替え: リロード後に「切り替えました」トーストが表示される (764ms)
+  ✓  141 [chromium] › e2e/s049-egress-ingress.spec.ts:165:3 › S049-1-A: Egress 管理 › Egress 作成失敗: サーバーエラー時にエラーメッセージを表示する (1.5s)
+  ✓  143 [chromium] › e2e/tenant-switch.spec.ts:102:1 › テナント切り替え: 現在選択中のテナント名がヘッダーに表示される (685ms)
+  ✓  144 [chromium] › e2e/s049-egress-ingress.spec.ts:183:3 › S049-1-A: Egress 管理 › Egress 削除: 確認後に削除され一覧から消える (988ms)
+  ✓  146 [chromium] › e2e/s049-egress-ingress.spec.ts:207:3 › S049-1-A: Egress 管理 › Egress 削除キャンセル: キャンセルしても一覧に残る (928ms)
+  ✓  145 [chromium] › e2e/tenant-switch.spec.ts:113:1 › テナント切り替え: ドロップダウンは全ページのヘッダーに表示される (2.0s)
+  ✓  147 [chromium] › e2e/s049-egress-ingress.spec.ts:220:3 › S049-1-A: Egress 管理 › Egress 一覧: API エラー時にエラーメッセージを表示する (654ms)
+  ✓  149 [chromium] › e2e/s049-egress-ingress.spec.ts:229:3 › S049-1-A: Egress 管理 › Egress 一覧: ネットワークが存在しない場合に案内メッセージを表示する (482ms)
+  ✓  148 [chromium] › e2e/vm-detail.spec.ts:59:3 › VM 詳細ページ › VM 詳細ページが表示される (807ms)
+  ✓  151 [chromium] › e2e/vm-detail.spec.ts:67:3 › VM 詳細ページ › Flavor 情報が表示される (692ms)
+  ✓  150 [chromium] › e2e/s049-egress-ingress.spec.ts:238:3 › S049-1-A: Egress 管理 › Egress 編集: public_ip を変更して保存できる (1.2s)
+  ✓  152 [chromium] › e2e/vm-detail.spec.ts:76:3 › VM 詳細ページ › エラーメッセージが表示される (547ms)
+  ✓  154 [chromium] › e2e/vm-detail.spec.ts:84:3 › VM 詳細ページ › running VM では起動ボタンが無効で停止ボタンが有効 (762ms)
+  ✓  153 [chromium] › e2e/s049-egress-ingress.spec.ts:271:3 › S049-1-A: Egress 管理 › Egress 編集: public_ip 未入力でバリデーションエラーを表示する (1.0s)
+  ✓  156 [chromium] › e2e/s049-egress-ingress.spec.ts:308:3 › S049-1-B: Ingress 管理 › Ingress 一覧: ingress 0件で空状態を表示する (758ms)
+  ✓  155 [chromium] › e2e/vm-detail.spec.ts:93:3 › VM 詳細ページ › stopped VM では起動ボタンが有効で停止ボタンが無効 (854ms)
+  ✓  158 [chromium] › e2e/vm-detail.spec.ts:102:3 › VM 詳細ページ › 削除ボタンで確認ダイアログが表示される (774ms)
+  ✓  157 [chromium] › e2e/s049-egress-ingress.spec.ts:318:3 › S049-1-B: Ingress 管理 › Ingress 一覧: ingress が存在する場合にテーブルで表示する (829ms)
+  ✓  159 [chromium] › e2e/vm-detail.spec.ts:111:3 › VM 詳細ページ › 削除確定後に VM 一覧ページへ遷移する (847ms)
+  ✓  160 [chromium] › e2e/s049-egress-ingress.spec.ts:329:3 › S049-1-B: Ingress 管理 › Ingress 作成: フォームに入力して作成できる (967ms)
+  ✓  161 [chromium] › e2e/vm-detail.spec.ts:125:3 › VM 詳細ページ › 「← VM 一覧」リンクで一覧ページへ戻れる (904ms)
+  ✓  162 [chromium] › e2e/s049-egress-ingress.spec.ts:366:3 › S049-1-B: Ingress 管理 › Ingress 作成: public_ip 未入力でバリデーションエラー (969ms)
+  ✓  164 [chromium] › e2e/s049-egress-ingress.spec.ts:380:3 › S049-1-B: Ingress 管理 › Ingress 削除: 確認後に削除され一覧から消える (1.2s)
+  ✓  163 [chromium] › e2e/vm-lifecycle.spec.ts:44:3 › VM ライフサイクルフロー › VM を作成して起動・停止・削除できる (2.2s)
+  ✓  165 [chromium] › e2e/s049-egress-ingress.spec.ts:404:3 › S049-1-B: Ingress 管理 › Ingress 削除キャンセル: キャンセルしても一覧に残る (1.0s)
+  ✓  166 [chromium] › e2e/vm-lifecycle.spec.ts:181:3 › VM ライフサイクルフロー › VM 作成ダイアログに AZ セレクターが表示される (726ms)
+  ✓  167 [chromium] › e2e/s049-egress-ingress.spec.ts:416:3 › S049-1-B: Ingress 管理 › Ingress 一覧: API エラー時にエラーメッセージを表示する (656ms)
+  ✓  168 [chromium] › e2e/vm-lifecycle.spec.ts:214:3 › VM ライフサイクルフロー › VM 一覧にフレーバー列と AZ 列が表示される (676ms)
+  ✓  169 [chromium] › e2e/s049-egress-ingress.spec.ts:425:3 › S049-1-B: Ingress 管理 › Ingress 一覧: ターゲット VM 名が表示される (728ms)
+  ✓  170 [chromium] › e2e/vms.spec.ts:40:3 › VM 管理フロー › VM 一覧ページが表示される (553ms)
+  ✓  172 [chromium] › e2e/vms.spec.ts:46:3 › VM 管理フロー › VM 作成ボタンが存在する (471ms)
+  ✓  171 [chromium] › e2e/s049-egress-ingress.spec.ts:434:3 › S049-1-B: Ingress 管理 › Ingress 編集: ターゲット VM を変更して保存できる (1.0s)
+  ✓  173 [chromium] › e2e/vms.spec.ts:53:3 › VM 管理フロー › VM 一覧が空の場合は「VM がありません」と表示される (754ms)
+  ✓  174 [chromium] › e2e/s049-egress-ingress.spec.ts:471:3 › S049-1-B: Ingress 管理 › Ingress 編集: ターゲット IP を変更して保存できる (1.1s)
+  ✓  175 [chromium] › e2e/vms.spec.ts:58:3 › VM 管理フロー › VM 作成ダイアログが開く (811ms)
+  ✓  176 [chromium] › e2e/vms.spec.ts:70:3 › VM 管理フロー › VM 作成ダイアログでキャンセルできる (585ms)
+
+  51 skipped
+  125 passed (1.1m)

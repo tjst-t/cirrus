@@ -4,13 +4,13 @@
 
 ## Progress
 
-- Total: 51 Sprints | Done: 30 | In Progress: 0 | Remaining: 21
-- [████████████░░░░░░░░] 59%
+- Total: 51 Sprints | Done: 31 | In Progress: 0 | Remaining: 20
+- [████████████░░░░░░░░] 61%
 
 ## Execution Order
 
 S001 → S002 → S003 → S004 → S005 → S006 → S007 → S008 → S009 → S010 → S011 → S012 → S013 → S014 → S015 → S016 → S017 → S018 → S019 → S020 → S021 → S045 → S042 → S043 → S044 → S022 → S046 → S047 → S048 → S049 → S050 → S051 → S023 → S024 → S025 → S026 → S027 → S028 → S029 → S030 → S031 → S032 → S033 → S034 → S035 → S036 → S037 → S038 → S039 → S040 → S041
-                                                                                                                                                                                                           ↑ next
+                                                                                                                                                                                                                    ↑ next
 
 ---
 
@@ -882,20 +882,20 @@ Phase 1 の全機能（Identity・Host・Network・Storage・Compute・Quota・E
 
 ---
 
-## Sprint S050: WebUI E2E テスト拡充 [ ]
+## Sprint S050: WebUI E2E テスト拡充 [DONE]
 
 Phase 1 WebUI 全体の結合 E2E テストが通り、`make serve` 環境で安定してデモできる状態にする。
 
-### Story S050-1: QA エンジニアとして、Phase 1 の全テナントワークフローを E2E テストで自動検証したい。なぜなら、デグレを CI で検出できるようにしたいから。 [ ]
+### Story S050-1: QA エンジニアとして、Phase 1 の全テナントワークフローを E2E テストで自動検証したい。なぜなら、デグレを CI で検出できるようにしたいから。 [x]
 
-- [ ] **Task S050-1-1**: globalSetup / globalTeardown: テスト用組織・テナント・Quota・Flavor・AZ・IP プール・GW ノードのシード
-- [ ] **Task S050-1-2**: ライフサイクル spec: 組織/テナント/ロール → ネットワーク/ボリューム/VM → start/stop/reboot → egress/ingress → 全リソース削除
-- [ ] **Task S050-1-3**: 既存 spec（login / tenant-switch / admin / vms）の通過確認・修正
+- [x] **Task S050-1-1**: globalSetup / globalTeardown: テスト用組織・テナント・Quota・Flavor・AZ・IP プール・GW ノードのシード
+- [x] **Task S050-1-2**: ライフサイクル spec: 組織/テナント/ロール → ネットワーク/ボリューム/VM → start/stop/reboot → egress/ingress → 全リソース削除
+- [x] **Task S050-1-3**: 既存 spec（login / tenant-switch / admin / vms）の通過確認・修正
 
-### Story S050-2: 開発者として、`make serve` 直後にデフォルトテナントが利用可能な状態にしたい。なぜなら、開発・デモ環境を素早く立ち上げられるようにしたいから。 [ ]
+### Story S050-2: 開発者として、`make serve` 直後にデフォルトテナントが利用可能な状態にしたい。なぜなら、開発・デモ環境を素早く立ち上げられるようにしたいから。 [x]
 
-- [ ] **Task S050-2-1**: `make serve` の `_seed-tenant` ステップ: default-org / default-tenant / dev-admin ロール / Quota / IP プール / GW ノード（冪等）
-- [ ] **Task S050-2-2**: `make serve` 後に Playwright 全 spec が通ることを確認
+- [x] **Task S050-2-1**: `make serve` の `_seed-tenant` ステップ: default-org / default-tenant / dev-admin ロール / Quota / IP プール / GW ノード（冪等）
+- [x] **Task S050-2-2**: `make serve` 後に Playwright 全 spec が通ることを確認
 
 ---
 
@@ -1367,3 +1367,34 @@ Controller 再起動後も非同期ジョブが安全にリカバリできる。
 - [ ] **DriftEvent 対応判定テーブル**: reconciliation.md に基づく Alert/Auto-heal 振り分けルールの実装（S018 で対応）
 - [ ] **Orchestrator goroutine ライフサイクル管理**: `compute.Orchestrator.CreateVM` が起動する `buildVM` goroutine は detached context（5分タイムアウト）で動作するため、controller シャットダウン時に最大5分孤立する可能性がある。`sync.WaitGroup` + `Orchestrator.Shutdown()` を追加して graceful shutdown に対応する。Reconciler による自動修復が前提なので本番運用フェーズ移行前に対応する。
 - [ ] **Egress ポリシールーティング（宛先ベース出口選択）**: 現状は1ネットワーク1 NAT Gateway のみでネットワーク内の全 VM が同一出口を使う。VPN/Direct Connect が複数 Egress として共存する構成に向けて、`egress_routes (egress_id, dest_cidr)` テーブルを追加し「宛先 CIDR → どの Egress を使うか」をテナントが設定できるようにする。OVS フロー側では `nw_dst` マッチ＋Priority の組み合わせで実現（例: 0.0.0.0/0 → NAT、192.168.1.0/24 → VPN、172.16.0.0/12 → DX）。nat_gateway の1ネットワーク1制約は「デフォルトゲートウェイは1つ」の意味として維持し、VPN/DX は複数共存可とする。API: `POST /tenants/{tid}/networks/{nid}/egresses/{eid}/routes`、UI: Egress 詳細画面にルートテーブル管理を追加。S042（VPN/DX 実装）に依存。
+- [ ] **ホスト物理リソース（vCPU/メモリ総数）未報告**: `proto/agent.proto` の `ResourceReport` に `total_vcpus`/`total_ram_mb` フィールドがなく、worker がハートビートで物理キャパシティを報告できない。`resource_physical` が常に空（`{}`）のため、ホスト管理 UI の「VCPU/メモリ 総数」列が「—」表示になる。修正箇所: (1) proto に `total_vcpus`/`total_ram_mb` 追加・再生成、(2) `internal/agent/agent.go` の `collectResources()` でハイパーバイザーの `GetNodeInfo()` 相当から総数を取得、(3) `internal/controller/grpc.go` の `Heartbeat()` ハンドラで `UpdateResourcePhysical()` を呼ぶ。
+
+### CLI クライアント
+
+- [ ] **名前解決のサーバーサイドフィルタ対応**: 現在 `Resolve*` は全件取得してクライアント側で名前フィルタしている。サーバー側に `?name=` クエリパラメータが入ったら切り替える。該当: `internal/client/identity.go` の `ResolveOrganization`, `ResolveTenant`
+
+### データベース
+
+- [ ] **UUID v7 移行**: 設計（database.md）は「UUID v7（時系列ソート可能）」だが実装は `gen_random_uuid()`（v4）。新規マイグレーションで `gen_random_uuid()` のデフォルトを UUID v7 生成関数に差し替える
+- [ ] **resource_used JSONB 列の設計整合**: database.md では「vms テーブルから集計」と記載しているが、実装は heartbeat で直接上書き。heartbeat によるリアルタイム更新が正しい方式なので database.md の記載を修正する
+
+### ホスト管理
+
+- [ ] **Service/Store 分離**: 現在 `host.Service` インターフェースを `host.Store` が直接実装している。ビジネスロジック層（状態遷移ルール、active→maintenance 時の VM 数チェック等）を `host.Manager` に分離し、Store はデータアクセスのみに限定する
+- [ ] **Heartbeat Service インターフェースの型統一**: `Heartbeat(ctx, hostID string, ...)` の `hostID` が `string` で、他メソッドの `uuid.UUID` と不整合。gRPC 境界で UUID 変換し、Service 層は `uuid.UUID` を受け取るように統一する
+
+### API
+
+- [ ] **PUT /api/v1/hosts/{id} 未実装**: api.md に定義があるがエンドポイント未実装。ホスト属性（address 等）の更新用
+
+### ネットワーク
+
+- [ ] **ネットワークモジュールの OVN→VPC モデル移行（Sprint 5N）**: Sprint 5 の既存 OVN 実装を新しい VPC モデル（Network/Group/Policy + OVS データプレーン）に全面書き換え。前提として Sprint 5S（cirrus-sim 統合）を先に完了させる
+- [ ] **NetworkDomain.OVNNBConnection フィールド削除**: `internal/topology/models.go` の `OVNNBConnection` フィールド、`internal/state/migrations/000004_topology.up.sql` の `ovn_nb_connection` カラムを削除。Sprint 5S でバリデーションを任意に緩和済み（`internal/api/topology_handler.go`）。Sprint 5N（OVN→VPC 移行）と合わせて対応
+- [ ] **controller の --ovn-nb フラグ削除**: `internal/config/config.go` の `OVNNBConnection` 設定項目を削除。Sprint 5N と合わせて対応
+- [ ] **client の OVNNBConnection 参照削除**: `internal/client/topology.go` の関連コード。Sprint 5N と合わせて対応
+- [ ] **cirrus-sim リポジトリのアーカイブ**: OVN→VPC 移行完了・動作確認後にアーカイブ化
+
+### 非同期ジョブキュー
+
+- [ ] **ジョブ依存グラフ（入れ子ジョブ）**: S045 では「1 API 操作 = 1 ジョブ」として実装。将来的には `jobs` テーブルに `parent_job_id`/`depends_on` カラムを追加し、VM 作成ジョブがボリューム作成サブジョブを生成できる依存グラフ構造（A2 パターン）に拡張する。各サブ操作が独立してリカバリ・再試行できるようになる

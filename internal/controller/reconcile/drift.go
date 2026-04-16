@@ -62,6 +62,13 @@ type VMHealer interface {
 	HealVM(ctx context.Context, vmID uuid.UUID, reason string) error
 }
 
+// VMRecoverer is implemented by components that can recover a VM from error
+// back to an observed-actual state (e.g. when a restarted worker re-reports
+// a VM that was previously marked error due to expected_missing).
+type VMRecoverer interface {
+	RecoverVM(ctx context.Context, vmID uuid.UUID, newStatus string) error
+}
+
 // NetworkHealer is implemented by components that can re-deliver network state.
 type NetworkHealer interface {
 	TriggerRefresh(hostID uuid.UUID)
@@ -74,6 +81,7 @@ type DriftHandlerConfig struct {
 	AutoHealEnabled bool
 	DedupTTL        time.Duration // 0 = 10 minutes default
 	VMHealer        VMHealer
+	VMRecoverer     VMRecoverer
 	NetworkHealer   NetworkHealer
 }
 
@@ -89,6 +97,7 @@ type DriftHandler struct {
 	dedup map[string]time.Time // "resource_id:type" → last accepted time
 
 	vmHealer      VMHealer
+	vmRecoverer   VMRecoverer
 	networkHealer NetworkHealer
 }
 
@@ -105,6 +114,7 @@ func NewDriftHandler(cfg DriftHandlerConfig) *DriftHandler {
 		dedupTTL:        dedupTTL,
 		dedup:           make(map[string]time.Time),
 		vmHealer:        cfg.VMHealer,
+		vmRecoverer:     cfg.VMRecoverer,
 		networkHealer:   cfg.NetworkHealer,
 	}
 }
@@ -171,7 +181,33 @@ func (h *DriftHandler) executeAction(ctx context.Context, event DriftEvent) stri
 }
 
 func (h *DriftHandler) healCompute(ctx context.Context, event DriftEvent) string {
-	if h.vmHealer == nil || event.Resource != "vm" {
+	if event.Resource != "vm" {
+		return DriftActionAlert
+	}
+
+	vmID, err := uuid.Parse(event.ResourceID)
+	if err != nil {
+		return DriftActionAlert
+	}
+
+	// Recovery: DB=error but libvirt reports running/shutoff → the VM recovered
+	// (e.g. worker restarted and restored state from DB). Heal back to actual.
+	if h.vmRecoverer != nil &&
+		event.Type == DriftTypeStateMismatch &&
+		event.Expected == "error" &&
+		(event.Actual == "running" || event.Actual == "shutoff") {
+		newStatus := "running"
+		if event.Actual == "shutoff" {
+			newStatus = "stopped"
+		}
+		if err := h.vmRecoverer.RecoverVM(ctx, vmID, newStatus); err != nil {
+			h.logger.Warn("drift: VM recovery failed", "vm_id", vmID, "error", err)
+			return DriftActionAlert
+		}
+		return DriftActionAutoHeal
+	}
+
+	if h.vmHealer == nil {
 		return DriftActionAlert
 	}
 	// Only auto-heal when the VM has definitively disappeared or crashed.
@@ -180,10 +216,6 @@ func (h *DriftHandler) healCompute(ctx context.Context, event DriftEvent) string
 	shouldHeal := event.Type == DriftTypeExpectedMissing ||
 		(event.Type == DriftTypeStateMismatch && event.Actual == "crashed")
 	if !shouldHeal {
-		return DriftActionAlert
-	}
-	vmID, err := uuid.Parse(event.ResourceID)
-	if err != nil {
 		return DriftActionAlert
 	}
 	reason := event.Type

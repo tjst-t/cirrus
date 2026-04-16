@@ -204,6 +204,8 @@ type HostInstance struct {
 	rpcServer  *rpc.Server
 	store      *state.Store
 	hostID     string
+	hostCfg    HostInstanceConfig
+	dbDSN      string // empty = no persistence
 	logger     *slog.Logger
 }
 
@@ -221,6 +223,7 @@ type HostInstanceConfig struct {
 	MemOvercommitRatio float64
 	OVSBridge          string // default: br-int
 	EnableNetns        bool   // true in privileged containers
+	DBDSN              string // optional postgres DSN for state persistence
 }
 
 // NewHostInstance creates a single-host libvirt-sim instance.
@@ -251,32 +254,17 @@ func NewHostInstance(cfg HostInstanceConfig, logger *slog.Logger) *HostInstance 
 		fmt.Fprintln(w, "ok")
 	})
 
-	// Pre-register the single host
-	host := &state.Host{
-		HostID:             cfg.HostID,
-		LibvirtPort:        cfg.LibvirtPort,
-		CPUModel:           cfg.CPUModel,
-		CPUSockets:         cfg.CPUSockets,
-		CoresPerSocket:     cfg.CoresPerSocket,
-		ThreadsPerCore:     cfg.ThreadsPerCore,
-		MemoryMB:           cfg.MemoryMB,
-		CPUOvercommitRatio: cfg.CPUOvercommitRatio,
-		MemOvercommitRatio: cfg.MemOvercommitRatio,
-	}
-	if host.CPUOvercommitRatio == 0 {
-		host.CPUOvercommitRatio = 4.0
-	}
-	if host.MemOvercommitRatio == 0 {
-		host.MemOvercommitRatio = 1.5
-	}
-	if err := store.AddHost(host); err != nil {
-		logger.Error("failed to pre-register host", "host_id", cfg.HostID, "error", err)
-	}
-
 	// Enable single-host fallback: unknown host_id in URL resolves to the
 	// single managed host. This lets the worker use its controller-assigned
 	// UUID in management API calls without re-registering the host.
 	mgmt.SetSingleHostID(cfg.HostID)
+
+	if cfg.CPUOvercommitRatio == 0 {
+		cfg.CPUOvercommitRatio = 4.0
+	}
+	if cfg.MemOvercommitRatio == 0 {
+		cfg.MemOvercommitRatio = 1.5
+	}
 
 	return &HostInstance{
 		httpServer: &http.Server{
@@ -287,13 +275,87 @@ func NewHostInstance(cfg HostInstanceConfig, logger *slog.Logger) *HostInstance 
 		rpcServer: rpcServer,
 		store:     store,
 		hostID:    cfg.HostID,
+		hostCfg:   cfg,
+		dbDSN:     cfg.DBDSN,
 		logger:    logger,
 	}
 }
 
+// initHostDB connects to PostgreSQL, creates the schema, loads persisted
+// state, and sets up DB-backed persistence for this HostInstance.
+func (h *HostInstance) initHostDB(ctx context.Context) error {
+	var pool *pgxpool.Pool
+	var lastErr error
+	for attempt := 0; attempt < 10; attempt++ {
+		if attempt > 0 {
+			time.Sleep(500 * time.Millisecond)
+		}
+		p, err := pgxpool.New(ctx, h.dbDSN)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if err := p.Ping(ctx); err != nil {
+			p.Close()
+			lastErr = err
+			continue
+		}
+		pool = p
+		break
+	}
+	if pool == nil {
+		return fmt.Errorf("libvirtd-sim: connect to postgres: %w", lastErr)
+	}
+
+	if err := state.SetupSchema(ctx, pool); err != nil {
+		pool.Close()
+		return err
+	}
+
+	h.store.SetDB(pool)
+
+	if err := h.store.LoadFromDB(ctx); err != nil {
+		return err
+	}
+
+	h.logger.Info("libvirtd-sim: DB persistence enabled", "host_id", h.hostID, "dsn", h.dbDSN)
+	return nil
+}
+
 // Start starts both the management API and the libvirt RPC listener.
+// If a DBDSN was configured, DB persistence is initialized first and any
+// previously persisted domains are restored before the RPC listener begins.
 func (h *HostInstance) Start() {
 	ctx := context.Background()
+
+	// Initialise DB persistence (with retries) if a DSN was provided.
+	if h.dbDSN != "" {
+		if err := h.initHostDB(ctx); err != nil {
+			h.logger.Error("libvirtd-sim: DB init failed, running without persistence", "error", err)
+		}
+	}
+
+	// Ensure the host record exists in the store.  On a fresh start the host
+	// is not in the DB yet; on a restart it will have been restored by
+	// LoadFromDB above, in which case AddHost returns ErrHostExists — that is
+	// expected and safe to ignore.
+	if _, err := h.store.GetHost(h.hostID); err != nil {
+		host := &state.Host{
+			HostID:             h.hostCfg.HostID,
+			LibvirtPort:        h.hostCfg.LibvirtPort,
+			CPUModel:           h.hostCfg.CPUModel,
+			CPUSockets:         h.hostCfg.CPUSockets,
+			CoresPerSocket:     h.hostCfg.CoresPerSocket,
+			ThreadsPerCore:     h.hostCfg.ThreadsPerCore,
+			MemoryMB:           h.hostCfg.MemoryMB,
+			CPUOvercommitRatio: h.hostCfg.CPUOvercommitRatio,
+			MemOvercommitRatio: h.hostCfg.MemOvercommitRatio,
+		}
+		if addErr := h.store.AddHost(host); addErr != nil {
+			h.logger.Error("failed to register host", "host_id", h.hostID, "error", addErr)
+			return
+		}
+	}
 
 	// Start the libvirt RPC listener for this host
 	host, err := h.store.GetHost(h.hostID)
@@ -301,6 +363,12 @@ func (h *HostInstance) Start() {
 		h.logger.Error("host not found in store", "host_id", h.hostID, "error", err)
 		return
 	}
+
+	domainCount := 0
+	if domains, listErr := h.store.ListDomains(h.hostID); listErr == nil {
+		domainCount = len(domains)
+	}
+
 	if err := h.rpcServer.StartListener(ctx, h.hostID, host.LibvirtPort); err != nil {
 		h.logger.Error("failed to start RPC listener", "host_id", h.hostID, "error", err)
 		return
@@ -312,6 +380,7 @@ func (h *HostInstance) Start() {
 			"host_id", h.hostID,
 			"mgmt_addr", h.httpServer.Addr,
 			"libvirt_port", host.LibvirtPort,
+			"restored_domains", domainCount,
 		)
 		if err := h.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			h.logger.Error("management API failed", "error", err)

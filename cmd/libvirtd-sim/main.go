@@ -27,6 +27,7 @@ func main() {
 	memoryMB := flag.Int64("memory-mb", int64EnvOrDefault("MEMORY_MB", 524288), "memory in MB")
 	enableNetns := flag.Bool("enable-netns", false, "enable network namespace operations (requires privileges)")
 	ovsBridge := flag.String("ovs-bridge", envOrDefault("OVS_BRIDGE", "br-int"), "OVS bridge name for namespace connectivity")
+	dbDSN := flag.String("db-dsn", envOrDefault("DB_DSN", ""), "postgres DSN for state persistence (empty = in-memory only)")
 	flag.Parse()
 
 	if *hostID == "" {
@@ -50,6 +51,7 @@ func main() {
 		MemOvercommitRatio: 1.5,
 		OVSBridge:          *ovsBridge,
 		EnableNetns:        *enableNetns,
+		DBDSN:              *dbDSN,
 	}
 
 	instance := libvirtsim.NewHostInstance(cfg, logger)

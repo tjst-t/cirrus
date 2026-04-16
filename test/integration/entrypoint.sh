@@ -35,9 +35,17 @@ libvirtd-sim \
   --memory-mb="${MEMORY_MB:-524288}" \
   --enable-netns \
   --ovs-bridge=br-int \
+  ${DB_DSN:+--db-dsn="${DB_DSN}"} \
   &
 
 echo "libvirtd-sim started for host ${HOST_ID}"
+
+# Wait for libvirtd-sim to be ready (DB load may take a moment)
+for i in $(seq 1 60); do
+  curl -sf http://localhost:${LIBVIRTD_SIM_MGMT_PORT:-8100}/healthz >/dev/null 2>&1 && break
+  sleep 0.5
+done
+echo "libvirtd-sim is ready"
 
 # Wait for controller to be ready
 echo "Waiting for controller at ${CONTROLLER_ADDR}..."

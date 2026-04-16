@@ -255,13 +255,14 @@ func runController(cfg *config.ControllerConfig) error {
 		storageInterval = reconcileInterval
 	}
 
-	// DriftHandler (wires VMHealer + NetworkHealer)
+	// DriftHandler (wires VMHealer + VMRecoverer + NetworkHealer)
 	driftHandler := reconcile.NewDriftHandler(reconcile.DriftHandlerConfig{
 		Pool:            pool,
 		Logger:          logger,
 		AutoHealEnabled: cfg.AutoHealEnabled,
 		DedupTTL:        reconcileInterval * 2,
 		VMHealer:        computeSvc,
+		VMRecoverer:     computeSvc,
 		NetworkHealer:   networkStateSrv,
 	})
 

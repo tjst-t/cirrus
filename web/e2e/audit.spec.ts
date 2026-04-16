@@ -1,9 +1,10 @@
 import { test, expect, Page } from '@playwright/test'
 
+test.skip(!process.env.BASE_URL, 'BASE_URL not set — integration test requires make serve')
+
 // ---- Helpers ----------------------------------------------------------------
 
 const TENANT_ID = '4af01cf9-7325-4742-bf30-f1852368c1e8'
-const BASE_URL = 'http://localhost:8273'
 
 function setupAuth(page: Page) {
   return page.addInitScript(() => {
@@ -30,7 +31,7 @@ function collectErrors(page: Page): string[] {
 test.describe('テスト 1: 認証', () => {
   test('ログインページが表示される', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/login`)
+    await page.goto('/login')
     await page.waitForLoadState('networkidle')
     await expect(page.locator('input#token')).toBeVisible()
     await expect(page.locator('button[type="submit"]')).toBeVisible()
@@ -39,10 +40,10 @@ test.describe('テスト 1: 認証', () => {
 
   test('dev-token でログインすると / にリダイレクトされる', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/login`)
+    await page.goto('/login')
     await page.fill('input#token', 'dev-token')
     await page.click('button[type="submit"]')
-    await page.waitForURL(`${BASE_URL}/`, { timeout: 10000 })
+    await page.waitForURL(/\/$/, { timeout: 10000 })
     expect(page.url()).toContain('/')
     if (errors.length > 0) console.log('コンソールエラー:', errors)
   })
@@ -58,7 +59,7 @@ test.describe('テスト 2: ヘッダー・テナント選択', () => {
   test('ヘッダーに「テナントを選択」ボタンが表示される', async ({ page }) => {
     const errors = collectErrors(page)
     // ダッシュボードはReactエラーでクラッシュするため、正常なページ（/vms）でテスト
-    await page.goto(`${BASE_URL}/vms`)
+    await page.goto('/vms')
     await page.waitForLoadState('networkidle')
     // TenantLayout の header 内にテナント切り替えボタンがある
     // テナントが選択済み (test-tenant) または未選択 (テナントを選択) どちらかが表示される
@@ -70,7 +71,7 @@ test.describe('テスト 2: ヘッダー・テナント選択', () => {
   test('ドロップダウンに test-tenant が表示される', async ({ page }) => {
     const errors = collectErrors(page)
     // ダッシュボードはReactエラーでクラッシュするため、正常なページ（/vms）でテスト
-    await page.goto(`${BASE_URL}/vms`)
+    await page.goto('/vms')
     await page.waitForLoadState('networkidle')
 
     // ヘッダーのテナント選択ボタンをクリック
@@ -93,7 +94,7 @@ test.describe('テスト 2: ヘッダー・テナント選択', () => {
     })
 
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/vms`)
+    await page.goto('/vms')
     await page.waitForLoadState('networkidle')
 
     // テナントが1件のみの場合は自動選択されるため、「テナントを選択」または「test-tenant」どちらかが表示される
@@ -126,7 +127,7 @@ test.describe('テスト 3: ダッシュボード', () => {
 
   test('ダッシュボードが表示される（真っ白にならない）', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/`)
+    await page.goto('/')
     await page.waitForLoadState('networkidle')
 
     const bodyText = await page.locator('body').innerText()
@@ -152,7 +153,7 @@ test.describe('テスト 4: VM 管理', () => {
 
   test('VM 一覧ページが表示される', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/vms`)
+    await page.goto('/vms')
     await page.waitForLoadState('networkidle')
 
     // 「VM がありません」または VM 一覧テーブルが表示される
@@ -166,7 +167,7 @@ test.describe('テスト 4: VM 管理', () => {
 
   test('VM 作成ボタンが存在する', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/vms`)
+    await page.goto('/vms')
     await page.waitForLoadState('networkidle')
 
     const createBtn = page.locator('button', { hasText: /VM を作成/ })
@@ -176,7 +177,7 @@ test.describe('テスト 4: VM 管理', () => {
 
   test('VM 作成ダイアログが開く', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/vms`)
+    await page.goto('/vms')
     await page.waitForLoadState('networkidle')
 
     const createBtn = page.locator('button', { hasText: /VM を作成/ })
@@ -188,7 +189,7 @@ test.describe('テスト 4: VM 管理', () => {
 
   test('VM 作成ダイアログに Flavor 選択がある', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/vms`)
+    await page.goto('/vms')
     await page.waitForLoadState('networkidle')
 
     const createBtn = page.locator('button', { hasText: /VM を作成/ })
@@ -203,7 +204,7 @@ test.describe('テスト 4: VM 管理', () => {
 
   test('VM 作成ダイアログに Network 選択がある', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/vms`)
+    await page.goto('/vms')
     await page.waitForLoadState('networkidle')
 
     const createBtn = page.locator('button', { hasText: /VM を作成/ })
@@ -220,7 +221,7 @@ test.describe('テスト 4: VM 管理', () => {
 
   test('VM 作成ダイアログをキャンセルできる', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/vms`)
+    await page.goto('/vms')
     await page.waitForLoadState('networkidle')
 
     const createBtn = page.locator('button', { hasText: /VM を作成/ })
@@ -242,22 +243,22 @@ test.describe('テスト 5: ネットワーク管理', () => {
 
   test('ネットワーク一覧ページが表示される', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/networks`)
+    await page.goto('/networks')
     await page.waitForLoadState('networkidle')
 
     // ネットワーク管理ページの見出しが表示される
     await expect(page.getByText('ネットワーク管理')).toBeVisible({ timeout: 10000 })
-    // 「ネットワークがありません」またはネットワークカード（div.bg-white.rounded-xl）が表示される
+    // 「ネットワークがありません」またはネットワークカード（data-testid="network-empty-state" or network-row-*）が表示される
     // isVisible() だけでは非同期ロード完了前に false を返す可能性があるため expect() でポーリング
-    const emptyMsg = page.getByText('ネットワークがありません')
-    const networkCard = page.locator('.bg-white.rounded-xl.border')
+    const emptyMsg = page.getByTestId('network-empty-state')
+    const networkCard = page.locator('[data-testid^="network-row-"]')
     await expect(emptyMsg.or(networkCard).first()).toBeVisible({ timeout: 10000 })
     if (errors.length > 0) console.log('コンソールエラー:', errors)
   })
 
   test('ネットワーク作成ボタンが存在する', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/networks`)
+    await page.goto('/networks')
     await page.waitForLoadState('networkidle')
 
     const createBtn = page.locator('button', { hasText: /ネットワークを作成|ネットワーク.*作成/ })
@@ -267,7 +268,7 @@ test.describe('テスト 5: ネットワーク管理', () => {
 
   test('ネットワーク作成ダイアログが開く', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/networks`)
+    await page.goto('/networks')
     await page.waitForLoadState('networkidle')
 
     const createBtn = page.locator('button', { hasText: /ネットワークを作成|ネットワーク.*作成/ })
@@ -278,7 +279,7 @@ test.describe('テスト 5: ネットワーク管理', () => {
 
   test('ネットワーク作成フォームに名前と CIDR を入力して作成できる', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/networks`)
+    await page.goto('/networks')
     await page.waitForLoadState('networkidle')
 
     const createBtn = page.locator('button', { hasText: /ネットワークを作成|ネットワーク.*作成/ })
@@ -287,17 +288,13 @@ test.describe('テスト 5: ネットワーク管理', () => {
 
     const ts = Date.now()
     const testNetName = `test-net-audit-${ts}`
-    // タイムスタンプから一意なCIDRを生成（既存のネットワークと衝突しないよう172.16.0.0/12 レンジを使用）
-    const oct2 = 16 + (ts % 16)
-    const oct3 = (ts >> 4) % 256
-    const testNetCidr = `172.${oct2}.${oct3}.0/24`
     await page.locator('input[placeholder="my-network"]').fill(testNetName)
-    await page.locator('input[placeholder="10.0.0.0/24"]').fill(testNetCidr)
+    // CIDR は省略して自動割り当てにする（既存 CIDR との衝突を避けるため）
     // フォーム内の「作成」ボタン（type="submit"）をクリック
-    await page.locator('button[type="submit"]', { hasText: '作成' }).click()
+    await page.getByTestId('network-create-submit').click()
 
     // ダイアログが閉じる（最大15秒待つ）
-    await expect(page.locator('h3', { hasText: 'ネットワークを作成' })).not.toBeVisible({ timeout: 15000 })
+    await expect(page.getByTestId('network-create-dialog')).not.toBeVisible({ timeout: 15000 })
     await page.waitForLoadState('networkidle')
 
     // 作成したネットワークが一覧に表示される
@@ -315,7 +312,7 @@ test.describe('テスト 6: ボリューム管理', () => {
 
   test('ボリューム一覧ページが表示される', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/volumes`)
+    await page.goto('/volumes')
     await page.waitForLoadState('networkidle')
 
     const bodyText = await page.locator('body').innerText()
@@ -325,7 +322,7 @@ test.describe('テスト 6: ボリューム管理', () => {
 
   test('「ボリュームがありません」または一覧が表示される', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/volumes`)
+    await page.goto('/volumes')
     await page.waitForLoadState('networkidle')
 
     const emptyMsg = page.getByText('ボリュームがありません')
@@ -338,7 +335,7 @@ test.describe('テスト 6: ボリューム管理', () => {
 
   test('ボリューム作成ダイアログが開く', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/volumes`)
+    await page.goto('/volumes')
     await page.waitForLoadState('networkidle')
 
     const createBtn = page.locator('button', { hasText: /ボリュームを作成|ボリューム.*作成/ })
@@ -353,7 +350,7 @@ test.describe('テスト 6: ボリューム管理', () => {
 
   test('ボリューム作成ダイアログに Volume Type 選択肢が表示される', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/volumes`)
+    await page.goto('/volumes')
     await page.waitForLoadState('networkidle')
 
     const createBtn = page.locator('button', { hasText: /ボリュームを作成|ボリューム.*作成/ })
@@ -377,7 +374,7 @@ test.describe('テスト 7: Egress 管理', () => {
 
   test('Egress ページが表示される（真っ白にならない）', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/egress`)
+    await page.goto('/egress')
     await page.waitForLoadState('networkidle')
 
     // React クラッシュがないことを確認
@@ -393,7 +390,7 @@ test.describe('テスト 7: Egress 管理', () => {
 
   test('テナント選択メッセージまたはネットワーク選択ドロップダウンが表示される', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/egress`)
+    await page.goto('/egress')
     await page.waitForLoadState('networkidle')
 
     // React クラッシュがないことを確認
@@ -425,7 +422,7 @@ test.describe('テスト 8: Ingress 管理', () => {
 
   test('Ingress ページが表示される（真っ白にならない）', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/ingress`)
+    await page.goto('/ingress')
     await page.waitForLoadState('networkidle')
 
     // React クラッシュがないことを確認
@@ -441,7 +438,7 @@ test.describe('テスト 8: Ingress 管理', () => {
 
   test('ネットワーク選択ドロップダウンが表示される', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/ingress`)
+    await page.goto('/ingress')
     await page.waitForLoadState('networkidle')
 
     // React クラッシュがないことを確認
@@ -466,7 +463,7 @@ test.describe('テスト 9: 管理者 - 組織管理', () => {
 
   test('組織管理ページが表示される', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/admin/organizations`)
+    await page.goto('/admin/organizations')
     await page.waitForLoadState('networkidle')
 
     await expect(page.getByText('組織・テナント管理')).toBeVisible({ timeout: 10000 })
@@ -475,7 +472,7 @@ test.describe('テスト 9: 管理者 - 組織管理', () => {
 
   test('test-org が一覧に表示される', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/admin/organizations`)
+    await page.goto('/admin/organizations')
     await page.waitForLoadState('networkidle')
 
     await expect(page.getByText('test-org')).toBeVisible({ timeout: 10000 })
@@ -484,7 +481,7 @@ test.describe('テスト 9: 管理者 - 組織管理', () => {
 
   test('「テナントを表示」をクリックするとテナントが展開され test-tenant が表示される', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/admin/organizations`)
+    await page.goto('/admin/organizations')
     await page.waitForLoadState('networkidle')
 
     await expect(page.getByText('test-org')).toBeVisible({ timeout: 10000 })
@@ -501,7 +498,7 @@ test.describe('テスト 9: 管理者 - 組織管理', () => {
 
   test('「ロール管理」をクリックするとロール割り当てパネルが開く（真っ白にならない）', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/admin/organizations`)
+    await page.goto('/admin/organizations')
     await page.waitForLoadState('networkidle')
 
     // test-org の行にある「テナントを表示」ボタンを特定
@@ -525,7 +522,7 @@ test.describe('テスト 9: 管理者 - 組織管理', () => {
 
   test('ロール割り当てが表示される（空リストでもクラッシュしない）', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/admin/organizations`)
+    await page.goto('/admin/organizations')
     await page.waitForLoadState('networkidle')
 
     // test-org の行にある「テナントを表示」ボタンを特定
@@ -556,7 +553,7 @@ test.describe('テスト 10: 管理者 - ホスト管理', () => {
 
   test('ホスト管理ページが表示される', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/admin/hosts`)
+    await page.goto('/admin/hosts')
     await page.waitForLoadState('networkidle')
 
     await expect(page.locator('h1', { hasText: 'ホスト管理' })).toBeVisible({ timeout: 10000 })
@@ -565,7 +562,7 @@ test.describe('テスト 10: 管理者 - ホスト管理', () => {
 
   test('ホスト一覧に worker-1, worker-2, worker-3 が表示される', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/admin/hosts`)
+    await page.goto('/admin/hosts')
     await page.waitForLoadState('networkidle')
 
     await expect(page.getByText('worker-1')).toBeVisible({ timeout: 10000 })
@@ -576,7 +573,7 @@ test.describe('テスト 10: 管理者 - ホスト管理', () => {
 
   test('各ホストの operational_state が表示される', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/admin/hosts`)
+    await page.goto('/admin/hosts')
     await page.waitForLoadState('networkidle')
 
     // UI は Host.status フィールドを表示するが、API は operational_state を返す
@@ -597,7 +594,7 @@ test.describe('テスト 10: 管理者 - ホスト管理', () => {
 
   test('アクションボタンが表示される', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/admin/hosts`)
+    await page.goto('/admin/hosts')
     await page.waitForLoadState('networkidle')
 
     // ホスト管理ページのアクションボタン（ドレイン、メンテナンス等）
@@ -620,7 +617,7 @@ test.describe('テスト 11: 管理者 - ストレージ管理', () => {
 
   test('ストレージ管理ページが表示される（真っ白にならない）', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/admin/storage`)
+    await page.goto('/admin/storage')
     await page.waitForLoadState('networkidle')
 
     const bodyText = await page.locator('body').innerText()
@@ -630,7 +627,7 @@ test.describe('テスト 11: 管理者 - ストレージ管理', () => {
 
   test('Storage Backend 一覧に sim-backend が表示される', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/admin/storage`)
+    await page.goto('/admin/storage')
     await page.waitForLoadState('networkidle')
 
     await expect(page.getByText('sim-backend')).toBeVisible({ timeout: 10000 })
@@ -639,17 +636,17 @@ test.describe('テスト 11: 管理者 - ストレージ管理', () => {
 
   test('Volume Type 一覧が表示される', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/admin/storage`)
+    await page.goto('/admin/storage')
     await page.waitForLoadState('networkidle')
 
-    // Volume Type セクションが表示される
-    await expect(page.getByText('Volume Type')).toBeVisible({ timeout: 10000 })
+    // Volume Type セクション見出しが表示される
+    await expect(page.getByRole('heading', { name: 'Volume Type' })).toBeVisible({ timeout: 10000 })
     if (errors.length > 0) console.log('コンソールエラー:', errors)
   })
 
   test('Flavor 一覧が表示される（空でもクラッシュしない）', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/admin/compute`)
+    await page.goto('/admin/compute')
     await page.waitForLoadState('networkidle')
 
     // Flavor セクションの見出しが表示される（Flavorはコンピュート管理ページに移動）
@@ -668,7 +665,7 @@ test.describe('テスト 12: 管理者 - Quota 設定', () => {
 
   test('Quota 設定ページが表示される', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/admin/quotas`)
+    await page.goto('/admin/quotas')
     await page.waitForLoadState('networkidle')
 
     // h1 で "Quota 設定" を探す（ナビリンクと重複するので heading ロールで特定）
@@ -678,7 +675,7 @@ test.describe('テスト 12: 管理者 - Quota 設定', () => {
 
   test('テナント一覧が表示される', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/admin/quotas`)
+    await page.goto('/admin/quotas')
     await page.waitForLoadState('networkidle')
 
     // 組織一覧（test-org）が表示される
@@ -696,7 +693,7 @@ test.describe('テスト 13: 管理者 - Drift Event', () => {
 
   test('Drift Event ページが表示される（真っ白にならない）', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/admin/drift-events`)
+    await page.goto('/admin/drift-events')
     await page.waitForLoadState('networkidle')
 
     const bodyText = await page.locator('body').innerText()
@@ -706,7 +703,7 @@ test.describe('テスト 13: 管理者 - Drift Event', () => {
 
   test('「Drift Event ビューア」ページが表示される', async ({ page }) => {
     const errors = collectErrors(page)
-    await page.goto(`${BASE_URL}/admin/drift-events`)
+    await page.goto('/admin/drift-events')
     await page.waitForLoadState('networkidle')
 
     await expect(page.getByRole('heading', { name: 'Drift Event ビューア' })).toBeVisible({ timeout: 10000 })

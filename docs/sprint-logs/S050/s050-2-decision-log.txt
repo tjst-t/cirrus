@@ -1,0 +1,45 @@
+S050-2 Decision Log
+===================
+Date: 2026-04-14
+
+## Task S050-2-1: _seed-tenant Makefile ターゲット
+
+### 決定事項
+
+1. `seed` レシピ末尾に `@$(MAKE) --no-print-directory _seed-tenant` を追加。
+   - 順序: _seed-sim → _seed-topology → _activate-hosts → _seed-tenant
+   - _seed-topology で test-org/test-tenant が作られた後に実行することで
+     quota PUT が確実に成功する。
+
+2. `_seed-tenant` ターゲットを `_activate-hosts` の直前（コメントブロック前）に配置。
+   - _seed-topology スタイル（bash -c + set -a/set +a）に統一。
+   - TOKEN は `$(firstword $(subst =, ,$(AUTH_TOKENS)))` マクロで展開（直接指定なし）。
+   - ポート番号は `$$API_PORT` 環境変数経由のみ（portman ポリシー遵守）。
+
+3. 冪等性の実現方針:
+   - Quota SET: 常に PUT を実行（PUT は上書きなので常に冪等）。失敗は `|| true` で無視。
+   - IP pool: GET → name="default-pool" でフィルタ → 空なら POST、存在すればスキップ。
+   - GW node: GET → name="default-gw" でフィルタ → 空なら POST、存在すればスキップ。
+
+4. .PHONY リストに `_seed-tenant` を追加（他の内部ターゲットと統一）。
+
+## Task S050-2-2: test-e2e-serve Makefile ターゲット
+
+### 決定事項
+
+1. `test-e2e` ターゲットの直後に `test-e2e-serve` を配置（関連ターゲットをまとめる）。
+
+2. `make serve` が起動済みであることを前提とする（サーバーを内部起動しない）。
+   - Vite dev server は Playwright の webServer 設定が自動起動する想定。
+   - `BASE_URL=http://localhost:5173` で Playwright に実サーバー URL を伝える。
+   - `VITE_API_BASE_URL=http://localhost:$$API_PORT` でバックエンドプロキシ先を設定。
+
+3. 環境変数の渡し方:
+   - `E2E_TOKEN=dev-token`: globalSetup が認証トークンとして使用。
+   - `E2E_TENANT_ID=4af01cf9-7325-4742-bf30-f1852368c1e8`: globalSetup がテナント UUID として使用。
+   - `PLAYWRIGHT_CHROMIUM_PATH`: make shell で展開（test-e2e と同じパターン）。
+
+4. `portman.env` の読み込みは bash -c 内で行う（`$$API_PORT` を展開するため）。
+   - `PLAYWRIGHT_CHROMIUM_PATH` は make 展開（$()）、`API_PORT` は bash 展開（$$）で使い分け。
+
+5. .PHONY リストに `test-e2e-serve` を追加。

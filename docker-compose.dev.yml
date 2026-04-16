@@ -18,6 +18,7 @@ services:
       - LIBVIRTD_SIM_MGMT_PORT=8100
       - CONTROLLER_ADDR=${CONTROLLER_HOST}:${GRPC_PORT}
       - REGISTRATION_TOKEN=${REGISTRATION_TOKEN}
+      - DB_DSN=postgres://cirrus:cirrus@${CONTROLLER_HOST}:${SIM_POSTGRES_PORT}/cirrus?sslmode=disable
     networks:
       fabric:
         ipv4_address: 10.100.0.11
@@ -36,6 +37,7 @@ services:
       - LIBVIRTD_SIM_MGMT_PORT=8100
       - CONTROLLER_ADDR=${CONTROLLER_HOST}:${GRPC_PORT}
       - REGISTRATION_TOKEN=${REGISTRATION_TOKEN}
+      - DB_DSN=postgres://cirrus:cirrus@${CONTROLLER_HOST}:${SIM_POSTGRES_PORT}/cirrus?sslmode=disable
     networks:
       fabric:
         ipv4_address: 10.100.0.12
@@ -54,6 +56,7 @@ services:
       - LIBVIRTD_SIM_MGMT_PORT=8100
       - CONTROLLER_ADDR=${CONTROLLER_HOST}:${GRPC_PORT}
       - REGISTRATION_TOKEN=${REGISTRATION_TOKEN}
+      - DB_DSN=postgres://cirrus:cirrus@${CONTROLLER_HOST}:${SIM_POSTGRES_PORT}/cirrus?sslmode=disable
     networks:
       fabric:
         ipv4_address: 10.100.0.13

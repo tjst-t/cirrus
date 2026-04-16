@@ -110,8 +110,8 @@ test.describe('S046-3: Quota 設定', () => {
         route.fulfill({ status: 200, json: QUOTA_1 })
       } else if (route.request().method() === 'PUT') {
         const body = route.request().postDataJSON()
-        expect(body.limits).toBeTruthy()
-        expect(body.limits.vcpus).toBeGreaterThanOrEqual(0)
+        // The API sends flat QuotaLimits fields (no `limits` wrapper)
+        expect(body.vcpus).toBeGreaterThanOrEqual(0)
         saved = true
         route.fulfill({ status: 200, json: { ...QUOTA_1, limits: { ...QUOTA_1.limits, vcpus: 20 } } })
       } else {

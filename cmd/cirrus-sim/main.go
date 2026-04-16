@@ -37,12 +37,6 @@ type Shutdowner interface {
 }
 
 func main() {
-	// Sub-command dispatch: "cirrus-sim seed [flags]"
-	if len(os.Args) > 1 && os.Args[1] == "seed" {
-		runSeedCommand(os.Args[2:])
-		return
-	}
-
 	showVersion := flag.Bool("version", false, "print version and exit")
 	commonPort := flag.String("common", envOrDefault("COMMON_PORT", "8000"), "common API port")
 	libvirtPort := flag.String("libvirt", envOrDefault("LIBVIRT_SIM_PORT", "8100"), "libvirt-sim management port")
@@ -51,7 +45,6 @@ func main() {
 	aggregatorPort := flag.String("aggregator", envOrDefault("AGGREGATOR_PORT", "8090"), "aggregator dashboard port")
 	postgresPort := flag.String("postgres", envOrDefault("POSTGRES_PORT", "5432"), "embedded PostgreSQL port")
 	postgresMgmtPort := flag.String("postgres-mgmt", envOrDefault("POSTGRES_MGMT_PORT", "8600"), "PostgreSQL management API port")
-	envFile := flag.String("env", envOrDefault("CIRRUS_SIM_ENV", ""), "environment YAML file to seed on startup")
 	workerURLs := flag.String("worker-urls", envOrDefault("WORKER_URLS", ""), "comma-separated libvirtd-sim management URLs for worker containers (e.g. http://localhost:8287,http://localhost:8288)")
 	flag.Parse()
 
@@ -112,15 +105,6 @@ func main() {
 		s.srv.Start()
 	}
 
-	// Seed environment if specified
-	if *envFile != "" {
-		ctx := context.Background()
-		if err := seedFromEnvFile(ctx, *envFile, libvirtSim, storageSim, logger); err != nil {
-			logger.Error("environment seeding failed", "file", *envFile, "error", err)
-			os.Exit(1)
-		}
-	}
-
 	fmt.Fprintf(os.Stderr, "\n")
 	fmt.Fprintf(os.Stderr, "  cirrus-sim %s is running\n", version)
 	fmt.Fprintf(os.Stderr, "  ─────────────────────────────────────────\n")
@@ -132,10 +116,6 @@ func main() {
 	fmt.Fprintf(os.Stderr, "  awx-sim                  http://localhost:%s\n", *awxPort)
 	fmt.Fprintf(os.Stderr, "  storage-sim              http://localhost:%s\n", *storagePort)
 	fmt.Fprintf(os.Stderr, "  ─────────────────────────────────────────\n")
-	if *envFile != "" {
-		fmt.Fprintf(os.Stderr, "  Environment              %s\n", *envFile)
-		fmt.Fprintf(os.Stderr, "  ─────────────────────────────────────────\n")
-	}
 	fmt.Fprintf(os.Stderr, "  Press Ctrl+C to stop\n\n")
 
 	// Wait for signal

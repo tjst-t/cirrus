@@ -120,6 +120,22 @@ func (o *Orchestrator) HealVM(ctx context.Context, vmID uuid.UUID, reason string
 	return nil
 }
 
+// RecoverVM transitions a VM from error state back to the given status.
+// Called by the DriftHandler when a previously error-marked VM is re-observed
+// as running or shutoff in a heartbeat (e.g. after a worker restart).
+// Satisfies reconcile.VMRecoverer.
+func (o *Orchestrator) RecoverVM(ctx context.Context, vmID uuid.UUID, newStatus string) error {
+	_, err := o.pool.Exec(ctx,
+		`UPDATE vms SET status = $1, error_message = '', updated_at = $2
+		 WHERE id = $3 AND status = 'error'`,
+		newStatus, time.Now(), vmID,
+	)
+	if err != nil {
+		return fmt.Errorf("compute: recover vm %s: %w", vmID, err)
+	}
+	return nil
+}
+
 func (o *Orchestrator) setVMHost(ctx context.Context, vmID, hostID uuid.UUID) error {
 	_, err := o.pool.Exec(ctx,
 		`UPDATE vms SET host_id = $1, updated_at = $2 WHERE id = $3`,
