@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/tjst-t/cirrus/internal/apierror"
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/network"
 )
@@ -20,39 +21,39 @@ func (h *gatewayHandlers) createGatewayNode(w http.ResponseWriter, r *http.Reque
 	user := UserFromContext(r.Context())
 	decision, err := h.authz.Authorize(r.Context(), user, identity.ActionCreateGatewayNode, identity.Resource{})
 	if err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	var spec network.GatewayNodeSpec
 	if err := json.NewDecoder(r.Body).Decode(&spec); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid request body", nil)
 		return
 	}
 	if spec.HostID == uuid.Nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "host_id is required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "host_id is required", nil)
 		return
 	}
 	if spec.ExternalIP == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "external_ip is required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "external_ip is required", nil)
 		return
 	}
 	if spec.InternalIP == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "internal_ip is required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "internal_ip is required", nil)
 		return
 	}
 
 	gw, err := h.svc.CreateGatewayNode(r.Context(), spec)
 	if err != nil {
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "host not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "host not found", nil)
 			return
 		}
 		if errors.Is(err, network.ErrConflict) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "gateway node already exists"})
+			writeErrorCode(w, http.StatusConflict, apierror.CodeConflict, "gateway node already exists", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create gateway node"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to create gateway node", nil)
 		return
 	}
 
@@ -63,13 +64,13 @@ func (h *gatewayHandlers) listGatewayNodes(w http.ResponseWriter, r *http.Reques
 	user := UserFromContext(r.Context())
 	decision, err := h.authz.Authorize(r.Context(), user, identity.ActionListGatewayNodes, identity.Resource{})
 	if err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	nodes, err := h.svc.ListGatewayNodes(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list gateway nodes"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to list gateway nodes", nil)
 		return
 	}
 	if nodes == nil {
@@ -81,24 +82,24 @@ func (h *gatewayHandlers) listGatewayNodes(w http.ResponseWriter, r *http.Reques
 func (h *gatewayHandlers) getGatewayNode(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid gateway node id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid gateway node id", nil)
 		return
 	}
 
 	user := UserFromContext(r.Context())
 	decision, authErr := h.authz.Authorize(r.Context(), user, identity.ActionGetGatewayNode, identity.Resource{})
 	if authErr != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	gw, err := h.svc.GetGatewayNode(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "gateway node not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "gateway node not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get gateway node"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get gateway node", nil)
 		return
 	}
 
@@ -108,23 +109,23 @@ func (h *gatewayHandlers) getGatewayNode(w http.ResponseWriter, r *http.Request)
 func (h *gatewayHandlers) deleteGatewayNode(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid gateway node id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid gateway node id", nil)
 		return
 	}
 
 	user := UserFromContext(r.Context())
 	decision, authErr := h.authz.Authorize(r.Context(), user, identity.ActionDeleteGatewayNode, identity.Resource{})
 	if authErr != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	if err := h.svc.DeleteGatewayNode(r.Context(), id); err != nil {
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "gateway node not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "gateway node not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete gateway node"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to delete gateway node", nil)
 		return
 	}
 
@@ -134,14 +135,14 @@ func (h *gatewayHandlers) deleteGatewayNode(w http.ResponseWriter, r *http.Reque
 func (h *gatewayHandlers) assignGatewayNode(w http.ResponseWriter, r *http.Request) {
 	networkID, err := uuid.Parse(chi.URLParam(r, "network_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid network id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid network id", nil)
 		return
 	}
 
 	user := UserFromContext(r.Context())
 	decision, authErr := h.authz.Authorize(r.Context(), user, identity.ActionAssignGatewayNode, identity.Resource{})
 	if authErr != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
@@ -149,20 +150,20 @@ func (h *gatewayHandlers) assignGatewayNode(w http.ResponseWriter, r *http.Reque
 		GatewayNodeID uuid.UUID `json:"gateway_node_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid request body", nil)
 		return
 	}
 	if req.GatewayNodeID == uuid.Nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "gateway_node_id is required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "gateway_node_id is required", nil)
 		return
 	}
 
 	if err := h.svc.AssignGatewayNode(r.Context(), networkID, req.GatewayNodeID); err != nil {
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "network or gateway node not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "network or gateway node not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to assign gateway node"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to assign gateway node", nil)
 		return
 	}
 
@@ -172,24 +173,24 @@ func (h *gatewayHandlers) assignGatewayNode(w http.ResponseWriter, r *http.Reque
 func (h *gatewayHandlers) getNetworkGatewayNode(w http.ResponseWriter, r *http.Request) {
 	networkID, err := uuid.Parse(chi.URLParam(r, "network_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid network id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid network id", nil)
 		return
 	}
 
 	user := UserFromContext(r.Context())
 	decision, authErr := h.authz.Authorize(r.Context(), user, identity.ActionGetNetworkGatewayNode, identity.Resource{})
 	if authErr != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	gw, err := h.svc.GetNetworkGatewayNode(r.Context(), networkID)
 	if err != nil {
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "no gateway node assigned to network"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "no gateway node assigned to network", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get network gateway node"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get network gateway node", nil)
 		return
 	}
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/tjst-t/cirrus/internal/apierror"
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/network"
 )
@@ -40,26 +41,26 @@ func sanitizeEgress(e *network.Egress) network.Egress {
 func (h *egressHandlers) networkFromEgressURL(w http.ResponseWriter, r *http.Request) (*network.Network, bool) {
 	networkID, err := uuid.Parse(chi.URLParam(r, "network_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid network ID"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid network ID", nil)
 		return nil, false
 	}
 	tenantID, err := uuid.Parse(chi.URLParam(r, "tenant_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid tenant ID"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid tenant ID", nil)
 		return nil, false
 	}
 
 	n, err := h.svc.GetNetwork(r.Context(), networkID)
 	if err != nil {
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "network not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "network not found", nil)
 			return nil, false
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get network"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get network", nil)
 		return nil, false
 	}
 	if n.TenantID != tenantID {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "network not found"})
+		writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "network not found", nil)
 		return nil, false
 	}
 	return n, true
@@ -74,17 +75,17 @@ func (h *egressHandlers) createEgress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionCreateEgress, identity.Resource{TenantID: &n.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	var spec network.EgressSpec
 	if err := json.NewDecoder(r.Body).Decode(&spec); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid request body", nil)
 		return
 	}
 	if spec.Type == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type is required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "type is required", nil)
 		return
 	}
 	switch spec.Type {
@@ -94,18 +95,18 @@ func (h *egressHandlers) createEgress(w http.ResponseWriter, r *http.Request) {
 		network.EgressTypeDirectConnect:
 		// valid
 	default:
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported egress type; supported types: nat_gateway, vpn_ipsec, vpn_wireguard, direct_connect"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "unsupported egress type; supported types: nat_gateway, vpn_ipsec, vpn_wireguard, direct_connect", nil)
 		return
 	}
 
 	e, err := h.svc.CreateEgress(r.Context(), n.ID, spec)
 	if err != nil {
 		if errors.Is(err, network.ErrInvalidState) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, err.Error(), nil)
 			return
 		}
 		h.logger.Error("failed to create egress", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create egress"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to create egress", nil)
 		return
 	}
 
@@ -123,13 +124,13 @@ func (h *egressHandlers) listEgresses(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionListEgresses, identity.Resource{TenantID: &n.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	egresses, err := h.svc.ListEgresses(r.Context(), n.ID)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list egresses"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to list egresses", nil)
 		return
 	}
 	if egresses == nil {
@@ -151,28 +152,28 @@ func (h *egressHandlers) getEgress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionGetEgress, identity.Resource{TenantID: &n.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	egressID, err := uuid.Parse(chi.URLParam(r, "egress_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid egress ID"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid egress ID", nil)
 		return
 	}
 
 	e, err := h.svc.GetEgress(r.Context(), egressID)
 	if err != nil {
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "egress not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "egress not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get egress"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get egress", nil)
 		return
 	}
 
 	if e.NetworkID != n.ID {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "egress not found"})
+		writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "egress not found", nil)
 		return
 	}
 
@@ -188,13 +189,13 @@ func (h *egressHandlers) updateEgress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionCreateEgress, identity.Resource{TenantID: &n.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	egressID, err := uuid.Parse(chi.URLParam(r, "egress_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid egress ID"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid egress ID", nil)
 		return
 	}
 
@@ -202,35 +203,35 @@ func (h *egressHandlers) updateEgress(w http.ResponseWriter, r *http.Request) {
 	e, err := h.svc.GetEgress(r.Context(), egressID)
 	if err != nil {
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "egress not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "egress not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get egress"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get egress", nil)
 		return
 	}
 	if e.NetworkID != n.ID {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "egress not found"})
+		writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "egress not found", nil)
 		return
 	}
 
 	var config network.EgressConfig
 	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid request body", nil)
 		return
 	}
 
 	updated, err := h.svc.UpdateEgressConfig(r.Context(), egressID, config)
 	if err != nil {
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "egress not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "egress not found", nil)
 			return
 		}
 		if errors.Is(err, network.ErrInvalidState) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, err.Error(), nil)
 			return
 		}
 		h.logger.Error("failed to update egress", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update egress"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to update egress", nil)
 		return
 	}
 
@@ -246,13 +247,13 @@ func (h *egressHandlers) deleteEgress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionDeleteEgress, identity.Resource{TenantID: &n.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	egressID, err := uuid.Parse(chi.URLParam(r, "egress_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid egress ID"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid egress ID", nil)
 		return
 	}
 
@@ -260,23 +261,23 @@ func (h *egressHandlers) deleteEgress(w http.ResponseWriter, r *http.Request) {
 	e, err := h.svc.GetEgress(r.Context(), egressID)
 	if err != nil {
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "egress not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "egress not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get egress"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get egress", nil)
 		return
 	}
 	if e.NetworkID != n.ID {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "egress not found"})
+		writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "egress not found", nil)
 		return
 	}
 
 	if err := h.svc.DeleteEgress(r.Context(), egressID); err != nil {
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "egress not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "egress not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete egress"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to delete egress", nil)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

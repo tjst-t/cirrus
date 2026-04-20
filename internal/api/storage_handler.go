@@ -7,13 +7,16 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/tjst-t/cirrus/internal/apierror"
 	"github.com/tjst-t/cirrus/internal/identity"
+	"github.com/tjst-t/cirrus/internal/quota"
 	"github.com/tjst-t/cirrus/internal/storage"
 )
 
 type storageHandlers struct {
 	svc   storage.Service
 	authz identity.Authorizer
+	debug bool
 }
 
 // --- Storage Backends (infra_admin) ---
@@ -21,7 +24,7 @@ type storageHandlers struct {
 func (h *storageHandlers) createStorageBackend(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	if decision, _ := h.authz.Authorize(r.Context(), user, identity.ActionCreateStorageBackend, identity.Resource{}); decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
@@ -36,19 +39,19 @@ func (h *storageHandlers) createStorageBackend(w http.ResponseWriter, r *http.Re
 		DriverConfig    map[string]any `json:"driver_config"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid request body", nil)
 		return
 	}
 	if err := validateName(req.Name); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, err.Error(), nil)
 		return
 	}
 	if req.Driver == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "driver is required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "driver is required", nil)
 		return
 	}
 	if req.Endpoint == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "endpoint is required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "endpoint is required", nil)
 		return
 	}
 
@@ -63,7 +66,7 @@ func (h *storageHandlers) createStorageBackend(w http.ResponseWriter, r *http.Re
 		DriverConfig:    req.DriverConfig,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, h.debug)
 		return
 	}
 	writeJSON(w, http.StatusCreated, b)
@@ -72,12 +75,12 @@ func (h *storageHandlers) createStorageBackend(w http.ResponseWriter, r *http.Re
 func (h *storageHandlers) listStorageBackends(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	if decision, _ := h.authz.Authorize(r.Context(), user, identity.ActionListStorageBackends, identity.Resource{}); decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 	backends, err := h.svc.ListBackends(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list backends"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to list backends", nil)
 		return
 	}
 	writeJSON(w, http.StatusOK, backends)
@@ -86,21 +89,21 @@ func (h *storageHandlers) listStorageBackends(w http.ResponseWriter, r *http.Req
 func (h *storageHandlers) getStorageBackend(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	if decision, _ := h.authz.Authorize(r.Context(), user, identity.ActionGetStorageBackend, identity.Resource{}); decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "backend_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid backend_id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid backend_id", nil)
 		return
 	}
 	b, err := h.svc.GetBackend(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, storage.ErrBackendNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "backend not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "backend not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get backend"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get backend", nil)
 		return
 	}
 	writeJSON(w, http.StatusOK, b)
@@ -109,20 +112,20 @@ func (h *storageHandlers) getStorageBackend(w http.ResponseWriter, r *http.Reque
 func (h *storageHandlers) drainStorageBackend(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	if decision, _ := h.authz.Authorize(r.Context(), user, identity.ActionDrainStorageBackend, identity.Resource{}); decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "backend_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid backend_id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid backend_id", nil)
 		return
 	}
 	if err := h.svc.DrainBackend(r.Context(), id); err != nil {
 		if errors.Is(err, storage.ErrBackendNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "backend not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "backend not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to drain backend"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to drain backend", nil)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -133,7 +136,7 @@ func (h *storageHandlers) drainStorageBackend(w http.ResponseWriter, r *http.Req
 func (h *storageHandlers) createVolumeType(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	if decision, _ := h.authz.Authorize(r.Context(), user, identity.ActionCreateVolumeType, identity.Resource{}); decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 	var req struct {
@@ -144,15 +147,15 @@ func (h *storageHandlers) createVolumeType(w http.ResponseWriter, r *http.Reques
 		IsPublic             *bool          `json:"is_public"` // pointer: nil means default (true)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid request body", nil)
 		return
 	}
 	if err := validateName(req.Name); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, err.Error(), nil)
 		return
 	}
 	if err := validateDescription(req.Description); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, err.Error(), nil)
 		return
 	}
 	isPublic := true
@@ -161,7 +164,7 @@ func (h *storageHandlers) createVolumeType(w http.ResponseWriter, r *http.Reques
 	}
 	vt, err := h.svc.CreateVolumeType(r.Context(), req.Name, req.Description, req.RequiredCapabilities, req.QoSPolicy, isPublic)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, h.debug)
 		return
 	}
 	writeJSON(w, http.StatusCreated, vt)
@@ -175,12 +178,12 @@ func (h *storageHandlers) listVolumeTypes(w http.ResponseWriter, r *http.Request
 		res.TenantID = tenantID
 	}
 	if decision, _ := h.authz.Authorize(r.Context(), user, identity.ActionListVolumeTypes, res); decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 	vts, err := h.svc.ListVolumeTypes(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list volume types"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to list volume types", nil)
 		return
 	}
 	writeJSON(w, http.StatusOK, vts)
@@ -194,21 +197,21 @@ func (h *storageHandlers) getVolumeType(w http.ResponseWriter, r *http.Request) 
 		res.TenantID = tenantID
 	}
 	if decision, _ := h.authz.Authorize(r.Context(), user, identity.ActionGetVolumeType, res); decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "volume_type_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid volume_type_id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid volume_type_id", nil)
 		return
 	}
 	vt, err := h.svc.GetVolumeType(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, storage.ErrVolumeTypeNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "volume type not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "volume type not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get volume type"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get volume type", nil)
 		return
 	}
 	writeJSON(w, http.StatusOK, vt)
@@ -220,11 +223,11 @@ func (h *storageHandlers) createVolume(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	tenantID := TenantIDFromContext(r.Context())
 	if tenantID == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "X-Tenant-ID header required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "X-Tenant-ID header required", nil)
 		return
 	}
 	if decision, _ := h.authz.Authorize(r.Context(), user, identity.ActionCreateVolume, identity.Resource{TenantID: tenantID}); decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 	var req struct {
@@ -234,15 +237,15 @@ func (h *storageHandlers) createVolume(w http.ResponseWriter, r *http.Request) {
 		AZID         *uuid.UUID `json:"az_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid request body", nil)
 		return
 	}
 	if err := validateName(req.Name); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, err.Error(), nil)
 		return
 	}
 	if req.SizeGB <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "size_gb must be a positive integer"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "size_gb must be a positive integer", nil)
 		return
 	}
 	createdBy := callerID(user)
@@ -255,14 +258,15 @@ func (h *storageHandlers) createVolume(w http.ResponseWriter, r *http.Request) {
 	}, createdBy)
 	if err != nil {
 		if errors.Is(err, storage.ErrNoMatchingBackend) {
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "no storage backend available for this volume type"})
+			writeErrorCode(w, http.StatusUnprocessableEntity, apierror.CodeInsufficientResources, "no storage backend available for this volume type", nil)
 			return
 		}
-		if errQuotaExceeded(err) {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		var violation *quota.ViolationError
+		if errors.As(err, &violation) {
+			writeQuotaError(w, violation)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, h.debug)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": resp.JobID.String()})
@@ -272,24 +276,24 @@ func (h *storageHandlers) listVolumes(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	tenantID := TenantIDFromContext(r.Context())
 	if tenantID == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "X-Tenant-ID header required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "X-Tenant-ID header required", nil)
 		return
 	}
 	if decision, _ := h.authz.Authorize(r.Context(), user, identity.ActionListVolumes, identity.Resource{TenantID: tenantID}); decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	cursor, limit, pErr := parsePaginationParams(r)
 	if pErr != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": pErr.Error()})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, pErr.Error(), nil)
 		return
 	}
 
 	afterAt, afterID := cursorValues(cursor)
 	vs, err := h.svc.ListVolumesPage(r.Context(), *tenantID, afterAt, afterID, limit)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list volumes"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to list volumes", nil)
 		return
 	}
 	if vs == nil {
@@ -308,25 +312,25 @@ func (h *storageHandlers) getVolume(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	tenantID := TenantIDFromContext(r.Context())
 	if tenantID == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "X-Tenant-ID header required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "X-Tenant-ID header required", nil)
 		return
 	}
 	if decision, _ := h.authz.Authorize(r.Context(), user, identity.ActionGetVolume, identity.Resource{TenantID: tenantID}); decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "volume_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid volume_id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid volume_id", nil)
 		return
 	}
 	v, err := h.svc.GetVolume(r.Context(), *tenantID, id)
 	if err != nil {
 		if errors.Is(err, storage.ErrVolumeNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "volume not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "volume not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get volume"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get volume", nil)
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
@@ -336,34 +340,34 @@ func (h *storageHandlers) resizeVolume(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	tenantID := TenantIDFromContext(r.Context())
 	if tenantID == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "X-Tenant-ID header required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "X-Tenant-ID header required", nil)
 		return
 	}
 	if decision, _ := h.authz.Authorize(r.Context(), user, identity.ActionResizeVolume, identity.Resource{TenantID: tenantID}); decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "volume_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid volume_id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid volume_id", nil)
 		return
 	}
 	var req struct {
 		NewSizeGB int64 `json:"new_size_gb"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid request body", nil)
 		return
 	}
 	v, err := h.svc.ResizeVolume(r.Context(), *tenantID, id, req.NewSizeGB)
 	if err != nil {
 		switch {
 		case errors.Is(err, storage.ErrVolumeNotFound):
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "volume not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "volume not found", nil)
 		case errors.Is(err, storage.ErrVolumeInUse):
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "volume is in use"})
+			writeInvalidStateError(w, "volume is in use", apierror.ReasonVolumeAttached)
 		default:
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeInternalError(w, err, h.debug)
 		}
 		return
 	}
@@ -374,16 +378,16 @@ func (h *storageHandlers) deleteVolume(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	tenantID := TenantIDFromContext(r.Context())
 	if tenantID == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "X-Tenant-ID header required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "X-Tenant-ID header required", nil)
 		return
 	}
 	if decision, _ := h.authz.Authorize(r.Context(), user, identity.ActionDeleteVolume, identity.Resource{TenantID: tenantID}); decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "volume_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid volume_id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid volume_id", nil)
 		return
 	}
 	createdBy := callerID(user)
@@ -391,11 +395,11 @@ func (h *storageHandlers) deleteVolume(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, storage.ErrVolumeNotFound):
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "volume not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "volume not found", nil)
 		case errors.Is(err, storage.ErrVolumeInUse):
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "volume is in use"})
+			writeInvalidStateError(w, "volume is in use", apierror.ReasonVolumeAttached)
 		default:
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete volume"})
+			writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to delete volume", nil)
 		}
 		return
 	}

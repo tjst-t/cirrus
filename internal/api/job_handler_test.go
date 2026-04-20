@@ -85,9 +85,9 @@ func TestGetJob_NotFound(t *testing.T) {
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
-	var body map[string]string
+	var body map[string]any
 	json.NewDecoder(w.Body).Decode(&body)
-	if body["error"] == "" {
+	if body["message"] == "" && body["code"] == "" {
 		t.Error("expected error message in response")
 	}
 }
@@ -130,10 +130,10 @@ func TestGetJob_Forbidden(t *testing.T) {
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
 	}
-	var body map[string]string
+	var body map[string]any
 	json.NewDecoder(w.Body).Decode(&body)
-	if body["error"] != "forbidden" {
-		t.Errorf("expected 'forbidden', got %q", body["error"])
+	if body["message"] != "forbidden" {
+		t.Errorf("expected 'forbidden', got %q", body["message"])
 	}
 }
 

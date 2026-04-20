@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { vmsApi, type VmDetail, type VmAction, type Flavor } from '@/api/vms'
 import { type Port } from '@/api/networks'
@@ -26,6 +26,9 @@ export function VmDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<VmAction | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const TRANSITIONAL = new Set(['pending', 'starting', 'stopping'])
 
   const load = useCallback(() => {
     if (!id) return
@@ -33,13 +36,11 @@ export function VmDetailPage() {
     vmsApi.get(id)
       .then((v) => {
         setVm(v)
-        // Fetch flavor details to display vCPU/memory
         if (v.flavor_id) {
           vmsApi.listFlavors()
             .then((flavors) => setFlavor(flavors.find(f => f.id === v.flavor_id) ?? null))
             .catch(() => { /* flavor display is optional */ })
         }
-        // Fetch port by network_id, filter by vm_id
         if (v.network_id) {
           api.get<Port[]>(`/ports?network_id=${v.network_id}`)
             .then((ports) => {
@@ -53,10 +54,42 @@ export function VmDetailPage() {
       .finally(() => setLoading(false))
   }, [id])
 
+  const poll = useCallback(() => {
+    if (!id) return
+    vmsApi.get(id)
+      .then((v) => setVm((prev) => {
+        if (!prev || prev.status !== v.status || prev.updated_at !== v.updated_at) return v
+        return prev
+      }))
+      .catch(() => { /* silent poll failure */ })
+  }, [id])
+
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    const isTransitional = vm !== null && TRANSITIONAL.has(vm.status)
+    if (isTransitional) {
+      if (!pollRef.current) {
+        pollRef.current = setInterval(poll, 3000)
+      }
+    } else {
+      if (pollRef.current) {
+        clearInterval(pollRef.current)
+        pollRef.current = null
+      }
+    }
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current)
+        pollRef.current = null
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vm?.status, poll])
 
   const handleAction = async (action: VmAction) => {
     if (!id) return
+    setError(null)
     setActionLoading(action)
     try {
       await vmsApi.action(id, action)
@@ -70,11 +103,14 @@ export function VmDetailPage() {
 
   const handleDelete = async () => {
     if (!id) return
+    setError(null)
     try {
       await vmsApi.delete(id)
       navigate('/vms')
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'エラーが発生しました')
+    } finally {
+      setShowDeleteConfirm(false)
     }
   }
 
@@ -103,7 +139,7 @@ export function VmDetailPage() {
         <VmStatusBadge status={vm.status} />
       </div>
 
-      {error && <ErrorMessage message={error} />}
+      {error && <ErrorMessage message={error} onDismiss={() => setError(null)} />}
 
       {/* Actions */}
       <div className="bg-white rounded-xl border border-[var(--color-border)] p-4">

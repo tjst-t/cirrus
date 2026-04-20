@@ -56,12 +56,13 @@ function GatewayNodesSection() {
 
   const handleDelete = () => {
     if (!deleteTarget) return
+    setError(null)
     setDeleting(true)
     networkInfraApi
       .deleteGatewayNode(deleteTarget.id)
-      .then(() => { setDeleteTarget(null); load() })
+      .then(() => load())
       .catch((e: Error) => setError(e.message))
-      .finally(() => setDeleting(false))
+      .finally(() => { setDeleteTarget(null); setDeleting(false) })
   }
 
   return (
@@ -194,12 +195,13 @@ function IPPoolsSection() {
 
   const handleDelete = () => {
     if (!deleteTarget) return
+    setError(null)
     setDeleting(true)
     networkInfraApi
       .deleteIPPool(deleteTarget.id)
-      .then(() => { setDeleteTarget(null); load() })
+      .then(() => load())
       .catch((e: Error) => setError(e.message))
-      .finally(() => setDeleting(false))
+      .finally(() => { setDeleteTarget(null); setDeleting(false) })
   }
 
   return (

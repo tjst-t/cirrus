@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { vmsApi, type Vm, type Flavor, type VolumeType, type CreateVmRequest } from '@/api/vms'
 import { networksApi, type Network } from '@/api/networks'
@@ -6,6 +6,7 @@ import { azApi, type AvailabilityZone } from '@/api/az'
 import { Button } from '@/components/Button'
 import { ErrorMessage } from '@/components/ErrorMessage'
 import { VmStatusBadge } from '@/components/tenant/VmStatusBadge'
+import { ErrorTooltip } from '@/components/tenant/ErrorTooltip'
 
 interface CreateVmDialogProps {
   onClose: () => void
@@ -171,7 +172,7 @@ function CreateVmDialog({ onClose, onCreated }: CreateVmDialogProps) {
           )}
 
           {error && (
-            <p className="text-xs text-danger">{error}</p>
+            <ErrorMessage data-testid="form-error" message={error} />
           )}
 
           <div className="flex gap-2 justify-end pt-2">
@@ -197,6 +198,9 @@ export function VmsPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const TRANSITIONAL = new Set(['pending', 'starting', 'stopping'])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -214,19 +218,59 @@ export function VmsPage() {
       .finally(() => setLoading(false))
   }, [])
 
+  // Poll every 3s while any VM is in a transitional state.
+  // Uses functional setState so React skips re-render when nothing changed.
+  const poll = useCallback(() => {
+    vmsApi.list().then((next) => {
+      setVms((prev) => {
+        if (prev.length !== next.length) return next
+        const changed = next.some((vm, i) =>
+          prev[i]?.id !== vm.id ||
+          prev[i]?.status !== vm.status ||
+          prev[i]?.updated_at !== vm.updated_at
+        )
+        return changed ? next : prev
+      })
+    }).catch(() => { /* silent poll failure */ })
+  }, [])
+
   useEffect(() => { load() }, [load])
 
+  useEffect(() => {
+    const hasTransitional = vms.some((v) => TRANSITIONAL.has(v.status))
+    if (hasTransitional) {
+      if (!pollRef.current) {
+        pollRef.current = setInterval(poll, 3000)
+      }
+    } else {
+      if (pollRef.current) {
+        clearInterval(pollRef.current)
+        pollRef.current = null
+      }
+    }
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current)
+        pollRef.current = null
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vms, poll])
+
   const handleDelete = async (id: string) => {
+    setError(null)
     try {
       await vmsApi.delete(id)
-      setDeleteId(null)
       load()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'エラーが発生しました')
+    } finally {
+      setDeleteId(null)
     }
   }
 
   const handleAction = async (id: string, action: 'start' | 'stop' | 'reboot') => {
+    setError(null)
     setActionLoading(`${id}-${action}`)
     try {
       await vmsApi.action(id, action)
@@ -259,7 +303,7 @@ export function VmsPage() {
         </Button>
       </div>
 
-      {error && <ErrorMessage message={error} />}
+      {error && <ErrorMessage message={error} onDismiss={() => setError(null)} />}
 
       {loading ? (
         <div className="flex items-center justify-center h-40 text-[var(--color-text-secondary)] text-sm">
@@ -288,14 +332,22 @@ export function VmsPage() {
                 </tr>
               ) : (
                 vms.map((vm) => (
-                  <tr key={vm.id} className="border-t border-[var(--color-border)] hover:bg-[var(--color-bg-secondary)]/50">
+                  <tr key={vm.id} data-testid={`vm-row-${vm.id}`} className="border-t border-[var(--color-border)] hover:bg-[var(--color-bg-secondary)]/50">
                     <td className="px-4 py-3">
                       <Link to={`/vms/${vm.id}`} className="text-accent hover:underline font-medium">
                         {vm.name}
                       </Link>
                     </td>
                     <td className="px-4 py-3">
-                      <VmStatusBadge status={vm.status} />
+                      <div className="flex items-center gap-1">
+                        <VmStatusBadge status={vm.status} data-testid={`vm-status-badge-${vm.id}`} />
+                        {vm.status === 'error' && vm.error_message && (
+                          <ErrorTooltip
+                            id={vm.id}
+                            message={vm.error_message}
+                          />
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-[var(--color-text-secondary)] text-xs">
                       {flavorName(vm.flavor_id)}

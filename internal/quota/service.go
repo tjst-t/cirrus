@@ -9,6 +9,7 @@ package quota
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 )
@@ -76,6 +77,23 @@ const (
 
 // EgressIngress drift resource type constant (used by reconciler).
 const ResourceTypeEgressIngress = "egress_ingress_state"
+
+// ViolationError はクォータ超過時の詳細情報を持つエラー型です。
+// ErrQuotaExceeded をラップします。
+type ViolationError struct {
+	Resource  string // "vcpu", "memory_mb", "volume_gb", "vm_count", etc.
+	Limit     int
+	Requested int
+	Current   int
+}
+
+func (e *ViolationError) Error() string {
+	return fmt.Sprintf("quota exceeded: %s limit %d, current %d", e.Resource, e.Limit, e.Current)
+}
+
+func (e *ViolationError) Unwrap() error {
+	return ErrQuotaExceeded
+}
 
 // Service defines quota check, reservation, and usage tracking operations.
 type Service interface {

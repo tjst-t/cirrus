@@ -215,14 +215,15 @@ export function VolumesPage() {
   }, [load])
 
   const handleDelete = async (id: string) => {
+    setError(null)
     setDeleting(true)
     try {
       await volumesApi.delete(id)
-      setDeleteId(null)
       load()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'エラーが発生しました')
     } finally {
+      setDeleteId(null)
       setDeleting(false)
     }
   }
@@ -242,7 +243,7 @@ export function VolumesPage() {
         </Button>
       </div>
 
-      {error && <ErrorMessage message={error} />}
+      {error && <ErrorMessage message={error} onDismiss={() => setError(null)} />}
 
       {loading ? (
         <div className="flex items-center justify-center h-40 text-[var(--color-text-secondary)] text-sm">読み込み中...</div>

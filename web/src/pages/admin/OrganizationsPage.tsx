@@ -54,15 +54,13 @@ function RoleAssignmentsPanel({ tenant }: { tenant: Tenant }) {
 
   const handleDelete = () => {
     if (!deleteTarget) return
+    setError(null)
     setDeleting(true)
     organizationsApi
       .deleteRoleAssignment(tenant.id, deleteTarget.user_id)
-      .then(() => {
-        setDeleteTarget(null)
-        load()
-      })
+      .then(() => load())
       .catch((e: Error) => setError(e.message))
-      .finally(() => setDeleting(false))
+      .finally(() => { setDeleteTarget(null); setDeleting(false) })
   }
 
   return (

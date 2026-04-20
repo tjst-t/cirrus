@@ -8,8 +8,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/tjst-t/cirrus/internal/apierror"
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/network"
+	"github.com/tjst-t/cirrus/internal/quota"
 	"github.com/tjst-t/cirrus/internal/validate"
 )
 
@@ -17,6 +19,7 @@ type networkHandlers struct {
 	svc    network.Service
 	authz  identity.Authorizer
 	logger *slog.Logger
+	debug  bool
 }
 
 // --- Networks ---
@@ -25,12 +28,12 @@ func (h *networkHandlers) createNetwork(w http.ResponseWriter, r *http.Request) 
 	user := UserFromContext(r.Context())
 	tenantID := TenantIDFromContext(r.Context())
 	if tenantID == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "X-Tenant-ID header required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "X-Tenant-ID header required", nil)
 		return
 	}
 
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionCreateNetwork, identity.Resource{TenantID: tenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
@@ -39,11 +42,11 @@ func (h *networkHandlers) createNetwork(w http.ResponseWriter, r *http.Request) 
 		CIDR string `json:"cidr,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid request body", nil)
 		return
 	}
 	if err := validate.Name(req.Name); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, err.Error(), nil)
 		return
 	}
 
@@ -53,19 +56,19 @@ func (h *networkHandlers) createNetwork(w http.ResponseWriter, r *http.Request) 
 	})
 	if err != nil {
 		if errors.Is(err, network.ErrConflict) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "network with this name already exists in tenant"})
+			writeErrorCode(w, http.StatusConflict, apierror.CodeConflict, "network with this name already exists in tenant", nil)
 			return
 		}
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid tenant"})
+			writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid tenant", nil)
 			return
 		}
-		if errQuotaExceeded(err) {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		var violation *quota.ViolationError
+		if errors.As(err, &violation) {
+			writeQuotaError(w, violation)
 			return
 		}
-		h.logger.Error("failed to create network", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create network"})
+		writeInternalError(w, err, h.debug)
 		return
 	}
 	writeJSON(w, http.StatusCreated, n)
@@ -75,25 +78,25 @@ func (h *networkHandlers) listNetworks(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	tenantID := TenantIDFromContext(r.Context())
 	if tenantID == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "X-Tenant-ID header required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "X-Tenant-ID header required", nil)
 		return
 	}
 
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionListNetworks, identity.Resource{TenantID: tenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	cursor, limit, err := parsePaginationParams(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, err.Error(), nil)
 		return
 	}
 
 	afterAt, afterID := cursorValues(cursor)
 	networks, err := h.svc.ListNetworksPage(r.Context(), *tenantID, afterAt, afterID, limit)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list networks"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to list networks", nil)
 		return
 	}
 	if networks == nil {
@@ -112,22 +115,22 @@ func (h *networkHandlers) getNetwork(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	id, err := uuid.Parse(chi.URLParam(r, "network_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid network ID"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid network ID", nil)
 		return
 	}
 
 	n, err := h.svc.GetNetwork(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "network not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "network not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get network"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get network", nil)
 		return
 	}
 
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionGetNetwork, identity.Resource{TenantID: &n.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
@@ -138,7 +141,7 @@ func (h *networkHandlers) deleteNetwork(w http.ResponseWriter, r *http.Request) 
 	user := UserFromContext(r.Context())
 	id, err := uuid.Parse(chi.URLParam(r, "network_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid network ID"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid network ID", nil)
 		return
 	}
 
@@ -146,24 +149,24 @@ func (h *networkHandlers) deleteNetwork(w http.ResponseWriter, r *http.Request) 
 	n, err := h.svc.GetNetwork(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "network not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "network not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get network"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get network", nil)
 		return
 	}
 
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionDeleteNetwork, identity.Resource{TenantID: &n.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	if err := h.svc.DeleteNetwork(r.Context(), id); err != nil {
 		if errors.Is(err, network.ErrHasDependents) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			writeInvalidStateError(w, err.Error(), apierror.ReasonHasDependents)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete network"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to delete network", nil)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -175,16 +178,16 @@ func (h *networkHandlers) deleteNetwork(w http.ResponseWriter, r *http.Request) 
 func (h *networkHandlers) networkFromURL(w http.ResponseWriter, r *http.Request) (*network.Network, bool) {
 	id, err := uuid.Parse(chi.URLParam(r, "network_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid network ID"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid network ID", nil)
 		return nil, false
 	}
 	n, err := h.svc.GetNetwork(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "network not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "network not found", nil)
 			return nil, false
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get network"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get network", nil)
 		return nil, false
 	}
 	return n, true
@@ -199,7 +202,7 @@ func (h *networkHandlers) createGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionCreateGroup, identity.Resource{TenantID: &net.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
@@ -207,22 +210,22 @@ func (h *networkHandlers) createGroup(w http.ResponseWriter, r *http.Request) {
 		Name string `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid request body", nil)
 		return
 	}
 	if err := validate.Name(req.Name); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, err.Error(), nil)
 		return
 	}
 
 	g, err := h.svc.CreateGroup(r.Context(), net.ID, network.GroupSpec{Name: req.Name})
 	if err != nil {
 		if errors.Is(err, network.ErrConflict) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "group with this name already exists in network"})
+			writeErrorCode(w, http.StatusConflict, apierror.CodeConflict, "group with this name already exists in network", nil)
 			return
 		}
 		h.logger.Error("failed to create group", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create group"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to create group", nil)
 		return
 	}
 	writeJSON(w, http.StatusCreated, g)
@@ -237,20 +240,20 @@ func (h *networkHandlers) listGroups(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionListGroups, identity.Resource{TenantID: &net.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	cursor, limit, err := parsePaginationParams(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, err.Error(), nil)
 		return
 	}
 
 	afterAt, afterID := cursorValues(cursor)
 	groups, err := h.svc.ListGroupsPage(r.Context(), net.ID, afterAt, afterID, limit)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list groups"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to list groups", nil)
 		return
 	}
 	if groups == nil {
@@ -275,27 +278,27 @@ func (h *networkHandlers) getGroup(w http.ResponseWriter, r *http.Request) {
 
 	groupID, err := uuid.Parse(chi.URLParam(r, "group_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid group ID"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid group ID", nil)
 		return
 	}
 
 	g, err := h.svc.GetGroup(r.Context(), groupID)
 	if err != nil {
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "group not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "group not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get group"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get group", nil)
 		return
 	}
 
 	if g.NetworkID != net.ID {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "group not found"})
+		writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "group not found", nil)
 		return
 	}
 
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionGetGroup, identity.Resource{TenantID: &net.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
@@ -312,36 +315,36 @@ func (h *networkHandlers) deleteGroup(w http.ResponseWriter, r *http.Request) {
 
 	groupID, err := uuid.Parse(chi.URLParam(r, "group_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid group ID"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid group ID", nil)
 		return
 	}
 
 	g, err := h.svc.GetGroup(r.Context(), groupID)
 	if err != nil {
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "group not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "group not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get group"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get group", nil)
 		return
 	}
 
 	if g.NetworkID != net.ID {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "group not found"})
+		writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "group not found", nil)
 		return
 	}
 
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionDeleteGroup, identity.Resource{TenantID: &net.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	if err := h.svc.DeleteGroup(r.Context(), groupID); err != nil {
 		if errors.Is(err, network.ErrHasDependents) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			writeInvalidStateError(w, err.Error(), apierror.ReasonHasDependents)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete group"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to delete group", nil)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -358,44 +361,44 @@ func (h *networkHandlers) createPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionCreatePolicy, identity.Resource{TenantID: &net.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	var req network.PolicySpec
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid request body", nil)
 		return
 	}
 	if req.SrcGroupID == uuid.Nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "src_group_id is required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "src_group_id is required", nil)
 		return
 	}
 	if req.DstGroupID == uuid.Nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "dst_group_id is required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "dst_group_id is required", nil)
 		return
 	}
 	if req.Protocol == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "protocol is required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "protocol is required", nil)
 		return
 	}
 
 	p, err := h.svc.CreatePolicy(r.Context(), net.ID, req)
 	if err != nil {
 		if errors.Is(err, network.ErrConflict) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "policy already exists"})
+			writeErrorCode(w, http.StatusConflict, apierror.CodeConflict, "policy already exists", nil)
 			return
 		}
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "group not found"})
+			writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "group not found", nil)
 			return
 		}
 		if errors.Is(err, network.ErrInvalidState) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, err.Error(), nil)
 			return
 		}
 		h.logger.Error("failed to create policy", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create policy"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to create policy", nil)
 		return
 	}
 	writeJSON(w, http.StatusCreated, p)
@@ -410,20 +413,20 @@ func (h *networkHandlers) listPolicies(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionListPolicies, identity.Resource{TenantID: &net.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	cursor, limit, err := parsePaginationParams(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, err.Error(), nil)
 		return
 	}
 
 	afterAt, afterID := cursorValues(cursor)
 	policies, err := h.svc.ListPoliciesPage(r.Context(), net.ID, afterAt, afterID, limit)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list policies"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to list policies", nil)
 		return
 	}
 	if policies == nil {
@@ -448,32 +451,32 @@ func (h *networkHandlers) deletePolicy(w http.ResponseWriter, r *http.Request) {
 
 	policyID, err := uuid.Parse(chi.URLParam(r, "policy_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid policy ID"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid policy ID", nil)
 		return
 	}
 
 	p, err := h.svc.GetPolicy(r.Context(), policyID)
 	if err != nil {
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "policy not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "policy not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get policy"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get policy", nil)
 		return
 	}
 
 	if p.NetworkID != net.ID {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "policy not found"})
+		writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "policy not found", nil)
 		return
 	}
 
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionDeletePolicy, identity.Resource{TenantID: &net.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	if err := h.svc.DeletePolicy(r.Context(), policyID); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete policy"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to delete policy", nil)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -485,23 +488,23 @@ func (h *networkHandlers) listPorts(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	tenantID := TenantIDFromContext(r.Context())
 	if tenantID == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "X-Tenant-ID header required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "X-Tenant-ID header required", nil)
 		return
 	}
 
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionListPorts, identity.Resource{TenantID: tenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	networkIDStr := r.URL.Query().Get("network_id")
 	if networkIDStr == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "network_id query parameter required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "network_id query parameter required", nil)
 		return
 	}
 	networkID, err := uuid.Parse(networkIDStr)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid network_id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid network_id", nil)
 		return
 	}
 
@@ -509,20 +512,20 @@ func (h *networkHandlers) listPorts(w http.ResponseWriter, r *http.Request) {
 	net, err := h.svc.GetNetwork(r.Context(), networkID)
 	if err != nil {
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "network not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "network not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get network"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get network", nil)
 		return
 	}
 	if net.TenantID != *tenantID {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "network does not belong to this tenant"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "network does not belong to this tenant", nil)
 		return
 	}
 
 	ports, err := h.svc.ListPorts(r.Context(), networkID)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list ports"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to list ports", nil)
 		return
 	}
 	if ports == nil {
@@ -540,13 +543,13 @@ func (h *networkHandlers) listPortsNested(w http.ResponseWriter, r *http.Request
 	}
 
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionListPorts, identity.Resource{TenantID: &net.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	ports, err := h.svc.ListPorts(r.Context(), net.ID)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list ports"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to list ports", nil)
 		return
 	}
 	if ports == nil {
@@ -559,22 +562,22 @@ func (h *networkHandlers) getPort(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	id, err := uuid.Parse(chi.URLParam(r, "port_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid port ID"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid port ID", nil)
 		return
 	}
 
 	p, err := h.svc.GetPort(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "port not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "port not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get port"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get port", nil)
 		return
 	}
 
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionGetPort, identity.Resource{TenantID: &p.TenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 

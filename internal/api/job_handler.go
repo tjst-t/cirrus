@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/tjst-t/cirrus/internal/apierror"
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/jobqueue"
 )
@@ -17,27 +18,27 @@ type jobHandlers struct {
 func (h *jobHandlers) getJob(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	if user == nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		writeErrorCode(w, http.StatusUnauthorized, apierror.CodeUnauthorized, "unauthorized", nil)
 		return
 	}
 
 	jobIDStr := r.PathValue("job_id")
 	jobID, err := uuid.Parse(jobIDStr)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid job_id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid job_id", nil)
 		return
 	}
 
 	job, err := h.queue.Get(r.Context(), jobID)
 	if err != nil {
 		// Treat any "not found" or DB error as 404 to avoid leaking job existence.
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "job not found"})
+		writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "job not found", nil)
 		return
 	}
 
 	// Authorization: check if the caller is allowed to see this job.
 	if !h.authorizeJobAccess(r, user, job) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 

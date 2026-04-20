@@ -19,9 +19,9 @@ const labels: Record<Vm['status'], string> = {
   pending: '保留',
 }
 
-export function VmStatusBadge({ status }: { status: Vm['status'] }) {
+export function VmStatusBadge({ status, 'data-testid': testId }: { status: Vm['status']; 'data-testid'?: string }) {
   return (
-    <span className={cn('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', styles[status])}>
+    <span data-testid={testId} className={cn('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', styles[status])}>
       {labels[status]}
     </span>
   )

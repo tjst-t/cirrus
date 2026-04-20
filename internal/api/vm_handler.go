@@ -7,8 +7,11 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/tjst-t/cirrus/internal/apierror"
 	"github.com/tjst-t/cirrus/internal/compute"
 	"github.com/tjst-t/cirrus/internal/identity"
+	"github.com/tjst-t/cirrus/internal/quota"
+	"github.com/tjst-t/cirrus/internal/scheduler"
 )
 
 type vmHandlers struct {
@@ -29,32 +32,32 @@ func (h *vmHandlers) createVM(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	tenantIDPtr := TenantIDFromContext(r.Context())
 	if tenantIDPtr == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "X-Tenant-ID header required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "X-Tenant-ID header required", nil)
 		return
 	}
 	tenantID := *tenantIDPtr
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionCreateVM, identity.Resource{TenantID: &tenantID}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	var req createVMRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid request body", nil)
 		return
 	}
 	if err := validateName(req.Name); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, err.Error(), nil)
 		return
 	}
 	if req.FlavorID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "flavor_id is required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "flavor_id is required", nil)
 		return
 	}
 
 	flavorID, err := uuid.Parse(req.FlavorID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid flavor_id: must be a valid UUID"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid flavor_id: must be a valid UUID", nil)
 		return
 	}
 
@@ -71,7 +74,7 @@ func (h *vmHandlers) createVM(w http.ResponseWriter, r *http.Request) {
 	if req.VolumeTypeID != nil {
 		vtID, err := uuid.Parse(*req.VolumeTypeID)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid volume_type_id: must be a valid UUID"})
+			writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid volume_type_id: must be a valid UUID", nil)
 			return
 		}
 		spec.VolumeTypeID = &vtID
@@ -79,8 +82,19 @@ func (h *vmHandlers) createVM(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.svc.CreateVM(r.Context(), spec)
 	if err != nil {
-		if errQuotaExceeded(err) {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		// スケジューラエラー
+		if errors.Is(err, scheduler.ErrNoSuitableHost) {
+			writeErrorCode(w, http.StatusUnprocessableEntity, apierror.CodeNoHost, "no suitable host available", nil)
+			return
+		}
+		if errors.Is(err, scheduler.ErrNoSuitableBackend) {
+			writeErrorCode(w, http.StatusUnprocessableEntity, apierror.CodeInsufficientResources, "no suitable storage backend available", nil)
+			return
+		}
+		// クォータエラー
+		var violation *quota.ViolationError
+		if errors.As(err, &violation) {
+			writeQuotaError(w, violation)
 			return
 		}
 		writeInternalError(w, err, h.debug)
@@ -94,19 +108,19 @@ func (h *vmHandlers) listVMs(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	tenantIDPtr := TenantIDFromContext(r.Context())
 	if tenantIDPtr == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "X-Tenant-ID header required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "X-Tenant-ID header required", nil)
 		return
 	}
 	tenantID := *tenantIDPtr
 	res := identity.Resource{TenantID: &tenantID}
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionListVMs, res); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	cursor, limit, err := parsePaginationParams(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, err.Error(), nil)
 		return
 	}
 
@@ -132,27 +146,27 @@ func (h *vmHandlers) getVM(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	tenantIDPtr := TenantIDFromContext(r.Context())
 	if tenantIDPtr == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "X-Tenant-ID header required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "X-Tenant-ID header required", nil)
 		return
 	}
 	tenantID := *tenantIDPtr
 
 	vmID, err := uuid.Parse(r.PathValue("vm_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid vm_id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid vm_id", nil)
 		return
 	}
 
 	res := identity.Resource{TenantID: &tenantID}
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionGetVM, res); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	vm, err := h.svc.GetVM(r.Context(), tenantID, vmID)
 	if err != nil {
 		if errors.Is(err, compute.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "vm not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "vm not found", nil)
 			return
 		}
 		writeInternalError(w, err, h.debug)
@@ -169,20 +183,20 @@ func (h *vmHandlers) vmAction(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	tenantIDPtr := TenantIDFromContext(r.Context())
 	if tenantIDPtr == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "X-Tenant-ID header required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "X-Tenant-ID header required", nil)
 		return
 	}
 	tenantID := *tenantIDPtr
 
 	vmID, err := uuid.Parse(r.PathValue("vm_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid vm_id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid vm_id", nil)
 		return
 	}
 
 	var req vmActionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid request body", nil)
 		return
 	}
 
@@ -198,12 +212,12 @@ func (h *vmHandlers) vmAction(w http.ResponseWriter, r *http.Request) {
 	case "reboot":
 		action = identity.ActionRebootVM
 	default:
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown action: " + req.Action})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "unknown action: "+req.Action, nil)
 		return
 	}
 
 	if decision, err := h.authz.Authorize(r.Context(), user, action, res); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
@@ -221,11 +235,15 @@ func (h *vmHandlers) vmAction(w http.ResponseWriter, r *http.Request) {
 
 	if opErr != nil {
 		if errors.Is(opErr, compute.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "vm not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "vm not found", nil)
 			return
 		}
 		if errors.Is(opErr, compute.ErrConflict) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "operation not allowed in current vm state"})
+			reason := apierror.ReasonVMNotRunning // stop/force-stop/reboot は running 必須
+			if req.Action == "start" {
+				reason = apierror.ReasonVMNotStopped // start は stopped 必須
+			}
+			writeInvalidStateError(w, "operation not allowed in current vm state", reason)
 			return
 		}
 		writeInternalError(w, opErr, h.debug)
@@ -238,19 +256,19 @@ func (h *vmHandlers) repairVM(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	res := identity.Resource{}
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionRepairVM, res); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	vmID, err := uuid.Parse(r.PathValue("vm_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid vm_id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid vm_id", nil)
 		return
 	}
 
 	if err := h.svc.RepairVM(r.Context(), vmID); err != nil {
 		if errors.Is(err, compute.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "vm not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "vm not found", nil)
 			return
 		}
 		writeInternalError(w, err, h.debug)
@@ -263,31 +281,31 @@ func (h *vmHandlers) deleteVM(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	tenantIDPtr := TenantIDFromContext(r.Context())
 	if tenantIDPtr == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "X-Tenant-ID header required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "X-Tenant-ID header required", nil)
 		return
 	}
 	tenantID := *tenantIDPtr
 
 	vmID, err := uuid.Parse(r.PathValue("vm_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid vm_id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid vm_id", nil)
 		return
 	}
 
 	res := identity.Resource{TenantID: &tenantID}
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionDeleteVM, res); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	resp, err := h.svc.DeleteVM(r.Context(), tenantID, vmID)
 	if err != nil {
 		if errors.Is(err, compute.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "vm not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "vm not found", nil)
 			return
 		}
 		if errors.Is(err, compute.ErrConflict) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "vm cannot be deleted in its current state"})
+			writeInvalidStateError(w, "vm cannot be deleted in its current state", apierror.ReasonVMRunning)
 			return
 		}
 		writeInternalError(w, err, h.debug)
@@ -295,3 +313,4 @@ func (h *vmHandlers) deleteVM(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": resp.JobID.String()})
 }
+

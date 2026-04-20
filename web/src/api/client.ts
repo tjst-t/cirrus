@@ -1,4 +1,5 @@
 import { clearTenantId, TOKEN_KEY, TENANT_ID_KEY } from '@/lib/auth'
+import { ApiErrorClass } from '@/lib/errorMessages'
 
 const BASE_URL = '/api/v1'
 
@@ -47,17 +48,33 @@ async function request<T>(
     // Throw without calling logout() here so callers can decide how to handle.
     // Pages that receive a 401 can clear their own state (e.g., clearTenant)
     // and let ProtectedRoute handle the redirect when the token is truly gone.
-    throw new ApiError(401, null, 'Unauthorized')
+    throw new ApiErrorClass({ code: 'ERR_UNAUTHORIZED', message: 'Unauthorized' })
   }
 
   if (!res.ok) {
+    const rawText = await res.text()
     let errBody: unknown
     try {
-      errBody = await res.json()
+      errBody = JSON.parse(rawText)
     } catch {
-      errBody = await res.text()
+      errBody = rawText
     }
-    // Use the API's error message if available
+
+    // Handle structured error format: { code, message, detail }
+    if (
+      errBody !== null &&
+      typeof errBody === 'object' &&
+      'code' in (errBody as object)
+    ) {
+      const structured = errBody as { code: string; message?: string; detail?: Record<string, unknown> }
+      // Clear stale tenant ID when the backend rejects it
+      if (res.status === 400 && structured.message === 'invalid tenant') {
+        clearTenantId()
+      }
+      throw new ApiErrorClass({ code: structured.code, message: structured.message ?? '', detail: structured.detail })
+    }
+
+    // Legacy error format: { error: "..." }
     const apiMessage =
       errBody !== null &&
       typeof errBody === 'object' &&

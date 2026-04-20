@@ -69,12 +69,13 @@ function StorageBackendsSection() {
 
   const handleDelete = () => {
     if (!deleteTarget) return
+    setError(null)
     setDeleting(true)
     storageApi
       .deleteBackend(deleteTarget.id)
-      .then(() => { setDeleteTarget(null); load() })
+      .then(() => load())
       .catch((e: Error) => setError(e.message))
-      .finally(() => setDeleting(false))
+      .finally(() => { setDeleteTarget(null); setDeleting(false) })
   }
 
   return (
@@ -210,9 +211,11 @@ function VolumeTypesSection() {
 
   const handleDelete = () => {
     if (!deleteTarget) return
+    setError(null)
     setDeleting(true)
-    storageApi.deleteVolumeType(deleteTarget.id).then(() => { setDeleteTarget(null); load() })
-      .catch((e: Error) => setError(e.message)).finally(() => setDeleting(false))
+    storageApi.deleteVolumeType(deleteTarget.id).then(() => load())
+      .catch((e: Error) => setError(e.message))
+      .finally(() => { setDeleteTarget(null); setDeleting(false) })
   }
 
   return (

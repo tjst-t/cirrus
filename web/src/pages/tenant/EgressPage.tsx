@@ -80,7 +80,7 @@ function CreateEgressDialog({
               />
             </div>
           )}
-          {error && <ErrorMessage message={error} data-testid="egress-error-message" />}
+          {error && <ErrorMessage message={error} onDismiss={() => setError(null)} data-testid="egress-error-message" />}
           <div className="flex gap-2 justify-end pt-1">
             <Button type="button" variant="ghost" size="sm" onClick={onClose}>キャンセル</Button>
             <Button
@@ -224,14 +224,15 @@ export function EgressPage() {
 
   const handleDelete = async (id: string) => {
     if (!tenantId || !selectedNetwork) return
+    setError(null)
     setDeleting(true)
     try {
       await egressApi.delete(tenantId, selectedNetwork, id)
-      setDeleteId(null)
       load()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : '削除に失敗しました')
     } finally {
+      setDeleteId(null)
       setDeleting(false)
     }
   }
@@ -284,7 +285,7 @@ export function EgressPage() {
       )}
 
       {/* Error */}
-      {error && <ErrorMessage message={error} data-testid="egress-error-message" />}
+      {error && <ErrorMessage message={error} onDismiss={() => setError(null)} data-testid="egress-error-message" />}
 
       {/* List */}
       {networksLoaded && networks.length > 0 && !error && (

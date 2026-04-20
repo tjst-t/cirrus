@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tjst-t/cirrus/internal/apierror"
 	"github.com/tjst-t/cirrus/internal/identity"
 )
 
@@ -40,7 +41,7 @@ type driftEventsListResponse struct {
 func (h *driftHandlers) listDriftEvents(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionListDriftEvents, identity.Resource{}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
@@ -74,7 +75,7 @@ func (h *driftHandlers) listDriftEvents(w http.ResponseWriter, r *http.Request) 
 
 	rows, err := h.pool.Query(r.Context(), query, args...)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list drift events"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to list drift events", nil)
 		return
 	}
 	defer rows.Close()
@@ -91,7 +92,7 @@ func (h *driftHandlers) listDriftEvents(w http.ResponseWriter, r *http.Request) 
 			resolvedAt   *time.Time
 		)
 		if err := rows.Scan(&id, &resource, &resourceID, &description, &evStatus, &detectedAt, &resolvedAt); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to scan drift event"})
+			writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to scan drift event", nil)
 			return
 		}
 		ev := driftEventResponse{
@@ -109,7 +110,7 @@ func (h *driftHandlers) listDriftEvents(w http.ResponseWriter, r *http.Request) 
 		items = append(items, ev)
 	}
 	if err := rows.Err(); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to iterate drift events"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to iterate drift events", nil)
 		return
 	}
 
@@ -120,13 +121,13 @@ func (h *driftHandlers) listDriftEvents(w http.ResponseWriter, r *http.Request) 
 func (h *driftHandlers) resolveDriftEvent(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	if decision, err := h.authz.Authorize(r.Context(), user, identity.ActionResolveDriftEvent, identity.Resource{}); err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid id", nil)
 		return
 	}
 
@@ -146,7 +147,7 @@ func (h *driftHandlers) resolveDriftEvent(w http.ResponseWriter, r *http.Request
 	).Scan(&resource, &resourceID, &description, &detectedAt)
 	if err != nil {
 		// pgx returns pgx.ErrNoRows when the WHERE matched nothing.
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "drift event not found"})
+		writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "drift event not found", nil)
 		return
 	}
 

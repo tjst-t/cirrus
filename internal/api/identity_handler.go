@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/tjst-t/cirrus/internal/apierror"
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/validate"
 )
@@ -22,7 +23,7 @@ func (h *identityHandlers) createOrganization(w http.ResponseWriter, r *http.Req
 	user := UserFromContext(r.Context())
 	decision, err := h.authz.Authorize(r.Context(), user, identity.ActionCreateOrganization, identity.Resource{})
 	if err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
@@ -30,21 +31,21 @@ func (h *identityHandlers) createOrganization(w http.ResponseWriter, r *http.Req
 		Name string `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid request body", nil)
 		return
 	}
 	if err := validate.Name(req.Name); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, err.Error(), nil)
 		return
 	}
 
 	org, err := h.svc.CreateOrganization(r.Context(), req.Name)
 	if err != nil {
 		if errors.Is(err, identity.ErrConflict) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "organization with this name already exists"})
+			writeErrorCode(w, http.StatusConflict, apierror.CodeConflict, "organization with this name already exists", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create organization"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to create organization", nil)
 		return
 	}
 
@@ -55,20 +56,20 @@ func (h *identityHandlers) listOrganizations(w http.ResponseWriter, r *http.Requ
 	user := UserFromContext(r.Context())
 	decision, err := h.authz.Authorize(r.Context(), user, identity.ActionListOrganizations, identity.Resource{})
 	if err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	cursor, limit, pErr := parsePaginationParams(r)
 	if pErr != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": pErr.Error()})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, pErr.Error(), nil)
 		return
 	}
 
 	afterAt, afterID := cursorValues(cursor)
 	orgs, err := h.svc.ListOrganizationsPage(r.Context(), afterAt, afterID, limit)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list organizations"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to list organizations", nil)
 		return
 	}
 	if orgs == nil {
@@ -86,24 +87,24 @@ func (h *identityHandlers) listOrganizations(w http.ResponseWriter, r *http.Requ
 func (h *identityHandlers) getOrganization(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "org_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid organization id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid organization id", nil)
 		return
 	}
 
 	user := UserFromContext(r.Context())
 	decision, authErr := h.authz.Authorize(r.Context(), user, identity.ActionGetOrganization, identity.Resource{OrganizationID: &id})
 	if authErr != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	org, err := h.svc.GetOrganization(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, identity.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "organization not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "organization not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get organization"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get organization", nil)
 		return
 	}
 
@@ -115,14 +116,14 @@ func (h *identityHandlers) getOrganization(w http.ResponseWriter, r *http.Reques
 func (h *identityHandlers) createTenant(w http.ResponseWriter, r *http.Request) {
 	orgID, err := uuid.Parse(chi.URLParam(r, "org_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid organization id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid organization id", nil)
 		return
 	}
 
 	user := UserFromContext(r.Context())
 	decision, authErr := h.authz.Authorize(r.Context(), user, identity.ActionCreateTenant, identity.Resource{OrganizationID: &orgID})
 	if authErr != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
@@ -130,21 +131,21 @@ func (h *identityHandlers) createTenant(w http.ResponseWriter, r *http.Request) 
 		Name string `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid request body", nil)
 		return
 	}
 	if err := validate.Name(req.Name); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, err.Error(), nil)
 		return
 	}
 
 	tenant, err := h.svc.CreateTenant(r.Context(), orgID, req.Name)
 	if err != nil {
 		if errors.Is(err, identity.ErrConflict) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "tenant with this name already exists"})
+			writeErrorCode(w, http.StatusConflict, apierror.CodeConflict, "tenant with this name already exists", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create tenant"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to create tenant", nil)
 		return
 	}
 
@@ -154,27 +155,27 @@ func (h *identityHandlers) createTenant(w http.ResponseWriter, r *http.Request) 
 func (h *identityHandlers) listTenants(w http.ResponseWriter, r *http.Request) {
 	orgID, err := uuid.Parse(chi.URLParam(r, "org_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid organization id: must be a valid UUID"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid organization id: must be a valid UUID", nil)
 		return
 	}
 
 	user := UserFromContext(r.Context())
 	decision, authErr := h.authz.Authorize(r.Context(), user, identity.ActionListTenants, identity.Resource{OrganizationID: &orgID})
 	if authErr != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	cursor, limit, pErr := parsePaginationParams(r)
 	if pErr != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": pErr.Error()})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, pErr.Error(), nil)
 		return
 	}
 
 	afterAt, afterID := cursorValues(cursor)
 	tenants, err := h.svc.ListTenantsPage(r.Context(), orgID, afterAt, afterID, limit)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list tenants"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to list tenants", nil)
 		return
 	}
 	if tenants == nil {
@@ -192,17 +193,17 @@ func (h *identityHandlers) listTenants(w http.ResponseWriter, r *http.Request) {
 func (h *identityHandlers) getTenant(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "tenant_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid tenant id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid tenant id", nil)
 		return
 	}
 
 	tenant, err := h.svc.GetTenant(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, identity.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "tenant not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "tenant not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get tenant"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get tenant", nil)
 		return
 	}
 
@@ -213,7 +214,7 @@ func (h *identityHandlers) getTenant(w http.ResponseWriter, r *http.Request) {
 	})
 	if authErr != nil || decision == identity.Deny {
 		// Return 404 to avoid leaking existence of tenant to unauthorized users
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "tenant not found"})
+		writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "tenant not found", nil)
 		return
 	}
 
@@ -225,7 +226,7 @@ func (h *identityHandlers) getTenant(w http.ResponseWriter, r *http.Request) {
 func (h *identityHandlers) createRoleAssignment(w http.ResponseWriter, r *http.Request) {
 	tenantID, err := uuid.Parse(chi.URLParam(r, "tenant_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid tenant id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid tenant id", nil)
 		return
 	}
 
@@ -233,10 +234,10 @@ func (h *identityHandlers) createRoleAssignment(w http.ResponseWriter, r *http.R
 	tenant, err := h.svc.GetTenant(r.Context(), tenantID)
 	if err != nil {
 		if errors.Is(err, identity.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "tenant not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "tenant not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get tenant"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get tenant", nil)
 		return
 	}
 
@@ -246,7 +247,7 @@ func (h *identityHandlers) createRoleAssignment(w http.ResponseWriter, r *http.R
 		TenantID:       &tenantID,
 	})
 	if authErr != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "tenant not found"})
+		writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "tenant not found", nil)
 		return
 	}
 
@@ -255,18 +256,18 @@ func (h *identityHandlers) createRoleAssignment(w http.ResponseWriter, r *http.R
 		Role   identity.Role `json:"role"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid request body", nil)
 		return
 	}
 
 	if !isValidRole(req.Role) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid role: must be one of infra_admin, org_admin, tenant_admin, tenant_member"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid role: must be one of infra_admin, org_admin, tenant_admin, tenant_member", nil)
 		return
 	}
 
 	ra, err := h.svc.AssignRole(r.Context(), req.UserID, identity.ScopeTenant, &tenantID, req.Role)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to assign role"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to assign role", nil)
 		return
 	}
 
@@ -276,17 +277,17 @@ func (h *identityHandlers) createRoleAssignment(w http.ResponseWriter, r *http.R
 func (h *identityHandlers) listRoleAssignments(w http.ResponseWriter, r *http.Request) {
 	tenantID, err := uuid.Parse(chi.URLParam(r, "tenant_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid tenant id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid tenant id", nil)
 		return
 	}
 
 	tenant, err := h.svc.GetTenant(r.Context(), tenantID)
 	if err != nil {
 		if errors.Is(err, identity.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "tenant not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "tenant not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get tenant"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get tenant", nil)
 		return
 	}
 
@@ -296,13 +297,13 @@ func (h *identityHandlers) listRoleAssignments(w http.ResponseWriter, r *http.Re
 		TenantID:       &tenantID,
 	})
 	if authErr != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "tenant not found"})
+		writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "tenant not found", nil)
 		return
 	}
 
 	assignments, err := h.svc.ListRoleAssignmentsByScope(r.Context(), identity.ScopeTenant, tenantID)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list role assignments"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to list role assignments", nil)
 		return
 	}
 	if assignments == nil {
@@ -315,23 +316,23 @@ func (h *identityHandlers) listRoleAssignments(w http.ResponseWriter, r *http.Re
 func (h *identityHandlers) deleteRoleAssignment(w http.ResponseWriter, r *http.Request) {
 	tenantID, err := uuid.Parse(chi.URLParam(r, "tenant_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid tenant id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid tenant id", nil)
 		return
 	}
 
 	assignmentID, err := uuid.Parse(chi.URLParam(r, "assignment_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid assignment id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid assignment id", nil)
 		return
 	}
 
 	tenant, err := h.svc.GetTenant(r.Context(), tenantID)
 	if err != nil {
 		if errors.Is(err, identity.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "tenant not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "tenant not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get tenant"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get tenant", nil)
 		return
 	}
 
@@ -341,16 +342,16 @@ func (h *identityHandlers) deleteRoleAssignment(w http.ResponseWriter, r *http.R
 		TenantID:       &tenantID,
 	})
 	if authErr != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "tenant not found"})
+		writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "tenant not found", nil)
 		return
 	}
 
 	if err := h.svc.DeleteRoleAssignment(r.Context(), assignmentID); err != nil {
 		if errors.Is(err, identity.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "role assignment not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "role assignment not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete role assignment"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to delete role assignment", nil)
 		return
 	}
 
@@ -365,7 +366,7 @@ func (h *identityHandlers) listMyTenants(w http.ResponseWriter, r *http.Request)
 
 	assignments, err := h.svc.ListRoleAssignments(r.Context(), user.ID)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list role assignments"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to list role assignments", nil)
 		return
 	}
 
@@ -385,13 +386,13 @@ func (h *identityHandlers) listMyTenants(w http.ResponseWriter, r *http.Request)
 			// infra_admin: return all tenants via org listing
 			orgs, listErr := h.svc.ListOrganizations(r.Context())
 			if listErr != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list organizations"})
+				writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to list organizations", nil)
 				return
 			}
 			for _, org := range orgs {
 				ts, listErr := h.svc.ListTenants(r.Context(), org.ID)
 				if listErr != nil {
-					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list tenants"})
+					writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to list tenants", nil)
 					return
 				}
 				for i := range ts {
@@ -405,7 +406,7 @@ func (h *identityHandlers) listMyTenants(w http.ResponseWriter, r *http.Request)
 			}
 			ts, listErr := h.svc.ListTenants(r.Context(), *ra.ScopeID)
 			if listErr != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list tenants"})
+				writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to list tenants", nil)
 				return
 			}
 			for i := range ts {

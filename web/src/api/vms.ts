@@ -10,7 +10,9 @@ export interface Vm {
   network_id?: string
   az_id?: string
   ip_address?: string
+  error_message?: string
   created_at: string
+  updated_at: string
 }
 
 export interface VmDetail extends Vm {

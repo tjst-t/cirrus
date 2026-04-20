@@ -118,14 +118,15 @@ function GroupsPanel({ networkId, onGroupsChanged }: { networkId: string; onGrou
   }
 
   const handleDelete = async (groupId: string) => {
+    setError(null)
     setDeleting(true)
     try {
       await networksApi.deleteGroup(networkId, groupId)
-      setDeleteGroupId(null)
       load()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'エラーが発生しました')
     } finally {
+      setDeleteGroupId(null)
       setDeleting(false)
     }
   }
@@ -147,7 +148,7 @@ function GroupsPanel({ networkId, onGroupsChanged }: { networkId: string; onGrou
           追加
         </button>
       </div>
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && <ErrorMessage message={error} onDismiss={() => setError(null)} />}
       {showCreate && (
         <form onSubmit={handleCreate} className="flex gap-2 items-center">
           <input
@@ -275,14 +276,15 @@ function PoliciesPanel({ networkId, groups }: { networkId: string; groups: Netwo
   }
 
   const handleDelete = async (policyId: string) => {
+    setError(null)
     setDeleting(true)
     try {
       await networksApi.deletePolicy(networkId, policyId)
-      setDeletePolicyId(null)
       load()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'エラーが発生しました')
     } finally {
+      setDeletePolicyId(null)
       setDeleting(false)
     }
   }
@@ -306,7 +308,7 @@ function PoliciesPanel({ networkId, groups }: { networkId: string; groups: Netwo
           追加
         </button>
       </div>
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && <ErrorMessage message={error} onDismiss={() => setError(null)} />}
 
       {showCreate && (
         <form
@@ -500,15 +502,16 @@ export function NetworksPage() {
   useEffect(() => { load() }, [load])
 
   const handleDelete = async (id: string) => {
+    setError(null)
     setDeleting(true)
     try {
       await networksApi.delete(id)
-      setDeleteId(null)
       setExpandedId(null)
       load()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'エラーが発生しました')
     } finally {
+      setDeleteId(null)
       setDeleting(false)
     }
   }
@@ -536,7 +539,7 @@ export function NetworksPage() {
         </Button>
       </div>
 
-      {error && <ErrorMessage message={error} />}
+      {error && <ErrorMessage message={error} onDismiss={() => setError(null)} />}
 
       {loading ? (
         <div className="flex items-center justify-center h-40 text-[var(--color-text-secondary)] text-sm">

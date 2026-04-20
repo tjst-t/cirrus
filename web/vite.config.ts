@@ -11,6 +11,7 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
+        '@errors': path.resolve(__dirname, '../internal/apierror/messages.json'),
       },
     },
     server: {

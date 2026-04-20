@@ -11,5 +11,9 @@ export interface AvailabilityZone {
 }
 
 export const azApi = {
-  list: () => api.get<AvailabilityZone[]>('/availability-zones'),
+  list: async (): Promise<AvailabilityZone[]> => {
+    const res = await api.get<AvailabilityZone[] | { items: AvailabilityZone[] }>('/availability-zones')
+    if (Array.isArray(res)) return res
+    return (res as { items: AvailabilityZone[] }).items ?? []
+  },
 }

@@ -148,7 +148,7 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		r.Delete("/admin/availability-zones/{az_id}/storage-domains/{storage_domain_id}", ah.removeStorageDomain)
 
 		// Network routes (tenant-scoped)
-		nh := &networkHandlers{svc: networkSvc, authz: authz, logger: logger}
+		nh := &networkHandlers{svc: networkSvc, authz: authz, logger: logger, debug: debug}
 		r.Post("/networks", nh.createNetwork)
 		r.Get("/networks", nh.listNetworks)
 		r.Route("/networks/{network_id}", func(r chi.Router) {
@@ -171,7 +171,7 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		r.Get("/ports/{port_id}", nh.getPort)
 
 		// Storage backends (infra_admin)
-		sh := &storageHandlers{svc: storageSvc, authz: authz}
+		sh := &storageHandlers{svc: storageSvc, authz: authz, debug: debug}
 		r.Post("/admin/storage-backends", sh.createStorageBackend)
 		r.Get("/admin/storage-backends", sh.listStorageBackends)
 		r.Get("/admin/storage-backends/{backend_id}", sh.getStorageBackend)
@@ -190,7 +190,7 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		r.Post("/volumes/{volume_id}/resize", sh.resizeVolume)
 
 		// Flavors (infra_admin: create/delete; all authenticated: list/get)
-		fh := &flavorHandlers{svc: flavorSvc, authz: authz}
+		fh := &flavorHandlers{svc: flavorSvc, authz: authz, debug: debug}
 		r.Post("/admin/flavors", fh.createFlavor)
 		r.Delete("/admin/flavors/{flavor_id}", fh.deleteFlavor)
 		r.Get("/flavors", fh.listFlavors)

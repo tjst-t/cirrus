@@ -321,7 +321,7 @@ func (s *Store) checkLimitsTx(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID
 		return fmt.Errorf("quota: check: tenant: %w", err)
 	}
 
-	if err := checkAgainst(e.vcpus, e.ramMB, e.volumeGB, e.vms, e.volumes, e.snapshots, e.networks, e.egresses, e.ingresses, tl); err != nil {
+	if err := checkAgainst(e.vcpus, e.ramMB, e.volumeGB, e.vms, e.volumes, e.snapshots, e.networks, e.egresses, e.ingresses, tl, delta); err != nil {
 		return err
 	}
 
@@ -350,13 +350,13 @@ func (s *Store) checkLimitsTx(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID
 	}
 
 	if ol.Vcpus > 0 && orgEff.vcpus > ol.Vcpus {
-		return fmt.Errorf("%w: org vcpus limit %d, effective %d", ErrQuotaExceeded, ol.Vcpus, orgEff.vcpus)
+		return &ViolationError{Resource: "vcpu", Limit: ol.Vcpus, Requested: delta.Vcpus, Current: orgEff.vcpus - delta.Vcpus}
 	}
 	if ol.RAMMB > 0 && orgEff.ramMB > ol.RAMMB {
-		return fmt.Errorf("%w: org ram_mb limit %d, effective %d", ErrQuotaExceeded, ol.RAMMB, orgEff.ramMB)
+		return &ViolationError{Resource: "memory_mb", Limit: ol.RAMMB, Requested: delta.RAMMB, Current: orgEff.ramMB - delta.RAMMB}
 	}
 	if ol.VolumeGB > 0 && orgEff.volumeGB > ol.VolumeGB {
-		return fmt.Errorf("%w: org volume_gb limit %d, effective %d", ErrQuotaExceeded, ol.VolumeGB, orgEff.volumeGB)
+		return &ViolationError{Resource: "volume_gb", Limit: ol.VolumeGB, Requested: delta.VolumeGB, Current: orgEff.volumeGB - delta.VolumeGB}
 	}
 
 	return nil
@@ -364,33 +364,34 @@ func (s *Store) checkLimitsTx(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID
 
 // checkAgainst compares effective usage against tenant limits.
 // A limit of 0 means unlimited.
-func checkAgainst(vcpus, ramMB, volumeGB, vms, volumes, snapshots, networks, egresses, ingresses int, l Limits) error {
+// delta is used to populate the Requested field on ViolationError.
+func checkAgainst(vcpus, ramMB, volumeGB, vms, volumes, snapshots, networks, egresses, ingresses int, l Limits, delta ResourceDelta) error {
 	if l.Vcpus > 0 && vcpus > l.Vcpus {
-		return fmt.Errorf("%w: vcpus limit %d, effective %d", ErrQuotaExceeded, l.Vcpus, vcpus)
+		return &ViolationError{Resource: "vcpu", Limit: l.Vcpus, Requested: delta.Vcpus, Current: vcpus - delta.Vcpus}
 	}
 	if l.RAMMB > 0 && ramMB > l.RAMMB {
-		return fmt.Errorf("%w: ram_mb limit %d, effective %d", ErrQuotaExceeded, l.RAMMB, ramMB)
+		return &ViolationError{Resource: "memory_mb", Limit: l.RAMMB, Requested: delta.RAMMB, Current: ramMB - delta.RAMMB}
 	}
 	if l.VolumeGB > 0 && volumeGB > l.VolumeGB {
-		return fmt.Errorf("%w: volume_gb limit %d, effective %d", ErrQuotaExceeded, l.VolumeGB, volumeGB)
+		return &ViolationError{Resource: "volume_gb", Limit: l.VolumeGB, Requested: delta.VolumeGB, Current: volumeGB - delta.VolumeGB}
 	}
 	if l.VMs > 0 && vms > l.VMs {
-		return fmt.Errorf("%w: vms limit %d, effective %d", ErrQuotaExceeded, l.VMs, vms)
+		return &ViolationError{Resource: "vm_count", Limit: l.VMs, Requested: delta.VMs, Current: vms - delta.VMs}
 	}
 	if l.Volumes > 0 && volumes > l.Volumes {
-		return fmt.Errorf("%w: volumes limit %d, effective %d", ErrQuotaExceeded, l.Volumes, volumes)
+		return &ViolationError{Resource: "volume_count", Limit: l.Volumes, Requested: delta.Volumes, Current: volumes - delta.Volumes}
 	}
 	if l.Snapshots > 0 && snapshots > l.Snapshots {
-		return fmt.Errorf("%w: snapshots limit %d, effective %d", ErrQuotaExceeded, l.Snapshots, snapshots)
+		return &ViolationError{Resource: "snapshot_count", Limit: l.Snapshots, Requested: delta.Snapshots, Current: snapshots - delta.Snapshots}
 	}
 	if l.Networks > 0 && networks > l.Networks {
-		return fmt.Errorf("%w: networks limit %d, effective %d", ErrQuotaExceeded, l.Networks, networks)
+		return &ViolationError{Resource: "network_count", Limit: l.Networks, Requested: delta.Networks, Current: networks - delta.Networks}
 	}
 	if l.Egresses > 0 && egresses > l.Egresses {
-		return fmt.Errorf("%w: egresses limit %d, effective %d", ErrQuotaExceeded, l.Egresses, egresses)
+		return &ViolationError{Resource: "egress_count", Limit: l.Egresses, Requested: delta.Egresses, Current: egresses - delta.Egresses}
 	}
 	if l.Ingresses > 0 && ingresses > l.Ingresses {
-		return fmt.Errorf("%w: ingresses limit %d, effective %d", ErrQuotaExceeded, l.Ingresses, ingresses)
+		return &ViolationError{Resource: "ingress_count", Limit: l.Ingresses, Requested: delta.Ingresses, Current: ingresses - delta.Ingresses}
 	}
 	return nil
 }

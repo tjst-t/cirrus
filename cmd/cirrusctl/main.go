@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -35,8 +36,10 @@ func main() {
 	app := &cli{}
 
 	rootCmd := &cobra.Command{
-		Use:   "cirrusctl",
-		Short: "CLI client for the Cirrus IaaS platform",
+		Use:          "cirrusctl",
+		Short:        "CLI client for the Cirrus IaaS platform",
+		SilenceErrors: true,
+		SilenceUsage:  true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			switch app.output {
 			case "table", "json":
@@ -68,6 +71,7 @@ func main() {
 	rootCmd.AddCommand(app.newLoadBalancerCmd())
 
 	if err := rootCmd.Execute(); err != nil {
+		app.printError(err)
 		os.Exit(1)
 	}
 }
@@ -1886,6 +1890,27 @@ func (app *cli) printStatus(action, resource, id string) error {
 	}
 	fmt.Printf("%s %s %s\n", action, resource, id)
 	return nil
+}
+
+func (app *cli) printError(err error) {
+	if app.output == "json" {
+		enc := json.NewEncoder(os.Stderr)
+		enc.SetIndent("", "  ")
+		var apiErr *client.APIError
+		if errors.As(err, &apiErr) {
+			_ = enc.Encode(map[string]any{
+				"error": map[string]any{
+					"code":    apiErr.Code,
+					"message": apiErr.Error(),
+					"detail":  apiErr.Detail,
+				},
+			})
+		} else {
+			_ = enc.Encode(map[string]string{"error": err.Error()})
+		}
+		return
+	}
+	fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 }
 
 // --- Admin: Storage Backend commands ---

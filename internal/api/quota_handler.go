@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/tjst-t/cirrus/internal/apierror"
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/quota"
 )
@@ -26,29 +27,29 @@ type quotaResponse struct {
 func (h *quotaHandlers) getTenantQuota(w http.ResponseWriter, r *http.Request) {
 	tenantID, err := uuid.Parse(chi.URLParam(r, "tenant_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid tenant_id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid tenant_id", nil)
 		return
 	}
 
 	user := UserFromContext(r.Context())
 	decision, err := h.authz.Authorize(r.Context(), user, identity.ActionGetQuota, identity.Resource{TenantID: &tenantID})
 	if err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	limits, err := h.svc.GetTenantLimits(r.Context(), tenantID)
 	if err != nil {
 		if errors.Is(err, quota.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "tenant not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "tenant not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get quota limits"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get quota limits", nil)
 		return
 	}
 	usage, err := h.svc.GetUsage(r.Context(), tenantID)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get quota usage"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get quota usage", nil)
 		return
 	}
 
@@ -59,31 +60,31 @@ func (h *quotaHandlers) getTenantQuota(w http.ResponseWriter, r *http.Request) {
 func (h *quotaHandlers) setTenantQuota(w http.ResponseWriter, r *http.Request) {
 	tenantID, err := uuid.Parse(chi.URLParam(r, "tenant_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid tenant_id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid tenant_id", nil)
 		return
 	}
 
 	user := UserFromContext(r.Context())
 	decision, err := h.authz.Authorize(r.Context(), user, identity.ActionSetQuota, identity.Resource{TenantID: &tenantID})
 	if err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	var req quota.Limits
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid request body", nil)
 		return
 	}
 
 	if err := h.svc.SetTenantLimits(r.Context(), tenantID, req); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to set quota limits"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to set quota limits", nil)
 		return
 	}
 
 	limits, err := h.svc.GetTenantLimits(r.Context(), tenantID)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get updated quota limits"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get updated quota limits", nil)
 		return
 	}
 
@@ -94,24 +95,24 @@ func (h *quotaHandlers) setTenantQuota(w http.ResponseWriter, r *http.Request) {
 func (h *quotaHandlers) getOrgQuota(w http.ResponseWriter, r *http.Request) {
 	orgID, err := uuid.Parse(chi.URLParam(r, "org_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid org_id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid org_id", nil)
 		return
 	}
 
 	user := UserFromContext(r.Context())
 	decision, err := h.authz.Authorize(r.Context(), user, identity.ActionGetQuota, identity.Resource{OrganizationID: &orgID})
 	if err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	limits, err := h.svc.GetOrgLimits(r.Context(), orgID)
 	if err != nil {
 		if errors.Is(err, quota.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "organization not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "organization not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get org quota limits"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get org quota limits", nil)
 		return
 	}
 
@@ -122,31 +123,31 @@ func (h *quotaHandlers) getOrgQuota(w http.ResponseWriter, r *http.Request) {
 func (h *quotaHandlers) setOrgQuota(w http.ResponseWriter, r *http.Request) {
 	orgID, err := uuid.Parse(chi.URLParam(r, "org_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid org_id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid org_id", nil)
 		return
 	}
 
 	user := UserFromContext(r.Context())
 	decision, err := h.authz.Authorize(r.Context(), user, identity.ActionSetQuota, identity.Resource{OrganizationID: &orgID})
 	if err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	var req quota.Limits
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid request body", nil)
 		return
 	}
 
 	if err := h.svc.SetOrgLimits(r.Context(), orgID, req); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to set org quota limits"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to set org quota limits", nil)
 		return
 	}
 
 	limits, err := h.svc.GetOrgLimits(r.Context(), orgID)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get updated org quota limits"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get updated org quota limits", nil)
 		return
 	}
 

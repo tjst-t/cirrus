@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/tjst-t/cirrus/internal/apierror"
 	"github.com/tjst-t/cirrus/internal/identity"
 	"github.com/tjst-t/cirrus/internal/network"
 )
@@ -20,31 +21,31 @@ func (h *ipPoolHandlers) createIPPool(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	decision, err := h.authz.Authorize(r.Context(), user, identity.ActionCreateIPPool, identity.Resource{})
 	if err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	var spec network.IPPoolSpec
 	if err := json.NewDecoder(r.Body).Decode(&spec); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid request body", nil)
 		return
 	}
 	if spec.Name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "name is required", nil)
 		return
 	}
 	if spec.CIDR == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cidr is required"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "cidr is required", nil)
 		return
 	}
 
 	pool, err := h.svc.CreateIPPool(r.Context(), spec)
 	if err != nil {
 		if errors.Is(err, network.ErrConflict) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "ip pool with that name already exists"})
+			writeErrorCode(w, http.StatusConflict, apierror.CodeConflict, "ip pool with that name already exists", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create ip pool"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to create ip pool", nil)
 		return
 	}
 
@@ -55,13 +56,13 @@ func (h *ipPoolHandlers) listIPPools(w http.ResponseWriter, r *http.Request) {
 	user := UserFromContext(r.Context())
 	decision, err := h.authz.Authorize(r.Context(), user, identity.ActionListIPPools, identity.Resource{})
 	if err != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	pools, err := h.svc.ListIPPools(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list ip pools"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to list ip pools", nil)
 		return
 	}
 	if pools == nil {
@@ -73,24 +74,24 @@ func (h *ipPoolHandlers) listIPPools(w http.ResponseWriter, r *http.Request) {
 func (h *ipPoolHandlers) getIPPool(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "pool_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid ip pool id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid ip pool id", nil)
 		return
 	}
 
 	user := UserFromContext(r.Context())
 	decision, authErr := h.authz.Authorize(r.Context(), user, identity.ActionGetIPPool, identity.Resource{})
 	if authErr != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	pool, err := h.svc.GetIPPool(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "ip pool not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "ip pool not found", nil)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get ip pool"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to get ip pool", nil)
 		return
 	}
 
@@ -100,27 +101,27 @@ func (h *ipPoolHandlers) getIPPool(w http.ResponseWriter, r *http.Request) {
 func (h *ipPoolHandlers) deleteIPPool(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "pool_id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid ip pool id"})
+		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid ip pool id", nil)
 		return
 	}
 
 	user := UserFromContext(r.Context())
 	decision, authErr := h.authz.Authorize(r.Context(), user, identity.ActionDeleteIPPool, identity.Resource{})
 	if authErr != nil || decision == identity.Deny {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		writeErrorCode(w, http.StatusForbidden, apierror.CodeForbidden, "forbidden", nil)
 		return
 	}
 
 	if err := h.svc.DeleteIPPool(r.Context(), id); err != nil {
 		if errors.Is(err, network.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "ip pool not found"})
+			writeErrorCode(w, http.StatusNotFound, apierror.CodeNotFound, "ip pool not found", nil)
 			return
 		}
 		if errors.Is(err, network.ErrConflict) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "ip pool is in use"})
+			writeInvalidStateError(w, "ip pool is in use", apierror.ReasonIPInUse)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete ip pool"})
+		writeErrorCode(w, http.StatusInternalServerError, apierror.CodeInternal, "failed to delete ip pool", nil)
 		return
 	}
 

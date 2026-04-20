@@ -30,45 +30,7 @@ func New(endpoint, token string) *Client {
 
 // do performs an HTTP request with authentication and returns the response.
 func (c *Client) do(ctx context.Context, method, path string, body any) (*http.Response, error) {
-	var reqBody io.Reader
-	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
-			return nil, fmt.Errorf("marshal request: %w", err)
-		}
-		reqBody = bytes.NewReader(b)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, c.endpoint+path, reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request %s %s: %w", method, path, err)
-	}
-
-	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
-		respBody, _ := io.ReadAll(resp.Body)
-		var apiErr struct {
-			Error string `json:"error"`
-		}
-		if json.Unmarshal(respBody, &apiErr) == nil && apiErr.Error != "" {
-			return nil, fmt.Errorf("API error (%d): %s", resp.StatusCode, apiErr.Error)
-		}
-		return nil, fmt.Errorf("API error (%d)", resp.StatusCode)
-	}
-
-	return resp, nil
+	return c.doWithHeaders(ctx, method, path, body, nil)
 }
 
 // doWithHeaders performs an HTTP request with additional headers.
@@ -104,13 +66,23 @@ func (c *Client) doWithHeaders(ctx context.Context, method, path string, body an
 
 	if resp.StatusCode >= 400 {
 		defer resp.Body.Close()
-		respBody, _ := io.ReadAll(resp.Body)
-		var apiErr struct {
-			Error string `json:"error"`
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+
+		var payload struct {
+			Code    string          `json:"code"`
+			Message string          `json:"message"`
+			Detail  json.RawMessage `json:"detail,omitempty"`
+			Error   string          `json:"error"` // 旧形式フォールバック
 		}
-		if json.Unmarshal(respBody, &apiErr) == nil && apiErr.Error != "" {
-			return nil, fmt.Errorf("API error (%d): %s", resp.StatusCode, apiErr.Error)
+		if json.Unmarshal(respBody, &payload) == nil {
+			if payload.Code != "" {
+				return nil, &APIError{Code: payload.Code, Message: payload.Message, Detail: payload.Detail}
+			}
+			if payload.Error != "" {
+				return nil, fmt.Errorf("API error (%d): %s", resp.StatusCode, payload.Error)
+			}
 		}
+
 		return nil, fmt.Errorf("API error (%d)", resp.StatusCode)
 	}
 

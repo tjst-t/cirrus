@@ -107,6 +107,9 @@ func (m *mockNetworkSvc) GetEgress(_ context.Context, _ uuid.UUID) (*network.Egr
 func (m *mockNetworkSvc) ListEgresses(_ context.Context, _ uuid.UUID) ([]network.Egress, error) {
 	return nil, nil
 }
+func (m *mockNetworkSvc) UpdateEgressConfig(_ context.Context, _ uuid.UUID, _ network.EgressConfig) (*network.Egress, error) {
+	return nil, network.ErrNotFound
+}
 func (m *mockNetworkSvc) DeleteEgress(_ context.Context, _ uuid.UUID) error { return nil }
 
 func (m *mockNetworkSvc) CreateIPPool(_ context.Context, _ network.IPPoolSpec) (*network.IPPool, error) {
@@ -128,6 +131,9 @@ func (m *mockNetworkSvc) GetIngress(_ context.Context, _ uuid.UUID) (*network.In
 }
 func (m *mockNetworkSvc) ListIngresses(_ context.Context, _ uuid.UUID) ([]network.Ingress, error) {
 	return nil, nil
+}
+func (m *mockNetworkSvc) UpdateIngressConfig(_ context.Context, _ uuid.UUID, _ network.IngressConfig) (*network.Ingress, error) {
+	return nil, network.ErrNotFound
 }
 func (m *mockNetworkSvc) DeleteIngress(_ context.Context, _ uuid.UUID) error { return nil }
 func (m *mockNetworkSvc) UpdateBackendHealth(_ context.Context, _, _ uuid.UUID, _ bool) error {
@@ -182,12 +188,12 @@ func TestNetwork_CreateNetwork_InvalidTenant(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("want 400, got %d: %s", w.Code, w.Body.String())
 	}
-	var resp map[string]string
+	var resp map[string]any
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if resp["error"] != "invalid tenant" {
-		t.Fatalf("want error %q, got %q", "invalid tenant", resp["error"])
+	if resp["message"] != "invalid tenant" {
+		t.Fatalf("want message %q, got %q", "invalid tenant", resp["message"])
 	}
 }
 

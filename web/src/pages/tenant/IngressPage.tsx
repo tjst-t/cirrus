@@ -129,7 +129,7 @@ function CreateIngressDialog({
               />
             </div>
           )}
-          {error && <ErrorMessage message={error} data-testid="ingress-error-message" />}
+          {error && <ErrorMessage message={error} onDismiss={() => setError(null)} data-testid="ingress-error-message" />}
           <div className="flex gap-2 justify-end pt-1">
             <Button type="button" variant="ghost" size="sm" onClick={onClose}>キャンセル</Button>
             <Button
@@ -292,14 +292,15 @@ export function IngressPage() {
 
   const handleDelete = async (id: string) => {
     if (!selectedNetwork) return
+    setError(null)
     setDeleting(true)
     try {
       await ingressApi.delete(selectedNetwork, id)
-      setDeleteId(null)
       load()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : '削除に失敗しました')
     } finally {
+      setDeleteId(null)
       setDeleting(false)
     }
   }
@@ -344,7 +345,7 @@ export function IngressPage() {
       </div>
 
       {/* Error */}
-      {error && <ErrorMessage message={error} data-testid="ingress-error-message" />}
+      {error && <ErrorMessage message={error} onDismiss={() => setError(null)} data-testid="ingress-error-message" />}
 
       {/* List */}
       {loading ? (
