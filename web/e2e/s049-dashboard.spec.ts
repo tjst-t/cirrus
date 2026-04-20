@@ -135,10 +135,10 @@ test.describe('S049-2: ダッシュボード', () => {
   })
 
   test('ダッシュボード: テナント未選択時に案内メッセージを表示する', async ({ page }) => {
-    // tenantId を localStorage にセットしない
+    // beforeEach の setupAuth が cirrus_tenant_id をセットするため、ここで明示的に削除する
     await page.addInitScript(() => {
       localStorage.setItem('cirrus_token', 'test-token')
-      // cirrus_tenant_id は設定しない
+      localStorage.removeItem('cirrus_tenant_id')
     })
 
     await page.goto('/')

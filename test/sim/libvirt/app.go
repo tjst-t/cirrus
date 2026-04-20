@@ -314,7 +314,9 @@ func (h *HostInstance) initHostDB(ctx context.Context) error {
 
 	h.store.SetDB(pool)
 
-	if err := h.store.LoadFromDB(ctx); err != nil {
+	// Load only this host's state to avoid port conflicts with other workers
+	// that share the same internal port number within their containers.
+	if err := h.store.LoadHostFromDB(ctx, h.hostID); err != nil {
 		return err
 	}
 

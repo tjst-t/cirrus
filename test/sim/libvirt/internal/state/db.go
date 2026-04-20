@@ -155,6 +155,89 @@ func (s *Store) LoadFromDB(ctx context.Context) error {
 	return nil
 }
 
+// LoadHostFromDB loads only the specified host and its domains from the database.
+// Used by HostInstance mode where each process manages exactly one host.
+// Unlike LoadFromDB, this does not register other hosts' ports and thus avoids
+// port-collision errors when multiple workers share the same internal port.
+func (s *Store) LoadHostFromDB(ctx context.Context, hostID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.db == nil {
+		return nil
+	}
+
+	var h Host
+	var st string
+	err := s.db.QueryRow(ctx, `
+		SELECT host_id, libvirt_port, cpu_model, cpu_sockets, cores_per_socket,
+		       threads_per_core, memory_mb, cpu_overcommit_ratio, mem_overcommit_ratio, state
+		FROM libvirt_sim_hosts WHERE host_id = $1`, hostID).Scan(
+		&h.HostID, &h.LibvirtPort, &h.CPUModel, &h.CPUSockets, &h.CoresPerSocket,
+		&h.ThreadsPerCore, &h.MemoryMB, &h.CPUOvercommitRatio, &h.MemOvercommitRatio, &st,
+	)
+	if err != nil {
+		// Host not in DB yet — that's fine on first start.
+		slog.Info("libvirt-sim: host not found in DB, starting fresh", "host_id", hostID)
+		return nil
+	}
+	h.State = HostState(st)
+	h.Domains = make(map[string]*Domain)
+	stored := h
+	s.hosts[h.HostID] = &stored
+	s.ports[h.LibvirtPort] = h.HostID
+
+	// Load domains for this host only.
+	rows, err := s.db.Query(ctx, `
+		SELECT uuid, host_id, name, domain_id, state, vcpus, memory_kib, xml,
+		       interface_ids, migration_state, migration_cookie, created_at, started_at
+		FROM libvirt_sim_domains WHERE host_id = $1`, hostID)
+	if err != nil {
+		return fmt.Errorf("load domains: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var d Domain
+		var uuidStr, hID string
+		var ifaceJSON []byte
+		var startedAt *time.Time
+		var domainState, migState int32
+
+		if err := rows.Scan(
+			&uuidStr, &hID, &d.Name, &d.ID, &domainState, &d.VCPUs, &d.MemoryKiB, &d.XML,
+			&ifaceJSON, &migState, &d.MigrationCookie, &d.CreatedAt, &startedAt,
+		); err != nil {
+			return fmt.Errorf("scan domain: %w", err)
+		}
+		d.State = DomainState(domainState)
+		d.MigrationState = MigrationState(migState)
+		if startedAt != nil {
+			d.StartedAt = *startedAt
+		}
+		if ifaceJSON != nil {
+			json.Unmarshal(ifaceJSON, &d.InterfaceIDs) //nolint:errcheck
+		}
+		if d.InterfaceIDs == nil {
+			d.InterfaceIDs = []string{}
+		}
+		d.UUID = parseUUIDBytes(uuidStr)
+		stored := d
+		s.hosts[hostID].Domains[uuidStr] = &stored
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("load domains rows: %w", err)
+	}
+
+	domainCount := len(s.hosts[hostID].Domains)
+	slog.Info("libvirt-sim: state loaded from DB",
+		"hosts", 1,
+		"domains", domainCount,
+		"host_id", hostID,
+	)
+	return nil
+}
+
 // parseUUIDBytes converts a UUID string "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" to [16]byte.
 func parseUUIDBytes(s string) [16]byte {
 	var b [16]byte

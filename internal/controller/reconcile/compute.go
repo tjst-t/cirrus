@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -27,14 +28,21 @@ type HeartbeatReconciler struct {
 	pool    *pgxpool.Pool
 	handler *DriftHandler
 	logger  *slog.Logger
+
+	// establishedHosts tracks hosts that have sent at least one heartbeat in
+	// this controller session. expected_missing is skipped on the first
+	// heartbeat to allow workers time to restore persisted domain state.
+	mu               sync.Mutex
+	establishedHosts map[string]bool
 }
 
 // NewHeartbeatReconciler creates a new HeartbeatReconciler.
 func NewHeartbeatReconciler(pool *pgxpool.Pool, handler *DriftHandler, logger *slog.Logger) *HeartbeatReconciler {
 	return &HeartbeatReconciler{
-		pool:    pool,
-		handler: handler,
-		logger:  logger.With("component", "heartbeat-reconciler"),
+		pool:             pool,
+		handler:          handler,
+		logger:           logger.With("component", "heartbeat-reconciler"),
+		establishedHosts: make(map[string]bool),
 	}
 }
 
@@ -53,6 +61,21 @@ func (r *HeartbeatReconciler) Reconcile(ctx context.Context, hostID string, vms 
 	if err != nil {
 		r.logger.Warn("heartbeat reconciler: invalid host_id", "host_id", hostID)
 		return
+	}
+
+	// Determine if this is the first heartbeat for this host in this session.
+	// On first heartbeat, skip expected_missing to allow workers to restore
+	// persisted domain state before the reconciler starts detecting gaps.
+	r.mu.Lock()
+	isFirstHeartbeat := !r.establishedHosts[hostID]
+	if isFirstHeartbeat {
+		r.establishedHosts[hostID] = true
+	}
+	r.mu.Unlock()
+
+	if isFirstHeartbeat {
+		r.logger.Info("heartbeat reconciler: first heartbeat from host, skipping expected_missing check",
+			"host_id", hostID, "vm_count", len(vms))
 	}
 
 	// Build index of VMs reported in heartbeat: vm_id → status.
@@ -77,20 +100,23 @@ func (r *HeartbeatReconciler) Reconcile(ctx context.Context, hostID string, vms 
 	}
 
 	// Case 1: DB有・heartbeat無 → expected_missing
-	for id, dbVM := range dbVMMap {
-		if _, inHeartbeat := heartbeatVMs[id]; !inHeartbeat {
-			r.handler.Handle(ctx, DriftEvent{
-				Layer:      DriftLayerCompute,
-				Type:       DriftTypeExpectedMissing,
-				Severity:   DriftSeverityCritical,
-				Resource:   "vm",
-				ResourceID: id,
-				TenantID:   dbVM.TenantID.String(),
-				HostID:     hostID,
-				Expected:   dbVM.Status,
-				Actual:     "absent",
-				DetectedBy: "heartbeat_reconciler",
-			})
+	// Skipped on first heartbeat to allow workers to re-establish state.
+	if !isFirstHeartbeat {
+		for id, dbVM := range dbVMMap {
+			if _, inHeartbeat := heartbeatVMs[id]; !inHeartbeat {
+				r.handler.Handle(ctx, DriftEvent{
+					Layer:      DriftLayerCompute,
+					Type:       DriftTypeExpectedMissing,
+					Severity:   DriftSeverityCritical,
+					Resource:   "vm",
+					ResourceID: id,
+					TenantID:   dbVM.TenantID.String(),
+					HostID:     hostID,
+					Expected:   dbVM.Status,
+					Actual:     "absent",
+					DetectedBy: "heartbeat_reconciler",
+				})
+			}
 		}
 	}
 

@@ -218,9 +218,14 @@ func (h *DriftHandler) healCompute(ctx context.Context, event DriftEvent) string
 	if !shouldHeal {
 		return DriftActionAlert
 	}
-	reason := event.Type
-	if event.Actual != "" {
-		reason += ": " + event.Actual
+	var reason string
+	switch {
+	case event.Type == DriftTypeExpectedMissing:
+		reason = "VMがホストから消失しました。ホストの状態を確認してください。"
+	case event.Type == DriftTypeStateMismatch && event.Actual == "crashed":
+		reason = "VMがクラッシュしました。"
+	default:
+		reason = "予期しない状態変化を検知しました。"
 	}
 	if err := h.vmHealer.HealVM(ctx, vmID, reason); err != nil {
 		h.logger.Warn("drift: VM auto-heal failed", "vm_id", vmID, "error", err)

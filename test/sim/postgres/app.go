@@ -106,6 +106,17 @@ func (s *Server) Start() {
 		logWriter = io.Discard
 	}
 
+	// Write a custom pg_hba.conf that allows connections from any host
+	// (necessary for worker docker containers connecting via the docker bridge IP).
+	hbaFile := filepath.Join(dataDir, "..", "pg_hba_cirrus.conf")
+	hbaContent := "# cirrus-sim: allow localhost and docker bridge connections\n" +
+		"local   all   all               trust\n" +
+		"host    all   all   0.0.0.0/0   password\n" +
+		"host    all   all   ::/0        password\n"
+	if mkErr := os.MkdirAll(filepath.Dir(hbaFile), 0755); mkErr == nil {
+		_ = os.WriteFile(hbaFile, []byte(hbaContent), 0600)
+	}
+
 	epConfig := embeddedpostgres.DefaultConfig().
 		Port(s.config.Port).
 		Database(s.config.Database).
@@ -113,7 +124,11 @@ func (s *Server) Start() {
 		Password(s.config.Password).
 		DataPath(dataDir).
 		StartTimeout(60 * time.Second).
-		Logger(logWriter)
+		Logger(logWriter).
+		StartParameters(map[string]string{
+			"listen_addresses": "*",
+			"hba_file":         hbaFile,
+		})
 
 	s.connURL = epConfig.GetConnectionURL()
 	s.db = embeddedpostgres.NewDatabase(epConfig)
