@@ -176,7 +176,8 @@ func (h *vmHandlers) getVM(w http.ResponseWriter, r *http.Request) {
 }
 
 type vmActionRequest struct {
-	Action string `json:"action"` // "start", "stop", "force-stop", "reboot"
+	Action       string  `json:"action"`                  // "start", "stop", "force-stop", "reboot", "migrate"
+	TargetHostID *string `json:"target_host_id,omitempty"` // optional: target host UUID for migrate
 }
 
 func (h *vmHandlers) vmAction(w http.ResponseWriter, r *http.Request) {
@@ -211,6 +212,8 @@ func (h *vmHandlers) vmAction(w http.ResponseWriter, r *http.Request) {
 		action = identity.ActionForceStopVM
 	case "reboot":
 		action = identity.ActionRebootVM
+	case "migrate":
+		action = identity.ActionMigrateVM
 	default:
 		writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "unknown action: "+req.Action, nil)
 		return
@@ -231,6 +234,17 @@ func (h *vmHandlers) vmAction(w http.ResponseWriter, r *http.Request) {
 		opErr = h.svc.ForceStopVM(r.Context(), tenantID, vmID)
 	case "reboot":
 		opErr = h.svc.RebootVM(r.Context(), tenantID, vmID)
+	case "migrate":
+		var targetHostID *uuid.UUID
+		if req.TargetHostID != nil {
+			parsed, err := uuid.Parse(*req.TargetHostID)
+			if err != nil {
+				writeErrorCode(w, http.StatusBadRequest, apierror.CodeBadRequest, "invalid target_host_id: must be a valid UUID", nil)
+				return
+			}
+			targetHostID = &parsed
+		}
+		opErr = h.svc.MigrateVM(r.Context(), tenantID, vmID, targetHostID)
 	}
 
 	if opErr != nil {
@@ -239,11 +253,15 @@ func (h *vmHandlers) vmAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(opErr, compute.ErrConflict) {
-			reason := apierror.ReasonVMNotRunning // stop/force-stop/reboot は running 必須
+			reason := apierror.ReasonVMNotRunning // stop/force-stop/reboot/migrate は running 必須
 			if req.Action == "start" {
 				reason = apierror.ReasonVMNotStopped // start は stopped 必須
 			}
 			writeInvalidStateError(w, "operation not allowed in current vm state", reason)
+			return
+		}
+		if req.Action == "migrate" && errors.Is(opErr, scheduler.ErrNoSuitableHost) {
+			writeErrorCode(w, http.StatusUnprocessableEntity, apierror.CodeNoHost, "no suitable host available", nil)
 			return
 		}
 		writeInternalError(w, opErr, h.debug)

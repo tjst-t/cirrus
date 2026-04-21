@@ -419,7 +419,7 @@ func runWorker(cfg *config.WorkerConfig) error {
 	// Worker gRPC server (WorkerService: called by controller to create/delete VMs)
 	if cfg.GRPCPort > 0 {
 		blockMgr := blockdev.New(logger)
-		workerSrv := agent.NewWorkerServer(driver, blockMgr, logger)
+		workerSrv := agent.NewWorkerServer(driver, blockMgr, logger, ag.HostID())
 		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
 		if err != nil {
 			return fmt.Errorf("worker: grpc listen: %w", err)

@@ -361,6 +361,140 @@ func (o *Orchestrator) RebootVM(ctx context.Context, tenantID, vmID uuid.UUID) e
 	return o.setVMStatus(ctx, vmID, VMStatusRunning, "")
 }
 
+// MigrateVM live-migrates a running VM to a new host.
+// If targetHostID is nil, the scheduler selects the destination.
+func (o *Orchestrator) MigrateVM(ctx context.Context, tenantID, vmID uuid.UUID, targetHostID *uuid.UUID) (retErr error) {
+	// 1. VM を取得・検証（running 状態のみ許可）
+	vm, err := o.getVM(ctx, tenantID, vmID)
+	if err != nil {
+		return err
+	}
+	if vm.IsTransitional() {
+		return ErrConflict
+	}
+	if vm.Status != VMStatusRunning {
+		return ErrConflict
+	}
+	if vm.HostID == nil {
+		return fmt.Errorf("compute: MigrateVM: VM has no assigned host")
+	}
+
+	// 2. ステータスを migrating に更新
+	if err := o.setVMStatus(ctx, vmID, VMStatusMigrating, ""); err != nil {
+		return fmt.Errorf("compute: MigrateVM: set status migrating: %w", err)
+	}
+	defer func() {
+		if retErr != nil {
+			// ロールバック: error ステータスに
+			_ = o.setVMStatus(context.Background(), vmID, VMStatusError, retErr.Error())
+		}
+	}()
+
+	// 3. 宛先ホストを決定
+	var destHostID uuid.UUID
+	if targetHostID != nil {
+		destHostID = *targetHostID
+	} else {
+		var flv *flavor.Flavor
+		if vm.FlavorID != nil {
+			flv, err = o.flavorSvc.Get(ctx, *vm.FlavorID)
+			if err != nil {
+				return fmt.Errorf("compute: MigrateVM: get flavor: %w", err)
+			}
+		}
+		// Use AZID from the VM record; falls back to uuid.Nil (any AZ) if not set.
+		var azID uuid.UUID
+		if vm.AZID != nil {
+			azID = *vm.AZID
+		}
+		result, err := o.scheduler.Reschedule(ctx, scheduler.RescheduleSpec{
+			ExcludeHostID: *vm.HostID,
+			AZID:          azID,
+			Flavor:        flv,
+		})
+		if err != nil {
+			return fmt.Errorf("compute: MigrateVM: reschedule: %w", err)
+		}
+		destHostID = result.HostID
+	}
+
+	// 4. 宛先ホストの WorkerClient を取得
+	destHost, err := o.getHostByID(ctx, destHostID)
+	if err != nil {
+		return fmt.Errorf("compute: MigrateVM: get dest host: %w", err)
+	}
+	if destHost.WorkerGRPCAddr == "" {
+		return fmt.Errorf("compute: MigrateVM: dest host has no worker_grpc_addr")
+	}
+	destWorker, err := o.workers.Get(destHost.WorkerGRPCAddr)
+	if err != nil {
+		return fmt.Errorf("compute: MigrateVM: get dest worker: %w", err)
+	}
+
+	// 5. 宛先ワーカーに PrepareMigration
+	srcWorker, vmName, err := o.resolveWorker(ctx, vm)
+	if err != nil {
+		return fmt.Errorf("compute: MigrateVM: resolve src worker: %w", err)
+	}
+
+	// 5a. VM に紐づくポートを取得（FallbackRoute に必要）
+	port, err := o.networkSvc.GetPortByVMID(ctx, vmID)
+	if err != nil {
+		return fmt.Errorf("compute: MigrateVM: get port for vm %s: %w", vmID, err)
+	}
+
+	if _, err := destWorker.PrepareMigration(ctx, &pb.PrepareMigrationRequest{
+		VmId:      vmID.String(),
+		VmName:    vmName,
+		SrcHostId: vm.HostID.String(),
+	}); err != nil {
+		return fmt.Errorf("compute: MigrateVM: PrepareMigration: %w", err)
+	}
+
+	// 5b. 移行元ホストに FallbackRoute を設定
+	// これにより src host がトラフィックを dest host にトンネル転送する
+	fallbackID, err := o.insertFallbackRoute(ctx, port.ID, *vm.HostID, destHostID)
+	if err != nil {
+		return fmt.Errorf("compute: MigrateVM: insert fallback route: %w", err)
+	}
+	// FallbackRoute は migration 完了後（またはエラー時）に必ず削除する
+	defer func() {
+		if delErr := o.deleteFallbackRoute(context.Background(), fallbackID); delErr != nil {
+			o.logger.Warn("MigrateVM: failed to delete fallback route", "fallback_id", fallbackID, "error", delErr)
+		}
+	}()
+
+	// 5c. ネットワーク controller が次の poll で FallbackRoute を配信するまで待機
+	// GRPCStateServer の pollInterval は 2 秒。3 秒待つことで少なくとも 1 poll 分の
+	// マージンを確保する（本番実装では確認 ACK に切り替える予定: S023-2 の TODO）
+	const migrationNetworkSettleTime = 3 * time.Second
+	time.Sleep(migrationNetworkSettleTime)
+
+	// 6. 移行元ワーカーに StartMigration
+	if _, err := srcWorker.StartMigration(ctx, &pb.StartMigrationRequest{
+		VmId:       vmID.String(),
+		VmName:     vmName,
+		DestHostId: destHostID.String(),
+	}); err != nil {
+		return fmt.Errorf("compute: MigrateVM: StartMigration: %w", err)
+	}
+
+	// 7. DB 更新: host_id を移行先に変更し、status を running に戻す
+	// この更新により全ホストの RemotePort が自動的に dest host を指すようになる
+	if err := o.setVMHost(ctx, vmID, destHostID); err != nil {
+		return fmt.Errorf("compute: MigrateVM: set vm host: %w", err)
+	}
+	if err := o.setVMStatus(ctx, vmID, VMStatusRunning, ""); err != nil {
+		return fmt.Errorf("compute: MigrateVM: set status running: %w", err)
+	}
+
+	// 8. FallbackRoute を削除（defer で実行）
+	// defer が実行されることで src host の fallback フローが次の poll で削除される
+
+	o.logger.Info("VM migration complete", "vm_id", vmID, "dest_host_id", destHostID)
+	return nil
+}
+
 // RepairVM transitions a VM from error to stopped (admin use only).
 func (o *Orchestrator) RepairVM(ctx context.Context, vmID uuid.UUID) error {
 	vm, err := o.getVMByID(ctx, vmID)

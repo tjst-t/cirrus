@@ -38,9 +38,21 @@ type ScheduleResult struct {
 	BackendID *uuid.UUID // nil when no storage is requested
 }
 
+// RescheduleSpec describes a rescheduling request for live migration.
+type RescheduleSpec struct {
+	// ExcludeHostID is the current host to exclude from candidate selection.
+	ExcludeHostID uuid.UUID
+	// AZID constrains placement to hosts in the given availability zone.
+	AZID uuid.UUID
+	// Flavor defines the required vCPUs and RAM.
+	Flavor *flavor.Flavor
+}
+
 // Scheduler selects optimal placement for a VM.
 type Scheduler interface {
 	Schedule(ctx context.Context, spec ScheduleSpec) (*ScheduleResult, error)
+	// Reschedule selects a migration destination host, excluding the current host.
+	Reschedule(ctx context.Context, spec RescheduleSpec) (*ScheduleResult, error)
 }
 
 // DefaultScheduler implements the Scheduler interface.
@@ -61,21 +73,9 @@ func New(hostSvc host.Service, storageSvc storage.Service, topologySvc topology.
 
 // Schedule picks the best (host, backend) pair for the given spec.
 func (s *DefaultScheduler) Schedule(ctx context.Context, spec ScheduleSpec) (*ScheduleResult, error) {
-	// 1. Get candidate hosts in the AZ via storage domain reachability.
-	storageDomainIDs, err := s.storageDomainIDsForAZ(ctx, spec.AZID)
+	hostIDSet, err := s.candidateHosts(ctx, spec.AZID)
 	if err != nil {
-		return nil, fmt.Errorf("scheduler: resolve storage domains for az: %w", err)
-	}
-
-	hostIDSet := make(map[uuid.UUID]struct{})
-	for _, sdID := range storageDomainIDs {
-		ids, err := s.topologySvc.ListReachableHosts(ctx, sdID)
-		if err != nil {
-			return nil, fmt.Errorf("scheduler: list reachable hosts: %w", err)
-		}
-		for _, id := range ids {
-			hostIDSet[id] = struct{}{}
-		}
+		return nil, fmt.Errorf("scheduler: %w", err)
 	}
 	// When no storage topology is configured and no persistent volume is required,
 	// fall back to all registered hosts (useful in dev/sim environments).
@@ -92,57 +92,15 @@ func (s *DefaultScheduler) Schedule(ctx context.Context, spec ScheduleSpec) (*Sc
 		return nil, ErrNoSuitableHost
 	}
 
-	// 2. Filter hosts by operational state and resource availability.
-	type hostScore struct {
-		id    uuid.UUID
-		score float64 // higher is better
+	best, err := s.selectHost(ctx, hostIDSet, spec.Flavor)
+	if err != nil {
+		return nil, err
 	}
-	var candidates []hostScore
+	result := &ScheduleResult{HostID: best}
 
-	for hostID := range hostIDSet {
-		h, err := s.hostSvc.GetHost(ctx, hostID)
-		if err != nil {
-			continue
-		}
-		if h.OperationalState != host.StateActive {
-			continue
-		}
-		// Check resource requirements when a flavor is specified.
-		if spec.Flavor != nil {
-			alloc, err := s.hostSvc.GetAllocatable(ctx, hostID)
-			if err != nil {
-				continue
-			}
-			// Skip resource check when physical resources are not yet reported
-			// (e.g. sim workers that haven't sent a resource report yet).
-			if alloc.PhysicalKnown && (alloc.Vcpus < float64(spec.Flavor.VCPUs) || alloc.MemoryMB < float64(spec.Flavor.RAMMB)) {
-				continue
-			}
-			// Score = normalized free resource fraction (vCPU fraction + RAM fraction) / 2
-			phys := parsePhysical(h.ResourcePhysical)
-			score := resourceScore(alloc.Vcpus, float64(phys.Vcpus), alloc.MemoryMB, float64(phys.MemoryMB))
-			candidates = append(candidates, hostScore{id: hostID, score: score})
-		} else {
-			candidates = append(candidates, hostScore{id: hostID, score: 0})
-		}
-	}
-
-	if len(candidates) == 0 {
-		return nil, ErrNoSuitableHost
-	}
-
-	// 3. Pick the highest-scoring host.
-	best := candidates[0]
-	for _, c := range candidates[1:] {
-		if c.score > best.score {
-			best = c
-		}
-	}
-	result := &ScheduleResult{HostID: best.id}
-
-	// 4. If storage is needed, find a suitable backend reachable from the chosen host.
+	// If storage is needed, find a suitable backend reachable from the chosen host.
 	if spec.VolumeTypeID != nil {
-		backends, err := s.storageSvc.ListBackendsReachableFromHost(ctx, best.id)
+		backends, err := s.storageSvc.ListBackendsReachableFromHost(ctx, best)
 		if err != nil {
 			return nil, fmt.Errorf("scheduler: list backends for host: %w", err)
 		}
@@ -171,6 +129,106 @@ func (s *DefaultScheduler) Schedule(ctx context.Context, spec ScheduleSpec) (*Sc
 	}
 
 	return result, nil
+}
+
+// Reschedule selects a migration destination host, excluding the current host.
+// It uses the same scoring logic as Schedule but filters out ExcludeHostID.
+func (s *DefaultScheduler) Reschedule(ctx context.Context, spec RescheduleSpec) (*ScheduleResult, error) {
+	hostIDSet, err := s.candidateHosts(ctx, spec.AZID)
+	if err != nil {
+		return nil, fmt.Errorf("scheduler: reschedule: %w", err)
+	}
+	// Fallback to all hosts when no storage topology is configured.
+	if len(hostIDSet) == 0 {
+		allHosts, err := s.hostSvc.ListHosts(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("scheduler: reschedule: fallback list hosts: %w", err)
+		}
+		for _, h := range allHosts {
+			hostIDSet[h.ID] = struct{}{}
+		}
+	}
+
+	// Exclude the current host.
+	delete(hostIDSet, spec.ExcludeHostID)
+
+	if len(hostIDSet) == 0 {
+		return nil, ErrNoSuitableHost
+	}
+
+	best, err := s.selectHost(ctx, hostIDSet, spec.Flavor)
+	if err != nil {
+		return nil, err
+	}
+	return &ScheduleResult{HostID: best}, nil
+}
+
+// candidateHosts returns the set of host IDs reachable via storage domains in the given AZ.
+func (s *DefaultScheduler) candidateHosts(ctx context.Context, azID uuid.UUID) (map[uuid.UUID]struct{}, error) {
+	storageDomainIDs, err := s.storageDomainIDsForAZ(ctx, azID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve storage domains for az: %w", err)
+	}
+	hostIDSet := make(map[uuid.UUID]struct{})
+	for _, sdID := range storageDomainIDs {
+		ids, err := s.topologySvc.ListReachableHosts(ctx, sdID)
+		if err != nil {
+			return nil, fmt.Errorf("list reachable hosts: %w", err)
+		}
+		for _, id := range ids {
+			hostIDSet[id] = struct{}{}
+		}
+	}
+	return hostIDSet, nil
+}
+
+// selectHost filters the candidate set by operational state and resource availability,
+// then returns the highest-scoring host ID.
+func (s *DefaultScheduler) selectHost(ctx context.Context, hostIDSet map[uuid.UUID]struct{}, flv *flavor.Flavor) (uuid.UUID, error) {
+	type hostScore struct {
+		id    uuid.UUID
+		score float64
+	}
+	var candidates []hostScore
+
+	for hostID := range hostIDSet {
+		h, err := s.hostSvc.GetHost(ctx, hostID)
+		if err != nil {
+			continue
+		}
+		if h.OperationalState != host.StateActive {
+			continue
+		}
+		if flv != nil {
+			alloc, err := s.hostSvc.GetAllocatable(ctx, hostID)
+			if err != nil {
+				continue
+			}
+			// Skip resource check when physical resources are not yet reported
+			// (e.g. sim workers that haven't sent a resource report yet).
+			if alloc.PhysicalKnown && (alloc.Vcpus < float64(flv.VCPUs) || alloc.MemoryMB < float64(flv.RAMMB)) {
+				continue
+			}
+			// Score = normalized free resource fraction (vCPU fraction + RAM fraction) / 2
+			phys := parsePhysical(h.ResourcePhysical)
+			score := resourceScore(alloc.Vcpus, float64(phys.Vcpus), alloc.MemoryMB, float64(phys.MemoryMB))
+			candidates = append(candidates, hostScore{id: hostID, score: score})
+		} else {
+			candidates = append(candidates, hostScore{id: hostID, score: 0})
+		}
+	}
+
+	if len(candidates) == 0 {
+		return uuid.Nil, ErrNoSuitableHost
+	}
+
+	best := candidates[0]
+	for _, c := range candidates[1:] {
+		if c.score > best.score {
+			best = c
+		}
+	}
+	return best.id, nil
 }
 
 // storageDomainIDsForAZ resolves storage domain IDs for an AZ by querying

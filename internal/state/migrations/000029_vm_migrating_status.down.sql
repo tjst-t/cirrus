@@ -1,0 +1,1 @@
+-- no-op: vms.status に CHECK 制約がないため、ロールバック DDL は不要。

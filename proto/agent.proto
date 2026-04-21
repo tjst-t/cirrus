@@ -23,6 +23,9 @@ service WorkerService {
   rpc ForceStopVM(ForceStopVMRequest) returns (ForceStopVMResponse);
   rpc RebootVM(RebootVMRequest) returns (RebootVMResponse);
   rpc GetVMState(GetVMStateRequest) returns (GetVMStateResponse);
+  // ライブマイグレーション
+  rpc PrepareMigration(PrepareMigrationRequest) returns (PrepareMigrationResponse);
+  rpc StartMigration(StartMigrationRequest) returns (StartMigrationResponse);
 }
 
 message RegisterHostRequest {
@@ -144,6 +147,24 @@ message GetVMStateRequest {
 message GetVMStateResponse {
   string state = 1; // "running", "shutoff", "paused", etc.
 }
+
+message PrepareMigrationRequest {
+  string vm_id = 1;       // UUID of the VM to migrate
+  string vm_name = 2;     // name used by libvirt (e.g. "vm-<short-id>")
+  string src_host_id = 3; // source host ID (for logging)
+}
+
+message PrepareMigrationResponse {
+  string dest_host_id = 1; // confirmed destination host ID
+}
+
+message StartMigrationRequest {
+  string vm_id = 1;
+  string vm_name = 2;
+  string dest_host_id = 3; // destination host ID to migrate to
+}
+
+message StartMigrationResponse {}
 
 // BackendHealthStatus reports the health of one backend VM in an l4_lb ingress.
 message BackendHealthStatus {

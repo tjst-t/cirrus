@@ -56,6 +56,16 @@ func (c *WorkerClient) RebootVM(ctx context.Context, req *pb.RebootVMRequest) (*
 	return c.client.RebootVM(ctx, req)
 }
 
+// PrepareMigration notifies the destination worker to prepare for a live migration.
+func (c *WorkerClient) PrepareMigration(ctx context.Context, req *pb.PrepareMigrationRequest) (*pb.PrepareMigrationResponse, error) {
+	return c.client.PrepareMigration(ctx, req)
+}
+
+// StartMigration instructs the source worker to live-migrate a VM to the destination host.
+func (c *WorkerClient) StartMigration(ctx context.Context, req *pb.StartMigrationRequest) (*pb.StartMigrationResponse, error) {
+	return c.client.StartMigration(ctx, req)
+}
+
 // Close closes the gRPC connection.
 func (c *WorkerClient) Close() error {
 	return c.conn.Close()

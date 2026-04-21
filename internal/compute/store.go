@@ -111,7 +111,7 @@ func (o *Orchestrator) setVMStatus(ctx context.Context, vmID uuid.UUID, status V
 func (o *Orchestrator) HealVM(ctx context.Context, vmID uuid.UUID, reason string) error {
 	_, err := o.pool.Exec(ctx,
 		`UPDATE vms SET status = $1, error_message = $2, updated_at = $3
-		 WHERE id = $4 AND status NOT IN ('pending', 'building', 'deleting', 'error')`,
+		 WHERE id = $4 AND status NOT IN ('pending', 'building', 'deleting', 'migrating', 'error')`,
 		VMStatusError, reason, time.Now(), vmID,
 	)
 	if err != nil {
@@ -204,6 +204,36 @@ func (o *Orchestrator) listVMVolumeIDs(ctx context.Context, vmID uuid.UUID) ([]u
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
+}
+
+// insertFallbackRoute creates a migration_fallback_routes record and returns its ID.
+// Called by MigrateVM before StartMigration to instruct the source host to forward
+// traffic for the migrating VM to the destination host via Geneve tunnel.
+func (o *Orchestrator) insertFallbackRoute(ctx context.Context, portID, srcHostID, destHostID uuid.UUID) (uuid.UUID, error) {
+	id := uuid.New()
+	_, err := o.pool.Exec(ctx,
+		`INSERT INTO migration_fallback_routes (id, port_id, src_host_id, dest_host_id)
+		 VALUES ($1, $2, $3, $4)`,
+		id, portID, srcHostID, destHostID,
+	)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("compute: insert fallback route: %w", err)
+	}
+	return id, nil
+}
+
+// deleteFallbackRoute removes a migration_fallback_routes record by ID.
+// Called by MigrateVM after migration completes (or on error) to remove the
+// fallback forwarding flow from the source host.
+func (o *Orchestrator) deleteFallbackRoute(ctx context.Context, id uuid.UUID) error {
+	_, err := o.pool.Exec(ctx,
+		`DELETE FROM migration_fallback_routes WHERE id = $1`,
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("compute: delete fallback route: %w", err)
+	}
+	return nil
 }
 
 // getVMByID looks up a VM by ID without tenant scoping (admin/internal use).

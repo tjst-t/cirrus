@@ -21,14 +21,16 @@ type WorkerServer struct {
 	driver   hypervisor.Driver
 	blockMgr blockdev.Manager
 	logger   *slog.Logger
+	hostID   string
 }
 
 // NewWorkerServer creates a new WorkerServer.
-func NewWorkerServer(driver hypervisor.Driver, blockMgr blockdev.Manager, logger *slog.Logger) *WorkerServer {
+func NewWorkerServer(driver hypervisor.Driver, blockMgr blockdev.Manager, logger *slog.Logger, hostID string) *WorkerServer {
 	return &WorkerServer{
 		driver:   driver,
 		blockMgr: blockMgr,
 		logger:   logger,
+		hostID:   hostID,
 	}
 }
 
@@ -154,6 +156,22 @@ func (s *WorkerServer) RebootVM(ctx context.Context, req *pb.RebootVMRequest) (*
 		return nil, fmt.Errorf("RebootVM: %w", err)
 	}
 	return &pb.RebootVMResponse{}, nil
+}
+
+// PrepareMigration notifies this worker that it will be the destination for a live migration.
+// Currently this is a lightweight confirmation; future revisions may perform resource pre-checks.
+func (s *WorkerServer) PrepareMigration(ctx context.Context, req *pb.PrepareMigrationRequest) (*pb.PrepareMigrationResponse, error) {
+	s.logger.Info("PrepareMigration called", "vm_id", req.VmId, "vm_name", req.VmName, "src_host_id", req.SrcHostId)
+	return &pb.PrepareMigrationResponse{DestHostId: s.hostID}, nil
+}
+
+// StartMigration live-migrates a VM from this worker to the destination host.
+func (s *WorkerServer) StartMigration(ctx context.Context, req *pb.StartMigrationRequest) (*pb.StartMigrationResponse, error) {
+	s.logger.Info("StartMigration called", "vm_id", req.VmId, "vm_name", req.VmName, "dest_host_id", req.DestHostId)
+	if err := s.driver.MigrateVM(ctx, req.VmName, req.DestHostId); err != nil {
+		return nil, fmt.Errorf("StartMigration: %w", err)
+	}
+	return &pb.StartMigrationResponse{}, nil
 }
 
 // GetVMState returns the current state of a VM.

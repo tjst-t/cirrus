@@ -99,6 +99,7 @@ const (
 	ActionStopVM      Action = "stop_vm"
 	ActionForceStopVM Action = "force_stop_vm"
 	ActionRebootVM    Action = "reboot_vm"
+	ActionMigrateVM   Action = "migrate_vm"
 	ActionRepairVM    Action = "repair_vm" // admin only
 
 	ActionGetQuota Action = "get_quota"
@@ -231,7 +232,7 @@ func (a *RBACAuthorizer) checkPermission(ra RoleAssignment, action Action, resou
 			ActionCreateVolume, ActionListVolumes, ActionGetVolume, ActionDeleteVolume, ActionResizeVolume,
 			ActionListFlavors, ActionGetFlavor,
 			ActionCreateVM, ActionListVMs, ActionGetVM, ActionDeleteVM,
-			ActionStartVM, ActionStopVM, ActionForceStopVM, ActionRebootVM,
+			ActionStartVM, ActionStopVM, ActionForceStopVM, ActionRebootVM, ActionMigrateVM,
 			ActionGetQuota:
 			return resource.TenantID != nil && *resource.TenantID == *ra.ScopeID
 		case ActionSetQuota:

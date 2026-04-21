@@ -2513,6 +2513,7 @@ func (app *cli) newVMCmd() *cobra.Command {
 	cmd.AddCommand(app.newVMStopCmd())
 	cmd.AddCommand(app.newVMForceStopCmd())
 	cmd.AddCommand(app.newVMRebootCmd())
+	cmd.AddCommand(app.newVMMigrateCmd())
 	return cmd
 }
 
@@ -2701,6 +2702,45 @@ func (app *cli) newVMForceStopCmd() *cobra.Command {
 
 func (app *cli) newVMRebootCmd() *cobra.Command {
 	return newVMActionCmdHelper("reboot", "Reboot a running virtual machine", "reboot")(app)
+}
+
+func (app *cli) newVMMigrateCmd() *cobra.Command {
+	var tenant, org, targetHost string
+	cmd := &cobra.Command{
+		Use:   "migrate <vm>",
+		Short: "Live-migrate a running virtual machine to another host",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := app.cmdContext()
+			c := app.newClient()
+			tenantID, err := app.resolveTenant(ctx, c, tenant, org)
+			if err != nil {
+				return err
+			}
+			vm, err := c.ResolveVM(ctx, tenantID, args[0])
+			if err != nil {
+				return err
+			}
+			var targetHostID *uuid.UUID
+			if targetHost != "" {
+				hostID, err := c.ResolveHost(ctx, targetHost)
+				if err != nil {
+					return fmt.Errorf("resolve target host: %w", err)
+				}
+				targetHostID = &hostID
+			}
+			if err := c.VMMigrateAction(ctx, tenantID, vm.ID, targetHostID); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "VM %s migration initiated\n", vm.Name)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&tenant, "tenant", "", "Tenant name or ID (required)")
+	cmd.Flags().StringVar(&org, "org", "", "Organization name or ID")
+	cmd.Flags().StringVar(&targetHost, "target-host", "", "Target host UUID or name (optional, auto-selected if not specified)")
+	_ = cmd.MarkFlagRequired("tenant")
+	return cmd
 }
 
 // --- Quota ---

@@ -136,6 +136,12 @@ func (sc *StateController) ComputeHostNetworkState(ctx context.Context, hostID u
 		}
 	}
 
+	// Fallback routes: active migration routes for this host as source
+	fallbackRoutes, err := sc.getFallbackRoutes(ctx, hostID)
+	if err != nil {
+		return nil, fmt.Errorf("compute state: fallback routes: %w", err)
+	}
+
 	return &pb.HostNetworkState{
 		Ports:           localPorts,
 		Policies:        policies,
@@ -145,6 +151,7 @@ func (sc *StateController) ComputeHostNetworkState(ctx context.Context, hostID u
 		IngressRules:    ingressRules,
 		GatewayInfo:     gatewayInfo,
 		InternalLbRules: internalLBRules,
+		FallbackRoutes:  fallbackRoutes,
 	}, nil
 }
 
@@ -656,6 +663,41 @@ func (sc *StateController) computeInternalLBRules(ctx context.Context, networkID
 		})
 	}
 	return rules, nil
+}
+
+// getFallbackRoutes returns FallbackRoute entries for the given source host.
+// These are created by MigrateVM during live migration and deleted when migration completes.
+func (sc *StateController) getFallbackRoutes(ctx context.Context, srcHostID uuid.UUID) ([]*pb.FallbackRoute, error) {
+	rows, err := sc.pool.Query(ctx, `
+		SELECT fr.port_id, host(h.fabric_ip), n.vni
+		FROM migration_fallback_routes fr
+		JOIN hosts h ON h.id = fr.dest_host_id
+		JOIN ports p ON p.id = fr.port_id
+		JOIN networks n ON n.id = p.network_id
+		WHERE fr.src_host_id = $1
+	`, srcHostID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var routes []*pb.FallbackRoute
+	for rows.Next() {
+		var portID uuid.UUID
+		var destHostIP string
+		var vni int32
+
+		if err := rows.Scan(&portID, &destHostIP, &vni); err != nil {
+			return nil, err
+		}
+
+		routes = append(routes, &pb.FallbackRoute{
+			PortId:     portID.String(),
+			DestHostIp: destHostIP,
+			DestVni:    uint32(vni),
+		})
+	}
+	return routes, rows.Err()
 }
 
 // decryptSecret decodes a base64-encoded ciphertext and decrypts it with AES-GCM.

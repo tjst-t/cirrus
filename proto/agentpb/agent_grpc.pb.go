@@ -201,13 +201,15 @@ var ControllerService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	WorkerService_CreateVM_FullMethodName    = "/cirrus.agent.v1.WorkerService/CreateVM"
-	WorkerService_DeleteVM_FullMethodName    = "/cirrus.agent.v1.WorkerService/DeleteVM"
-	WorkerService_StartVM_FullMethodName     = "/cirrus.agent.v1.WorkerService/StartVM"
-	WorkerService_StopVM_FullMethodName      = "/cirrus.agent.v1.WorkerService/StopVM"
-	WorkerService_ForceStopVM_FullMethodName = "/cirrus.agent.v1.WorkerService/ForceStopVM"
-	WorkerService_RebootVM_FullMethodName    = "/cirrus.agent.v1.WorkerService/RebootVM"
-	WorkerService_GetVMState_FullMethodName  = "/cirrus.agent.v1.WorkerService/GetVMState"
+	WorkerService_CreateVM_FullMethodName         = "/cirrus.agent.v1.WorkerService/CreateVM"
+	WorkerService_DeleteVM_FullMethodName         = "/cirrus.agent.v1.WorkerService/DeleteVM"
+	WorkerService_StartVM_FullMethodName          = "/cirrus.agent.v1.WorkerService/StartVM"
+	WorkerService_StopVM_FullMethodName           = "/cirrus.agent.v1.WorkerService/StopVM"
+	WorkerService_ForceStopVM_FullMethodName      = "/cirrus.agent.v1.WorkerService/ForceStopVM"
+	WorkerService_RebootVM_FullMethodName         = "/cirrus.agent.v1.WorkerService/RebootVM"
+	WorkerService_GetVMState_FullMethodName       = "/cirrus.agent.v1.WorkerService/GetVMState"
+	WorkerService_PrepareMigration_FullMethodName = "/cirrus.agent.v1.WorkerService/PrepareMigration"
+	WorkerService_StartMigration_FullMethodName   = "/cirrus.agent.v1.WorkerService/StartMigration"
 )
 
 // WorkerServiceClient is the client API for WorkerService service.
@@ -223,6 +225,9 @@ type WorkerServiceClient interface {
 	ForceStopVM(ctx context.Context, in *ForceStopVMRequest, opts ...grpc.CallOption) (*ForceStopVMResponse, error)
 	RebootVM(ctx context.Context, in *RebootVMRequest, opts ...grpc.CallOption) (*RebootVMResponse, error)
 	GetVMState(ctx context.Context, in *GetVMStateRequest, opts ...grpc.CallOption) (*GetVMStateResponse, error)
+	// ライブマイグレーション
+	PrepareMigration(ctx context.Context, in *PrepareMigrationRequest, opts ...grpc.CallOption) (*PrepareMigrationResponse, error)
+	StartMigration(ctx context.Context, in *StartMigrationRequest, opts ...grpc.CallOption) (*StartMigrationResponse, error)
 }
 
 type workerServiceClient struct {
@@ -303,6 +308,26 @@ func (c *workerServiceClient) GetVMState(ctx context.Context, in *GetVMStateRequ
 	return out, nil
 }
 
+func (c *workerServiceClient) PrepareMigration(ctx context.Context, in *PrepareMigrationRequest, opts ...grpc.CallOption) (*PrepareMigrationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PrepareMigrationResponse)
+	err := c.cc.Invoke(ctx, WorkerService_PrepareMigration_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workerServiceClient) StartMigration(ctx context.Context, in *StartMigrationRequest, opts ...grpc.CallOption) (*StartMigrationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StartMigrationResponse)
+	err := c.cc.Invoke(ctx, WorkerService_StartMigration_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // WorkerServiceServer is the server API for WorkerService service.
 // All implementations must embed UnimplementedWorkerServiceServer
 // for forward compatibility.
@@ -316,6 +341,9 @@ type WorkerServiceServer interface {
 	ForceStopVM(context.Context, *ForceStopVMRequest) (*ForceStopVMResponse, error)
 	RebootVM(context.Context, *RebootVMRequest) (*RebootVMResponse, error)
 	GetVMState(context.Context, *GetVMStateRequest) (*GetVMStateResponse, error)
+	// ライブマイグレーション
+	PrepareMigration(context.Context, *PrepareMigrationRequest) (*PrepareMigrationResponse, error)
+	StartMigration(context.Context, *StartMigrationRequest) (*StartMigrationResponse, error)
 	mustEmbedUnimplementedWorkerServiceServer()
 }
 
@@ -346,6 +374,12 @@ func (UnimplementedWorkerServiceServer) RebootVM(context.Context, *RebootVMReque
 }
 func (UnimplementedWorkerServiceServer) GetVMState(context.Context, *GetVMStateRequest) (*GetVMStateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetVMState not implemented")
+}
+func (UnimplementedWorkerServiceServer) PrepareMigration(context.Context, *PrepareMigrationRequest) (*PrepareMigrationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PrepareMigration not implemented")
+}
+func (UnimplementedWorkerServiceServer) StartMigration(context.Context, *StartMigrationRequest) (*StartMigrationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method StartMigration not implemented")
 }
 func (UnimplementedWorkerServiceServer) mustEmbedUnimplementedWorkerServiceServer() {}
 func (UnimplementedWorkerServiceServer) testEmbeddedByValue()                       {}
@@ -494,6 +528,42 @@ func _WorkerService_GetVMState_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WorkerService_PrepareMigration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PrepareMigrationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerServiceServer).PrepareMigration(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkerService_PrepareMigration_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerServiceServer).PrepareMigration(ctx, req.(*PrepareMigrationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkerService_StartMigration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StartMigrationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerServiceServer).StartMigration(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkerService_StartMigration_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerServiceServer).StartMigration(ctx, req.(*StartMigrationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // WorkerService_ServiceDesc is the grpc.ServiceDesc for WorkerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -528,6 +598,14 @@ var WorkerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetVMState",
 			Handler:    _WorkerService_GetVMState_Handler,
+		},
+		{
+			MethodName: "PrepareMigration",
+			Handler:    _WorkerService_PrepareMigration_Handler,
+		},
+		{
+			MethodName: "StartMigration",
+			Handler:    _WorkerService_StartMigration_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

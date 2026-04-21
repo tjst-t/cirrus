@@ -82,8 +82,8 @@ func (p *Pipeline) Apply(state *pb.HostNetworkState) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// 1. Ensure tunnel ports exist for all remote hosts
-	if err := p.ensureTunnelPorts(state.RemotePorts); err != nil {
+	// 1. Ensure tunnel ports exist for all remote hosts and fallback route destinations
+	if err := p.ensureTunnelPorts(state.RemotePorts, state.FallbackRoutes); err != nil {
 		return fmt.Errorf("pipeline: ensure tunnels: %w", err)
 	}
 
@@ -95,11 +95,12 @@ func (p *Pipeline) Apply(state *pb.HostNetworkState) error {
 
 	// 3. Generate desired flows
 	ctx := &FlowContext{
-		LocalPorts:   localPorts,
-		RemotePorts:  state.RemotePorts,
-		Policies:     state.Policies,
-		TunnelOfPort: p.tunnelOfPort,
-		GatewayMAC:   DefaultGatewayMAC,
+		LocalPorts:     localPorts,
+		RemotePorts:    state.RemotePorts,
+		Policies:       state.Policies,
+		TunnelOfPort:   p.tunnelOfPort,
+		GatewayMAC:     DefaultGatewayMAC,
+		FallbackRoutes: state.FallbackRoutes,
 	}
 	desired := GenerateFlows(ctx)
 
@@ -151,6 +152,7 @@ func (p *Pipeline) Apply(state *pb.HostNetworkState) error {
 		"egress_rules", len(state.EgressRules),
 		"ingress_rules", len(state.IngressRules),
 		"internal_lb_rules", len(state.InternalLbRules),
+		"fallback_routes", len(state.FallbackRoutes),
 	)
 
 	return nil
@@ -468,11 +470,18 @@ func (p *Pipeline) resolveLocalPorts(ports []*pb.PortState) ([]PortInfo, error) 
 }
 
 // ensureTunnelPorts creates/removes Geneve tunnel ports as needed.
-func (p *Pipeline) ensureTunnelPorts(remotePorts []*pb.RemotePort) error {
-	// Collect unique remote host IPs
+// It considers both remote VM ports and fallback route destinations so that
+// tunnel ports for migration targets are cleaned up when no longer required.
+func (p *Pipeline) ensureTunnelPorts(remotePorts []*pb.RemotePort, fallbackRoutes []*pb.FallbackRoute) error {
+	// Collect unique remote host IPs from both remote VM ports and fallback routes.
 	neededHosts := make(map[string]bool)
 	for _, rp := range remotePorts {
 		neededHosts[rp.HostIp] = true
+	}
+	for _, fr := range fallbackRoutes {
+		if fr.DestHostIp != "" {
+			neededHosts[fr.DestHostIp] = true
+		}
 	}
 
 	// Remove tunnels to hosts no longer needed

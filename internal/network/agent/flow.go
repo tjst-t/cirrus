@@ -22,6 +22,11 @@ const (
 	TableEgress              = 7
 )
 
+// PriorityFallbackOverride is the flow priority used for FallbackRoute flows in
+// TableDstHostResolution. It must exceed the normal local (100) and remote (100)
+// flow priorities so that migrating-VM traffic is redirected to the destination host.
+const PriorityFallbackOverride = 200
+
 // PortInfo holds per-port metadata needed for flow generation.
 type PortInfo struct {
 	PortID    string
@@ -50,6 +55,9 @@ type FlowContext struct {
 
 	// Gateway MAC used for ARP replies (constant per bridge)
 	GatewayMAC string
+
+	// FallbackRoutes for live migration (installed on source host only)
+	FallbackRoutes []*pb.FallbackRoute
 }
 
 // GenerateFlows produces all OpenFlow flow entries for the given context.
@@ -74,6 +82,11 @@ func GenerateFlows(ctx *FlowContext) []FlowEntry {
 	flows = append(flows, generateTunnelInputFlows(ctx.TunnelOfPort)...)
 	flows = append(flows, generateEncapOutputFlows()...)
 	flows = append(flows, generateLocalOutputFlows()...)
+
+	// FallbackRoute flows: override local delivery for migrating VMs → tunnel to dest host
+	if len(ctx.FallbackRoutes) > 0 {
+		flows = append(flows, generateFallbackRouteFlows(ctx.FallbackRoutes, ctx.TunnelOfPort, ctx.LocalPorts)...)
+	}
 
 	// Default route: traffic to unknown destinations (external IPs) goes to
 	// TableEgress for SNAT. On gateway hosts this triggers the SNAT flow;
@@ -297,6 +310,47 @@ func generateDstHostRemoteFlows(rp *pb.RemotePort, tunnelOfPort int) []FlowEntry
 			),
 		},
 	}
+}
+
+// --- FallbackRoute flows (installed on source host during live migration) ---
+
+// generateFallbackRouteFlows generates flows that forward traffic for migrating VMs
+// from source host to destination host via Geneve tunnel.
+// These flows are installed on the SOURCE host during live migration to ensure
+// zero-packet-loss while memory pages are transferred.
+//
+// The flows are inserted at priority 200 in TableDstHostResolution (table 4),
+// overriding the normal local-output flow (priority 100) for the migrating VM's IP.
+// Traffic is re-directed to the destination host via Geneve with the correct VNI.
+func generateFallbackRouteFlows(routes []*pb.FallbackRoute, tunnelOfPort int, localPorts []PortInfo) []FlowEntry {
+	if tunnelOfPort == 0 {
+		return nil
+	}
+
+	// Build IP lookup from port ID to localPort info
+	portIPMap := make(map[string]string, len(localPorts))
+	for _, p := range localPorts {
+		portIPMap[p.PortID] = p.IP
+	}
+
+	var flows []FlowEntry
+	for _, r := range routes {
+		ip := portIPMap[r.PortId]
+		if ip == "" {
+			// Port IP not found in local ports — skip (port may have already moved)
+			continue
+		}
+		flows = append(flows, FlowEntry{
+			Table:    TableDstHostResolution,
+			Priority: PriorityFallbackOverride,
+			Match:    fmt.Sprintf("ip,nw_dst=%s", ip),
+			Actions: fmt.Sprintf(
+				"load:%d->NXM_NX_REG2[],set_field:%s->tun_dst,set_field:%d->tun_id,resubmit(,%d)",
+				tunnelOfPort, r.DestHostIp, r.DestVni, TableGeneveEncap,
+			),
+		})
+	}
+	return flows
 }
 
 // --- Table 5: Geneve Encapsulation ---

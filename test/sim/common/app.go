@@ -21,14 +21,19 @@ type Server struct {
 	logger     *slog.Logger
 }
 
-// New creates a new common Server.
+// New creates a new common Server with its own fault engine.
 func New(port string, logger *slog.Logger) *Server {
+	return NewWithFaultEngine(port, fault.New(), logger)
+}
+
+// NewWithFaultEngine creates a new common Server using the provided fault engine.
+// Use this to share a fault engine between multiple simulators.
+func NewWithFaultEngine(port string, fe *fault.Engine, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
 	el := eventlog.New()
-	fe := fault.New()
 	gen := datagen.New()
 	snapMgr := snapshot.NewManager()
 

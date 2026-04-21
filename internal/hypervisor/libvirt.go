@@ -331,6 +331,40 @@ func (d *LibvirtDriver) UndefineVM(ctx context.Context, name string) error {
 	return nil
 }
 
+// MigrateVM live-migrates a running VM to the destination host.
+func (d *LibvirtDriver) MigrateVM(ctx context.Context, vmName string, destHostID string) error {
+	if d.hostID == "" {
+		return fmt.Errorf("libvirt: MigrateVM: hostID not set")
+	}
+	domUUID, err := d.lookupDomainUUID(ctx, vmName)
+	if err != nil {
+		return fmt.Errorf("libvirt: MigrateVM: %w", err)
+	}
+
+	body, err := json.Marshal(map[string]string{"dest_host_id": destHostID})
+	if err != nil {
+		return fmt.Errorf("libvirt: MigrateVM: marshal: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/sim/hosts/%s/domains/%s/migrate", d.baseURL, d.hostID, domUUID)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("libvirt: MigrateVM: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := d.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("libvirt: MigrateVM: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("libvirt: MigrateVM: HTTP %d: %s", resp.StatusCode, b)
+	}
+	return nil
+}
+
 // lookupDomainUUID fetches the domain list for this host and returns the UUID
 // matching the given name. Returns an error if not found.
 func (d *LibvirtDriver) lookupDomainUUID(ctx context.Context, name string) (string, error) {

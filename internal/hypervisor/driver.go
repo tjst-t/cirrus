@@ -100,4 +100,7 @@ type Driver interface {
 
 	// UndefineVM removes a VM definition (must be shutoff first).
 	UndefineVM(ctx context.Context, name string) error
+
+	// MigrateVM live-migrates a running VM to the destination host.
+	MigrateVM(ctx context.Context, vmName string, destHostID string) error
 }

@@ -55,4 +55,8 @@ type Service interface {
 
 	// RepairVM transitions a VM from error to stopped (admin only).
 	RepairVM(ctx context.Context, vmID uuid.UUID) error
+
+	// MigrateVM live-migrates a running VM to a new host.
+	// If targetHostID is nil, the scheduler selects the destination.
+	MigrateVM(ctx context.Context, tenantID, vmID uuid.UUID, targetHostID *uuid.UUID) error
 }

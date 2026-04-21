@@ -69,6 +69,12 @@ func NewWithDB(port, dsn string, logger *slog.Logger) *Server {
 	}
 }
 
+// SetFaultEngine sets the fault injection engine on the RPC server.
+// Must be called before Start.
+func (s *Server) SetFaultEngine(e *fault.Engine) {
+	s.rpcServer.SetFaultEngine(e)
+}
+
 // SeedHost registers a host and starts its RPC listener.
 // If the host already exists (e.g. restored from DB), it is silently skipped.
 func (s *Server) SeedHost(ctx context.Context, cfg HostConfig) error {

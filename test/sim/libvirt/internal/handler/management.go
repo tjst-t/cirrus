@@ -4,6 +4,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -70,6 +71,7 @@ func (m *Management) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /sim/hosts/{host_id}/domains/{uuid}/start", m.handleStartDomain)
 	mux.HandleFunc("POST /sim/hosts/{host_id}/domains/{uuid}/stop", m.handleStopDomain)
 	mux.HandleFunc("POST /sim/hosts/{host_id}/domains/{uuid}/destroy", m.handleDestroyDomain)
+	mux.HandleFunc("POST /sim/hosts/{host_id}/domains/{uuid}/migrate", m.handleMigrateDomain)
 }
 
 // CreateHostRequest is the request body for POST /sim/hosts.
@@ -405,6 +407,73 @@ func (m *Management) handleDestroyDomain(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// MigrateDomainRequest is the request body for POST /sim/hosts/{host_id}/domains/{uuid}/migrate.
+type MigrateDomainRequest struct {
+	DestHostID string `json:"dest_host_id"`
+}
+
+func (m *Management) handleMigrateDomain(w http.ResponseWriter, r *http.Request) {
+	srcHostID := m.resolveHostID(r.PathValue("host_id"))
+	domUUID := r.PathValue("uuid")
+
+	var req MigrateDomainRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		m.writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
+		return
+	}
+	if req.DestHostID == "" {
+		m.writeError(w, http.StatusBadRequest, "dest_host_id is required")
+		return
+	}
+
+	// Get the source domain before migrating.
+	srcDom, err := m.store.GetDomain(srcHostID, domUUID)
+	if err != nil {
+		m.writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	// Phase 1: Reserve resources on destination.
+	if err := m.store.MigratePrepare(req.DestHostID, srcDom); err != nil {
+		if errors.Is(err, state.ErrHostNotFound) {
+			m.writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		m.writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+
+	// Phase 2: Mark the source domain as migrating.
+	if err := m.store.MigratePerform(srcHostID, domUUID); err != nil {
+		m.writeError(w, http.StatusInternalServerError, fmt.Sprintf("migrate perform: %v", err))
+		return
+	}
+
+	// Phase 3: Activate the domain on the destination.
+	destDom, err := m.store.MigrateFinish(req.DestHostID, domUUID)
+	if err != nil {
+		m.writeError(w, http.StatusInternalServerError, fmt.Sprintf("migrate finish: %v", err))
+		return
+	}
+
+	// Phase 4: Remove the domain from the source.
+	if err := m.store.MigrateConfirm(srcHostID, domUUID); err != nil {
+		m.writeError(w, http.StatusInternalServerError, fmt.Sprintf("migrate confirm: %v", err))
+		return
+	}
+
+	m.logger.Info("domain migrated", "uuid", domUUID, "src_host", srcHostID, "dest_host", req.DestHostID)
+	m.writeJSON(w, http.StatusOK, DomainInfo{
+		Name:         destDom.Name,
+		UUID:         destDom.UUIDString(),
+		State:        int32(destDom.State),
+		VCPUs:        destDom.VCPUs,
+		MemoryKiB:    destDom.MemoryKiB,
+		HostID:       req.DestHostID,
+		InterfaceIDs: destDom.InterfaceIDs,
+	})
 }
 
 func (m *Management) writeJSON(w http.ResponseWriter, status int, v interface{}) {

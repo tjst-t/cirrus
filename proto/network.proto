@@ -43,6 +43,18 @@ message HostNetworkStateUpdate {
   // For delta updates: IDs of removed egress/ingress rules.
   repeated string removed_egress_ids = 8;
   repeated string removed_ingress_ids = 9;
+
+  // For delta updates: port_ids of removed fallback routes.
+  repeated string removed_fallback_route_port_ids = 10;
+}
+
+// FallbackRoute instructs the source host to forward traffic for a migrating VM
+// to the destination host via Geneve tunnel. Installed on the SOURCE host during
+// live migration to ensure zero-packet-loss while memory pages are transferred.
+message FallbackRoute {
+  string port_id = 1;       // Port ID (which VM's traffic to forward)
+  string dest_host_ip = 2;  // Destination host Fabric IP (Geneve tunnel endpoint)
+  uint32 dest_vni = 3;      // Destination VNI
 }
 
 // HostNetworkState is the complete or partial network state for a single host.
@@ -55,6 +67,7 @@ message HostNetworkState {
   repeated IngressRule ingress_rules = 6;         // only populated for GW-role hosts
   GatewayInfo gateway_info = 7;                   // only populated for GW-role hosts
   repeated InternalLBRule internal_lb_rules = 8;  // populated for ALL hosts in the network
+  repeated FallbackRoute fallback_routes = 9;     // populated on source host during live migration
 }
 
 // InternalLBRule describes an internal L4 load balancer whose VIP is within

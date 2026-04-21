@@ -24,7 +24,7 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 - **Location**: `internal/agent/`, `internal/hypervisor/`, `internal/network/agent/`
 - **Key interfaces**: `WorkerService` gRPC サーバ（Controller から VM 作成・削除指示を受信）
 - **Depends on**: hypervisor, blockdev, netcontroller
-- **gRPC**: Controller → Worker 方向（`WorkerService.CreateVM` / `DeleteVM` / `StartVM` / `StopVM` / `ForceStopVM` / `RebootVM` / `GetVMState`）; Worker → Controller 方向（`ControllerService.Heartbeat`）
+- **gRPC**: Controller → Worker 方向（`WorkerService.CreateVM` / `DeleteVM` / `StartVM` / `StopVM` / `ForceStopVM` / `RebootVM` / `GetVMState` / `PrepareMigration` / `StartMigration`）; Worker → Controller 方向（`ControllerService.Heartbeat`）
 
 ### Identity (`internal/identity`)
 
@@ -43,7 +43,8 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 - **Direct IP Ingress** (`type=direct_ip`): 公開 IP → VM プライベート IP の DNAT ルールを GW ノードで適用
 - **L4 LB Ingress** (`type=l4_lb`): 公開 IP:ポート に届いた TCP トラフィックを複数バックエンド VM へ分散。OVS OpenFlow `select` group（5-tuple ハッシュ or 送信元 IP アフィニティ）で実装。バックエンドの健全性は Worker Agent が TCP probe し `ReportBackendHealth` gRPC で Controller へ報告。不健全バックエンドは `l4lb_backend_health` テーブルで管理され次回 HostNetworkState 配信時に除外される
 - **内部 LB** (`load_balancers` テーブル): テナント Network 内部の VIP（CIDR から IPAM が /30 境界を考慮して払い出し）への TCP トラフィックを複数バックエンド VM へ分散。GW ノード不要で **全ホスト** の OVS に OVS `select` group + `ct(commit,nat(dst=))` フローを適用。グループ ID は `0x80000000 XOR FNV(lbID)` で外部 L4LB と衝突しないよう分離。健全バックエンドの管理は `lb_backend_health` テーブル。REST API: `POST/GET/DELETE /api/v1/tenants/{tid}/networks/{nid}/load-balancers`; `cirrusctl load-balancer` サブコマンド
-- `StateController.ComputeHostNetworkState`: 各 Worker へ配信する `HostNetworkState` を計算（local ports / remote ports / policies / DNS / egress rules / ingress rules / internal_lb_rules）。GW ホストでローカル VM がなくても、担当ネットワークの remote port ルーティングを含める。VPN/DC egress では暗号化シークレットを復号してから配信。l4_lb ingress では `l4lb_backend_health` を LEFT JOIN し健全バックエンドのみ配信。内部 LB はネットワークに VM を持つ全ホストへ配信
+- **FallbackRoute（ライブマイグレーション中）**: マイグレーション中の VM のトラフィックを移行元ホストで Geneve トンネル経由で移行先ホストへ転送する OVS フロー。`migration_fallback_routes` テーブルから `ComputeHostNetworkState` が取得し `HostNetworkState.fallback_routes` で移行元ホストへ配信。`TableDstHostResolution`（table 4）で priority=200 のフローとして適用（通常フロー priority=100 を上書き）。マイグレーション完了または失敗時に DB から削除し、次のポーリングで OVS フローが消える
+- `StateController.ComputeHostNetworkState`: 各 Worker へ配信する `HostNetworkState` を計算（local ports / remote ports / policies / DNS / egress rules / ingress rules / internal_lb_rules / fallback_routes）。GW ホストでローカル VM がなくても、担当ネットワークの remote port ルーティングを含める。VPN/DC egress では暗号化シークレットを復号してから配信。l4_lb ingress では `l4lb_backend_health` を LEFT JOIN し健全バックエンドのみ配信。内部 LB はネットワークに VM を持つ全ホストへ配信
 - `GRPCStateServer.WatchHostNetworkState`: gRPC server-streaming で Worker に `HostNetworkState` を Push（2 秒ポーリング差分検出、`TriggerRefresh` で強制再配信）
 - `internal/network/agent/` — Worker 側 OVS OpenFlow フロー生成・適用（Table 0–7）、SNAT/DNAT フロー含む。`VPNManager` / `DirectConnectManager` インターフェースで VPN・VLAN 設定を抽象化（本番: strongSwan/wgctrl、シム: no-op ログ）。`HealthChecker` が 10 秒間隔で l4_lb バックエンドを TCP probe し状態変化時のみ `ReportBackendHealth` gRPC を呼ぶ
 
@@ -59,10 +60,11 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 
 - VM ライフサイクル管理（作成・起動・停止・強制停止・再起動・削除）
 - `Orchestrator`: 非同期 VM 作成パイプライン（Network.CreatePort → Storage.CreateVolume → Scheduler.Schedule → Storage.ExportVolume → WorkerService.CreateVM）
-- `Service` インターフェース: CreateVM/GetVM/ListVMs/DeleteVM/StartVM/StopVM/ForceStopVM/RebootVM/RepairVM
-- VM ステータス状態機械: `pending` → `building` → `running` ↔ `stopped`; いずれも `error` へ; `stopped`/`error` → `deleting`
-- 操作ガード: 遷移中状態 (`building`/`deleting`/`pending`) での全操作は 409; `running` 中の delete は 409
+- `Service` インターフェース: CreateVM/GetVM/ListVMs/DeleteVM/StartVM/StopVM/ForceStopVM/RebootVM/RepairVM/MigrateVM
+- VM ステータス状態機械: `pending` → `building` → `running` ↔ `stopped`; `running` → `migrating` → `running`（ライブマイグレーション）; いずれも `error` へ; `stopped`/`error` → `deleting`
+- 操作ガード: 遷移中状態 (`building`/`deleting`/`pending`/`migrating`) での全操作は 409; `running` 中の delete は 409
 - 管理者修復 API: `error` → `stopped` 強制遷移（`RepairVM`）
+- **ライブマイグレーション** (`MigrateVM`): `running` VM を別ホストへ無停止移行。フロー: status→migrating → Reschedule（または explicit target） → PrepareMigration（dest worker）→ FallbackRoute 挿入→ 3 秒待機 → StartMigration（src worker）→ DB host_id 更新 → status→running → FallbackRoute 削除（defer）。エラー時は status→error かつ FallbackRoute を defer で削除
 - DB: `vms`, `vm_volumes` テーブル
 
 ### Quota (`internal/quota`)
@@ -77,6 +79,8 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 ### Scheduler (`internal/scheduler`)
 
 - `Scheduler.Schedule(spec) → (host_id, backend_id)` でプレースメントを決定
+- `Scheduler.Reschedule(spec) → (host_id)` でライブマイグレーション先ホストを選定（現在ホストを除外）
+- 内部ヘルパー `candidateHosts`（AZ 経由のストレージドメイン到達可能ホスト集合取得）と `selectHost`（active 状態・Flavor 充足フィルタ + スコアリング）を `Schedule` / `Reschedule` が共用
 - AZ フィルタ → Flavor 充足フィルタ → リソース空き率スコアリング
 
 ### Flavor (`internal/flavor`)

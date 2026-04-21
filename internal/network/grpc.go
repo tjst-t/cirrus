@@ -215,5 +215,21 @@ func stateEqual(a, b *pb.HostNetworkState) bool {
 		}
 	}
 
+	// Compare fallback routes by composite key (port_id + dest_host_ip).
+	// Using port_id alone is insufficient: the migration destination may change
+	// while the port_id stays the same.
+	if len(a.FallbackRoutes) != len(b.FallbackRoutes) {
+		return false
+	}
+	aFBMap := make(map[string]bool, len(a.FallbackRoutes))
+	for _, fr := range a.FallbackRoutes {
+		aFBMap[fr.PortId+"|"+fr.DestHostIp] = true
+	}
+	for _, fr := range b.FallbackRoutes {
+		if !aFBMap[fr.PortId+"|"+fr.DestHostIp] {
+			return false
+		}
+	}
+
 	return true
 }

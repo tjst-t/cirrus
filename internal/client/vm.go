@@ -60,6 +60,25 @@ func (c *Client) VMAction(ctx context.Context, tenantID, vmID uuid.UUID, action 
 	return nil
 }
 
+// VMMigrateAction sends a migrate action for a VM. If targetHostID is not nil,
+// it is included in the request as the target host UUID.
+func (c *Client) VMMigrateAction(ctx context.Context, tenantID, vmID uuid.UUID, targetHostID *uuid.UUID) error {
+	body := struct {
+		Action       string  `json:"action"`
+		TargetHostID *string `json:"target_host_id,omitempty"`
+	}{Action: "migrate"}
+	if targetHostID != nil {
+		s := targetHostID.String()
+		body.TargetHostID = &s
+	}
+	resp, err := c.doWithTenant(ctx, "POST", fmt.Sprintf("/api/v1/vms/%s/actions", vmID), body, tenantID)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
 func (c *Client) RepairVM(ctx context.Context, vmID uuid.UUID) error {
 	resp, err := c.do(ctx, "POST", fmt.Sprintf("/api/v1/admin/vms/%s/repair", vmID), nil)
 	if err != nil {

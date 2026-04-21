@@ -22,6 +22,7 @@ import (
 	"github.com/tjst-t/cirrus/test/sim/aggregator"
 	awxsim "github.com/tjst-t/cirrus/test/sim/awx"
 	common "github.com/tjst-t/cirrus/test/sim/common"
+	"github.com/tjst-t/cirrus/test/sim/common/pkg/fault"
 	libvirtsim "github.com/tjst-t/cirrus/test/sim/libvirt"
 	pgsim "github.com/tjst-t/cirrus/test/sim/postgres"
 	storagesim "github.com/tjst-t/cirrus/test/sim/storage"
@@ -59,7 +60,12 @@ func main() {
 	// Create simulator instances.
 	// postgres is created first so its DSN is available for storageSim.
 	pgSim := pgsim.New(*postgresPort, *postgresMgmtPort, logger.With("sim", "postgres"))
+
+	// Shared fault engine: rules injected via common-sim API apply to libvirt-sim RPC as well.
+	sharedFaultEngine := fault.New()
+
 	libvirtSim := libvirtsim.NewWithDB(*libvirtPort, pgSim.DSN(), logger.With("sim", "libvirt-sim"))
+	libvirtSim.SetFaultEngine(sharedFaultEngine)
 	storageSim := storagesim.NewWithDB(*storagePort, pgSim.DSN(), logger.With("sim", "storage-sim"))
 
 	// Create aggregator with endpoints pointing to local simulators
@@ -85,7 +91,7 @@ func main() {
 		srv  Shutdowner
 	}{
 		{"postgres", pgSim},
-		{"common", common.New(*commonPort, logger.With("sim", "common"))},
+		{"common", common.NewWithFaultEngine(*commonPort, sharedFaultEngine, logger.With("sim", "common"))},
 		{"libvirt-sim", libvirtSim},
 		{"awx-sim", awxsim.NewWithDB(*awxPort, pgSim.DSN(), logger.With("sim", "awx-sim"))},
 		{"storage-sim", storageSim},

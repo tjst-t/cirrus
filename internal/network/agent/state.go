@@ -25,6 +25,9 @@ type StateCache struct {
 	// Internal LB rules (all hosts in the network)
 	internalLBRules []*pb.InternalLBRule
 
+	// FallbackRoutes for live migration (source host only, transient)
+	fallbackRoutes map[string]*pb.FallbackRoute // port_id -> FallbackRoute
+
 	// Reverse lookups
 	ipToPort  map[string]*pb.PortState // VM IP -> PortState
 	macToPort map[string]*pb.PortState // MAC -> PortState
@@ -40,15 +43,16 @@ type StateCache struct {
 // NewStateCache creates an empty StateCache.
 func NewStateCache() *StateCache {
 	return &StateCache{
-		ports:        make(map[string]*pb.PortState),
-		policies:     make(map[string]*pb.PolicyRule),
-		remotePorts:  make(map[string]*pb.RemotePort),
-		dnsRecords:   make(map[string]*pb.DnsRecord),
-		egressRules:  make(map[string]*pb.EgressRule),
-		ipToPort:     make(map[string]*pb.PortState),
-		macToPort:    make(map[string]*pb.PortState),
-		networkDNS:   make(map[string][]*pb.DnsRecord),
-		networkPorts: make(map[string][]*pb.PortState),
+		ports:          make(map[string]*pb.PortState),
+		policies:       make(map[string]*pb.PolicyRule),
+		remotePorts:    make(map[string]*pb.RemotePort),
+		dnsRecords:     make(map[string]*pb.DnsRecord),
+		egressRules:    make(map[string]*pb.EgressRule),
+		fallbackRoutes: make(map[string]*pb.FallbackRoute),
+		ipToPort:       make(map[string]*pb.PortState),
+		macToPort:      make(map[string]*pb.PortState),
+		networkDNS:     make(map[string][]*pb.DnsRecord),
+		networkPorts:   make(map[string][]*pb.PortState),
 	}
 }
 
@@ -63,6 +67,7 @@ func (s *StateCache) ApplyFull(update *pb.HostNetworkStateUpdate) {
 	s.remotePorts = make(map[string]*pb.RemotePort)
 	s.dnsRecords = make(map[string]*pb.DnsRecord)
 	s.egressRules = make(map[string]*pb.EgressRule)
+	s.fallbackRoutes = make(map[string]*pb.FallbackRoute)
 	s.ipToPort = make(map[string]*pb.PortState)
 	s.macToPort = make(map[string]*pb.PortState)
 	s.networkDNS = make(map[string][]*pb.DnsRecord)
@@ -88,6 +93,9 @@ func (s *StateCache) ApplyFull(update *pb.HostNetworkStateUpdate) {
 	}
 	for _, er := range state.EgressRules {
 		s.egressRules[er.EgressId] = er
+	}
+	for _, fr := range state.FallbackRoutes {
+		s.fallbackRoutes[fr.PortId] = fr
 	}
 	s.ingressRules = state.IngressRules
 	s.gatewayInfo = state.GatewayInfo
@@ -120,6 +128,9 @@ func (s *StateCache) ApplyDelta(update *pb.HostNetworkStateUpdate) {
 	for _, ingressID := range update.RemovedIngressIds {
 		s.removeIngressRule(ingressID)
 	}
+	for _, portID := range update.RemovedFallbackRoutePortIds {
+		delete(s.fallbackRoutes, portID)
+	}
 
 	// Process additions
 	state := update.GetState()
@@ -139,6 +150,10 @@ func (s *StateCache) ApplyDelta(update *pb.HostNetworkStateUpdate) {
 		// Add/update egress rules from the delta state.
 		for _, er := range state.EgressRules {
 			s.egressRules[er.EgressId] = er
+		}
+		// Add/update fallback routes from the delta state.
+		for _, fr := range state.FallbackRoutes {
+			s.fallbackRoutes[fr.PortId] = fr
 		}
 		s.ingressRules = append(s.ingressRules, state.IngressRules...)
 		if state.GatewayInfo != nil {
@@ -342,11 +357,17 @@ func (s *StateCache) Snapshot() *pb.HostNetworkState {
 		egressRules = append(egressRules, r)
 	}
 
+	fallbackRoutes := make([]*pb.FallbackRoute, 0, len(s.fallbackRoutes))
+	for _, fr := range s.fallbackRoutes {
+		fallbackRoutes = append(fallbackRoutes, fr)
+	}
+
 	state := &pb.HostNetworkState{
-		EgressRules:     egressRules,
-		IngressRules:    s.ingressRules,
-		GatewayInfo:     s.gatewayInfo,
+		EgressRules:    egressRules,
+		IngressRules:   s.ingressRules,
+		GatewayInfo:    s.gatewayInfo,
 		InternalLbRules: s.internalLBRules,
+		FallbackRoutes: fallbackRoutes,
 	}
 	for _, p := range s.ports {
 		state.Ports = append(state.Ports, p)

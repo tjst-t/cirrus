@@ -1,0 +1,3 @@
+-- vms.status には CHECK 制約がないため DDL 変更は不要。
+-- この migration は 'migrating' ステータスが正式にサポートされることを明示するためのプレースホルダー。
+-- HealVM の SQL 除外リストへの 'migrating' 追加は store.go で実施済み。
