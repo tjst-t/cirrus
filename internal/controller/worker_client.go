@@ -66,6 +66,11 @@ func (c *WorkerClient) StartMigration(ctx context.Context, req *pb.StartMigratio
 	return c.client.StartMigration(ctx, req)
 }
 
+// AcceptMigratedVM notifies the destination worker to register an incoming migrated VM.
+func (c *WorkerClient) AcceptMigratedVM(ctx context.Context, req *pb.AcceptMigratedVMRequest) (*pb.AcceptMigratedVMResponse, error) {
+	return c.client.AcceptMigratedVM(ctx, req)
+}
+
 // Close closes the gRPC connection.
 func (c *WorkerClient) Close() error {
 	return c.conn.Close()

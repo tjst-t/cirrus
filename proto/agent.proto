@@ -26,6 +26,7 @@ service WorkerService {
   // ライブマイグレーション
   rpc PrepareMigration(PrepareMigrationRequest) returns (PrepareMigrationResponse);
   rpc StartMigration(StartMigrationRequest) returns (StartMigrationResponse);
+  rpc AcceptMigratedVM(AcceptMigratedVMRequest) returns (AcceptMigratedVMResponse);
 }
 
 message RegisterHostRequest {
@@ -165,6 +166,17 @@ message StartMigrationRequest {
 }
 
 message StartMigrationResponse {}
+
+// AcceptMigratedVM: dest worker が移行 VM を自ホストのシムに登録する（HostInstance モード用）
+message AcceptMigratedVMRequest {
+  string vm_id = 1;
+  string vm_name = 2;
+  int32 vcpus = 3;
+  int64 ram_mb = 4;
+  repeated string interface_ids = 5;
+}
+
+message AcceptMigratedVMResponse {}
 
 // BackendHealthStatus reports the health of one backend VM in an l4_lb ingress.
 message BackendHealthStatus {

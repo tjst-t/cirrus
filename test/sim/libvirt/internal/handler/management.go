@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/tjst-t/cirrus/test/sim/libvirt/internal/rpc"
 	"github.com/tjst-t/cirrus/test/sim/libvirt/internal/state"
@@ -72,6 +73,7 @@ func (m *Management) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /sim/hosts/{host_id}/domains/{uuid}/stop", m.handleStopDomain)
 	mux.HandleFunc("POST /sim/hosts/{host_id}/domains/{uuid}/destroy", m.handleDestroyDomain)
 	mux.HandleFunc("POST /sim/hosts/{host_id}/domains/{uuid}/migrate", m.handleMigrateDomain)
+	mux.HandleFunc("POST /sim/hosts/{host_id}/domains/accept", m.handleAcceptMigratedDomain)
 }
 
 // CreateHostRequest is the request body for POST /sim/hosts.
@@ -438,6 +440,21 @@ func (m *Management) handleMigrateDomain(w http.ResponseWriter, r *http.Request)
 	// Phase 1: Reserve resources on destination.
 	if err := m.store.MigratePrepare(req.DestHostID, srcDom); err != nil {
 		if errors.Is(err, state.ErrHostNotFound) {
+			// HostInstance mode: dest is in another container. Simulate outbound
+			// migration by removing the domain from this host only.
+			if m.singleHostID != "" {
+				if err2 := m.store.MigratePerform(srcHostID, domUUID); err2 != nil {
+					m.writeError(w, http.StatusInternalServerError, fmt.Sprintf("outbound migrate perform: %v", err2))
+					return
+				}
+				if err2 := m.store.MigrateConfirm(srcHostID, domUUID); err2 != nil {
+					m.writeError(w, http.StatusInternalServerError, fmt.Sprintf("outbound migrate confirm: %v", err2))
+					return
+				}
+				m.logger.Info("domain migrated outbound (HostInstance mode)", "uuid", domUUID, "src_host", srcHostID, "dest_host", req.DestHostID)
+				w.WriteHeader(http.StatusOK)
+				return
+			}
 			m.writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
@@ -473,6 +490,74 @@ func (m *Management) handleMigrateDomain(w http.ResponseWriter, r *http.Request)
 		MemoryKiB:    destDom.MemoryKiB,
 		HostID:       req.DestHostID,
 		InterfaceIDs: destDom.InterfaceIDs,
+	})
+}
+
+// AcceptDomainRequest is the request body for POST /sim/hosts/{host_id}/domains/accept.
+type AcceptDomainRequest struct {
+	UUID         string   `json:"uuid"`
+	Name         string   `json:"name"`
+	VCPUs        int32    `json:"vcpus"`
+	MemoryMB     int64    `json:"memory_mb"`
+	InterfaceIDs []string `json:"interface_ids"`
+}
+
+// handleAcceptMigratedDomain creates and starts a domain from migration metadata (no XML needed).
+// Used by AcceptMigratedVM gRPC in HostInstance mode so the dest sim receives the VM.
+func (m *Management) handleAcceptMigratedDomain(w http.ResponseWriter, r *http.Request) {
+	hostID := m.resolveHostID(r.PathValue("host_id"))
+
+	var req AcceptDomainRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		m.writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+	if req.UUID == "" || req.Name == "" {
+		m.writeError(w, http.StatusBadRequest, "uuid and name are required")
+		return
+	}
+
+	uuidBytes, err := simxml.ParseUUID(req.UUID)
+	if err != nil {
+		m.writeError(w, http.StatusBadRequest, "invalid uuid: "+err.Error())
+		return
+	}
+
+	d := &state.Domain{
+		Name:         req.Name,
+		UUID:         uuidBytes,
+		VCPUs:        int(req.VCPUs),
+		MemoryKiB:    req.MemoryMB * 1024,
+		State:        state.DomainStateShutoff,
+		InterfaceIDs: req.InterfaceIDs,
+		CreatedAt:    time.Now(),
+	}
+
+	if err := m.store.DefineDomain(hostID, d); err != nil {
+		m.writeError(w, http.StatusConflict, "define domain: "+err.Error())
+		return
+	}
+	if err := m.store.StartDomain(hostID, req.UUID); err != nil {
+		m.writeError(w, http.StatusInternalServerError, "start domain: "+err.Error())
+		return
+	}
+
+	dom, _ := m.store.GetDomain(hostID, req.UUID)
+	if dom != nil {
+		if err := m.server.CreateVMNetns(r.Context(), dom.UUIDString(), dom.InterfaceIDs); err != nil {
+			m.logger.Warn("failed to create VM namespace for accepted domain", "uuid", dom.UUIDString(), "error", err)
+		}
+	}
+
+	m.logger.Info("domain accepted via migration", "uuid", req.UUID, "host", hostID)
+	m.writeJSON(w, http.StatusCreated, DomainInfo{
+		Name:         d.Name,
+		UUID:         req.UUID,
+		State:        int32(state.DomainStateRunning),
+		VCPUs:        d.VCPUs,
+		MemoryKiB:    d.MemoryKiB,
+		HostID:       hostID,
+		InterfaceIDs: d.InterfaceIDs,
 	})
 }
 

@@ -24,7 +24,7 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 - **Location**: `internal/agent/`, `internal/hypervisor/`, `internal/network/agent/`
 - **Key interfaces**: `WorkerService` gRPC サーバ（Controller から VM 作成・削除指示を受信）
 - **Depends on**: hypervisor, blockdev, netcontroller
-- **gRPC**: Controller → Worker 方向（`WorkerService.CreateVM` / `DeleteVM` / `StartVM` / `StopVM` / `ForceStopVM` / `RebootVM` / `GetVMState` / `PrepareMigration` / `StartMigration`）; Worker → Controller 方向（`ControllerService.Heartbeat`）
+- **gRPC**: Controller → Worker 方向（`WorkerService.CreateVM` / `DeleteVM` / `StartVM` / `StopVM` / `ForceStopVM` / `RebootVM` / `GetVMState` / `PrepareMigration` / `StartMigration` / `AcceptMigratedVM`）; Worker → Controller 方向（`ControllerService.Heartbeat`）
 
 ### Identity (`internal/identity`)
 
@@ -64,7 +64,7 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 - VM ステータス状態機械: `pending` → `building` → `running` ↔ `stopped`; `running` → `migrating` → `running`（ライブマイグレーション）; いずれも `error` へ; `stopped`/`error` → `deleting`
 - 操作ガード: 遷移中状態 (`building`/`deleting`/`pending`/`migrating`) での全操作は 409; `running` 中の delete は 409
 - 管理者修復 API: `error` → `stopped` 強制遷移（`RepairVM`）
-- **ライブマイグレーション** (`MigrateVM`): `running` VM を別ホストへ無停止移行。フロー: status→migrating → Reschedule（または explicit target） → PrepareMigration（dest worker）→ FallbackRoute 挿入→ 3 秒待機 → StartMigration（src worker）→ DB host_id 更新 → status→running → FallbackRoute 削除（defer）。エラー時は status→error かつ FallbackRoute を defer で削除
+- **ライブマイグレーション** (`MigrateVM`): `running` VM を別ホストへ無停止移行。フロー: status→migrating → Reschedule（または explicit target） → PrepareMigration（dest worker）→ FallbackRoute 挿入→ 3 秒待機 → StartMigration（src worker）→ AcceptMigratedVM（dest worker、HostInstance sim モードで dest に domain 登録）→ DB host_id 更新 → status→running → FallbackRoute 削除（defer）。エラー時は status→error かつ FallbackRoute を defer で削除
 - DB: `vms`, `vm_volumes` テーブル
 
 ### Quota (`internal/quota`)

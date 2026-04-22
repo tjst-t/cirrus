@@ -969,6 +969,14 @@ Phase 1 WebUI 全体の結合 E2E テストが通り、`make serve` 環境で安
 - [x] **Task S023-3-3**: cirrus-sim 障害注入: `MigratePerform` 失敗 → Fallback で元ホスト継続確認
 - [x] **Task S023-3-4**: `cirrusctl vm migrate <vm> [--target-host <host>]`
 
+### Story S023-4: インフラ管理者として、HostInstance モード（docker-compose）でもコンテナ間 VM マイグレーションが E2E で動作してほしい。なぜなら、S024 以降の HA Failover テストなど複数ホスト間シナリオを実機なしで検証できるようにしたいから。 [x]
+
+- [x] **Task S023-4-1**: `proto/agent.proto` に `AcceptMigratedVM` RPC 追加（dest worker が受け取る VM 情報）
+- [x] **Task S023-4-2**: `internal/hypervisor/driver.go` に `AcceptMigratedVM(ctx, spec AcceptMigratedVMSpec) error` 追加。`LibvirtDriver` は sim mgmt API `POST /sim/hosts/{id}/domains/accept` を呼ぶ
+- [x] **Task S023-4-3**: `internal/agent/worker_server.go` に `AcceptMigratedVM` gRPC handler 実装
+- [x] **Task S023-4-4**: `internal/compute/orchestrator.go` の `MigrateVM` で `StartMigration` 完了後に dest worker の `AcceptMigratedVM` を呼ぶ
+- [x] **Task S023-4-5**: demo: `cirrusctl vm migrate` で VM が dest ホストで `running` のまま安定すること（error に落ちない）
+
 ---
 
 ## Sprint S024: HA Failover [ ]

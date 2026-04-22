@@ -669,7 +669,7 @@ func (sc *StateController) computeInternalLBRules(ctx context.Context, networkID
 // These are created by MigrateVM during live migration and deleted when migration completes.
 func (sc *StateController) getFallbackRoutes(ctx context.Context, srcHostID uuid.UUID) ([]*pb.FallbackRoute, error) {
 	rows, err := sc.pool.Query(ctx, `
-		SELECT fr.port_id, host(h.fabric_ip), n.vni
+		SELECT fr.port_id, h.fabric_ip, n.vni
 		FROM migration_fallback_routes fr
 		JOIN hosts h ON h.id = fr.dest_host_id
 		JOIN ports p ON p.id = fr.port_id

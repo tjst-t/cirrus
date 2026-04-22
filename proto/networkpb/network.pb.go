@@ -94,7 +94,7 @@ type HostNetworkStateUpdate struct {
 	// For delta updates: port_ids of removed fallback routes.
 	RemovedFallbackRoutePortIds []string `protobuf:"bytes,10,rep,name=removed_fallback_route_port_ids,json=removedFallbackRoutePortIds,proto3" json:"removed_fallback_route_port_ids,omitempty"`
 	unknownFields               protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	sizeCache                   protoimpl.SizeCache
 }
 
 func (x *HostNetworkStateUpdate) Reset() {
@@ -1385,7 +1385,7 @@ const file_network_proto_rawDesc = "" +
 	"\rnetwork.proto\x12\x11cirrus.network.v1\"f\n" +
 	"\x1cWatchHostNetworkStateRequest\x12\x17\n" +
 	"\ahost_id\x18\x01 \x01(\tR\x06hostId\x12-\n" +
-	"\x12registration_token\x18\x02 \x01(\tR\x11registrationToken\"\x9a\x03\n" +
+	"\x12registration_token\x18\x02 \x01(\tR\x11registrationToken\"\xe0\x03\n" +
 	"\x16HostNetworkStateUpdate\x12\x12\n" +
 	"\x04full\x18\x01 \x01(\bR\x04full\x129\n" +
 	"\x05state\x18\x02 \x01(\v2#.cirrus.network.v1.HostNetworkStateR\x05state\x12(\n" +
@@ -1395,7 +1395,9 @@ const file_network_proto_rawDesc = "" +
 	"\x17removed_remote_port_ips\x18\x06 \x03(\tR\x14removedRemotePortIps\x12\x18\n" +
 	"\aversion\x18\a \x01(\x04R\aversion\x12,\n" +
 	"\x12removed_egress_ids\x18\b \x03(\tR\x10removedEgressIds\x12.\n" +
-	"\x13removed_ingress_ids\x18\t \x03(\tR\x11removedIngressIds\"e\n" +
+	"\x13removed_ingress_ids\x18\t \x03(\tR\x11removedIngressIds\x12D\n" +
+	"\x1fremoved_fallback_route_port_ids\x18\n" +
+	" \x03(\tR\x1bremovedFallbackRoutePortIds\"e\n" +
 	"\rFallbackRoute\x12\x17\n" +
 	"\aport_id\x18\x01 \x01(\tR\x06portId\x12 \n" +
 	"\fdest_host_ip\x18\x02 \x01(\tR\n" +

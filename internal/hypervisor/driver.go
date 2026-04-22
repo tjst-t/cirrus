@@ -69,6 +69,15 @@ type VMSpec struct {
 	CloudInitISOPath string
 }
 
+// AcceptMigratedVMSpec holds the information needed to register an incoming migrated VM.
+type AcceptMigratedVMSpec struct {
+	UUID         string
+	Name         string
+	VCPUs        int32
+	RAMMB        int64
+	InterfaceIDs []string
+}
+
 // Driver abstracts hypervisor operations for VM lifecycle management.
 type Driver interface {
 	// Connect establishes a connection to the hypervisor.
@@ -103,4 +112,9 @@ type Driver interface {
 
 	// MigrateVM live-migrates a running VM to the destination host.
 	MigrateVM(ctx context.Context, vmName string, destHostID string) error
+
+	// AcceptMigratedVM registers an incoming migrated VM on this host.
+	// For real libvirt this is a no-op (the migration protocol handles VM transfer).
+	// For the sim it creates the domain in the local store.
+	AcceptMigratedVM(ctx context.Context, spec AcceptMigratedVMSpec) error
 }

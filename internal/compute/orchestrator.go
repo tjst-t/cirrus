@@ -390,18 +390,20 @@ func (o *Orchestrator) MigrateVM(ctx context.Context, tenantID, vmID uuid.UUID, 
 		}
 	}()
 
-	// 3. 宛先ホストを決定
+	// 3. フレーバーを取得（スケジューラーと AcceptMigratedVM で共用）
+	var flv *flavor.Flavor
+	if vm.FlavorID != nil {
+		flv, err = o.flavorSvc.Get(ctx, *vm.FlavorID)
+		if err != nil {
+			return fmt.Errorf("compute: MigrateVM: get flavor: %w", err)
+		}
+	}
+
+	// 3b. 宛先ホストを決定
 	var destHostID uuid.UUID
 	if targetHostID != nil {
 		destHostID = *targetHostID
 	} else {
-		var flv *flavor.Flavor
-		if vm.FlavorID != nil {
-			flv, err = o.flavorSvc.Get(ctx, *vm.FlavorID)
-			if err != nil {
-				return fmt.Errorf("compute: MigrateVM: get flavor: %w", err)
-			}
-		}
 		// Use AZID from the VM record; falls back to uuid.Nil (any AZ) if not set.
 		var azID uuid.UUID
 		if vm.AZID != nil {
@@ -477,6 +479,25 @@ func (o *Orchestrator) MigrateVM(ctx context.Context, tenantID, vmID uuid.UUID, 
 		DestHostId: destHostID.String(),
 	}); err != nil {
 		return fmt.Errorf("compute: MigrateVM: StartMigration: %w", err)
+	}
+
+	// 6.5. 移行先ワーカーに AcceptMigratedVM を通知（HostInstance sim モードで dest が VM を受け取る）
+	var vcpus int32
+	var ramMB int64
+	if flv != nil {
+		vcpus = int32(flv.VCPUs)
+		ramMB = int64(flv.RAMMB)
+	}
+	if _, err := destWorker.AcceptMigratedVM(ctx, &pb.AcceptMigratedVMRequest{
+		VmId:         vmID.String(),
+		VmName:       vmName,
+		Vcpus:        vcpus,
+		RamMb:        ramMB,
+		InterfaceIds: []string{port.ID.String()},
+	}); err != nil {
+		// Non-fatal: real libvirt handles this via migration protocol.
+		// Sim may fail in single-process mode (dest already has the domain).
+		o.logger.Warn("MigrateVM: AcceptMigratedVM failed (non-fatal)", "vm_id", vmID, "error", err)
 	}
 
 	// 7. DB 更新: host_id を移行先に変更し、status を running に戻す

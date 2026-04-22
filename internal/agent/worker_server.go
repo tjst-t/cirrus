@@ -174,6 +174,23 @@ func (s *WorkerServer) StartMigration(ctx context.Context, req *pb.StartMigratio
 	return &pb.StartMigrationResponse{}, nil
 }
 
+// AcceptMigratedVM registers an incoming migrated VM in this worker's local sim.
+// Called by the controller after StartMigration succeeds on the source worker.
+func (s *WorkerServer) AcceptMigratedVM(ctx context.Context, req *pb.AcceptMigratedVMRequest) (*pb.AcceptMigratedVMResponse, error) {
+	s.logger.Info("AcceptMigratedVM called", "vm_id", req.VmId, "vm_name", req.VmName)
+	spec := hypervisor.AcceptMigratedVMSpec{
+		UUID:         req.VmId,
+		Name:         req.VmName,
+		VCPUs:        req.Vcpus,
+		RAMMB:        req.RamMb,
+		InterfaceIDs: req.InterfaceIds,
+	}
+	if err := s.driver.AcceptMigratedVM(ctx, spec); err != nil {
+		return nil, fmt.Errorf("AcceptMigratedVM: %w", err)
+	}
+	return &pb.AcceptMigratedVMResponse{}, nil
+}
+
 // GetVMState returns the current state of a VM.
 func (s *WorkerServer) GetVMState(ctx context.Context, req *pb.GetVMStateRequest) (*pb.GetVMStateResponse, error) {
 	vms, err := s.driver.ListVMs(ctx)

@@ -365,6 +365,39 @@ func (d *LibvirtDriver) MigrateVM(ctx context.Context, vmName string, destHostID
 	return nil
 }
 
+// AcceptMigratedVM creates a running domain on this host for an incoming migration.
+// Calls the sim management API to register the domain in the dest host's store.
+func (d *LibvirtDriver) AcceptMigratedVM(ctx context.Context, spec AcceptMigratedVMSpec) error {
+	body, err := json.Marshal(map[string]interface{}{
+		"uuid":          spec.UUID,
+		"name":          spec.Name,
+		"vcpus":         spec.VCPUs,
+		"memory_mb":     spec.RAMMB,
+		"interface_ids": spec.InterfaceIDs,
+	})
+	if err != nil {
+		return fmt.Errorf("libvirt: AcceptMigratedVM: marshal: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/sim/hosts/%s/domains/accept", d.baseURL, d.hostID)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("libvirt: AcceptMigratedVM: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := d.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("libvirt: AcceptMigratedVM: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("libvirt: AcceptMigratedVM: HTTP %d: %s", resp.StatusCode, b)
+	}
+	return nil
+}
+
 // lookupDomainUUID fetches the domain list for this host and returns the UUID
 // matching the given name. Returns an error if not found.
 func (d *LibvirtDriver) lookupDomainUUID(ctx context.Context, name string) (string, error) {
