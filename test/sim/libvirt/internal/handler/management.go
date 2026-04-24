@@ -66,6 +66,8 @@ func (m *Management) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /sim/domains", m.handleListAllDomains)
 	mux.HandleFunc("GET /sim/hosts/{host_id}/domains", m.handleListHostDomains)
 
+	mux.HandleFunc("POST /sim/hosts/{host_id}/power-off", m.handlePowerOff)
+
 	// Domain lifecycle management (used by LibvirtDriver for VM create/delete/start/stop)
 	mux.HandleFunc("POST /sim/hosts/{host_id}/domains", m.handleDefineDomain)
 	mux.HandleFunc("DELETE /sim/hosts/{host_id}/domains/{uuid}", m.handleUndefineDomain)
@@ -169,11 +171,6 @@ type UpdateHostStateRequest struct {
 
 func (m *Management) handleUpdateHostState(w http.ResponseWriter, r *http.Request) {
 	hostID := r.PathValue("host_id")
-	host, err := m.store.GetHost(hostID)
-	if err != nil {
-		m.writeError(w, http.StatusNotFound, err.Error())
-		return
-	}
 
 	var req UpdateHostStateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -183,9 +180,20 @@ func (m *Management) handleUpdateHostState(w http.ResponseWriter, r *http.Reques
 
 	switch req.State {
 	case state.HostStateOnline, state.HostStateOffline, state.HostStateMaintenance:
-		host.State = req.State
+		// valid
 	default:
 		m.writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid state: %s", req.State))
+		return
+	}
+
+	if err := m.store.UpdateHostState(hostID, req.State); err != nil {
+		m.writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	host, err := m.store.GetHost(hostID)
+	if err != nil {
+		m.writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -222,6 +230,37 @@ func (m *Management) handleUpdateHostConfig(w http.ResponseWriter, r *http.Reque
 
 	m.logger.Info("host config updated", "host_id", hostID)
 	m.writeJSON(w, http.StatusOK, host.Info())
+}
+
+// handlePowerOff simulates IPMI power-off: destroys all running domains on the host
+// and returns {"status": "off"}.
+func (m *Management) handlePowerOff(w http.ResponseWriter, r *http.Request) {
+	hostID := m.resolveHostID(r.PathValue("host_id"))
+	if _, err := m.store.GetHost(hostID); err != nil {
+		m.writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	domains, err := m.store.ListDomains(hostID)
+	if err != nil {
+		m.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	for _, d := range domains {
+		if d.State == state.DomainStateRunning || d.State == state.DomainStatePaused {
+			if err := m.store.DestroyDomain(hostID, d.UUIDString()); err != nil {
+				m.logger.Warn("power-off: failed to destroy domain", "host_id", hostID, "uuid", d.UUIDString(), "error", err)
+			}
+		}
+	}
+
+	if err := m.store.UpdateHostState(hostID, state.HostStateOffline); err != nil {
+		m.logger.Warn("power-off: failed to update host state", "host_id", hostID, "error", err)
+	}
+
+	m.logger.Info("host power-off (fencing)", "host_id", hostID)
+	m.writeJSON(w, http.StatusOK, map[string]string{"status": "off"})
 }
 
 func (m *Management) handleGetStats(w http.ResponseWriter, r *http.Request) {

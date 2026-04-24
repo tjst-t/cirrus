@@ -516,6 +516,133 @@ func (o *Orchestrator) MigrateVM(ctx context.Context, tenantID, vmID uuid.UUID, 
 	return nil
 }
 
+// FailoverVM cold-restarts an error-state VM on a new host after the original
+// host has been fenced. The original host must be fenced before calling this method.
+// The VM must be in 'error' status. Best-effort: on failure the VM is left in error state.
+func (o *Orchestrator) FailoverVM(ctx context.Context, vmID uuid.UUID) (retErr error) {
+	// 1. Get VM record — must be in 'error' status and have a host_id.
+	vm, err := o.getVMByID(ctx, vmID)
+	if err != nil {
+		return fmt.Errorf("compute: FailoverVM: get vm: %w", err)
+	}
+	if vm.Status != VMStatusError {
+		return fmt.Errorf("compute: FailoverVM: vm %s is not in error state (current: %s)", vmID, vm.Status)
+	}
+	if vm.HostID == nil {
+		return fmt.Errorf("compute: FailoverVM: vm %s has no assigned host", vmID)
+	}
+
+	// Mark as failing_over to prevent concurrent failover attempts on the same VM.
+	if err := o.setVMStatus(ctx, vmID, VMStatusFailingOver, ""); err != nil {
+		return fmt.Errorf("compute: FailoverVM: mark failing_over: %w", err)
+	}
+	// Deferred cleanup: if anything goes wrong, set back to error so the operator can see it.
+	defer func() {
+		if retErr != nil {
+			_ = o.setVMStatus(context.Background(), vmID, VMStatusError, retErr.Error())
+		}
+	}()
+
+	// 2. Get flavor (may be nil; gracefully degrade to 0 vcpus/ram).
+	var flv *flavor.Flavor
+	if vm.FlavorID != nil {
+		flv, err = o.flavorSvc.Get(ctx, *vm.FlavorID)
+		if err != nil {
+			return fmt.Errorf("compute: FailoverVM: get flavor: %w", err)
+		}
+	}
+
+	// 3. Reschedule: pick a new host excluding the dead one.
+	var azID uuid.UUID
+	if vm.AZID != nil {
+		azID = *vm.AZID
+	}
+	schedResult, err := o.scheduler.Reschedule(ctx, scheduler.RescheduleSpec{
+		ExcludeHostID: *vm.HostID,
+		AZID:          azID,
+		Flavor:        flv,
+	})
+	if err != nil {
+		return fmt.Errorf("compute: FailoverVM: reschedule: %w", err)
+	}
+	newHostID := schedResult.HostID
+
+	// 4. Get volume IDs (and devices) for this VM.
+	volEntries, err := o.listVMVolumeEntries(ctx, vmID)
+	if err != nil {
+		return fmt.Errorf("compute: FailoverVM: list vm volumes: %w", err)
+	}
+
+	// 5. Re-export each volume to the new host and build DiskSpecs.
+	var diskSpecs []*pb.DiskSpec
+	for _, e := range volEntries {
+		info, err := o.storageSvc.ExportVolume(ctx, e.volumeID, newHostID)
+		if err != nil {
+			return fmt.Errorf("compute: FailoverVM: export volume %s: %w", e.volumeID, err)
+		}
+		diskSpecs = append(diskSpecs, &pb.DiskSpec{
+			TargetDev: e.device,
+			Protocol:  info.Protocol,
+			Params:    info.Params,
+		})
+	}
+
+	// 6. Get port (may be nil if VM has no network — that's OK).
+	port, _ := o.networkSvc.GetPortByVMID(ctx, vmID)
+
+	// 7. Get new host record.
+	destHost, err := o.getHostByID(ctx, newHostID)
+	if err != nil {
+		return fmt.Errorf("compute: FailoverVM: get dest host: %w", err)
+	}
+	if destHost.WorkerGRPCAddr == "" {
+		return fmt.Errorf("compute: FailoverVM: dest host %s has no worker_grpc_addr", newHostID)
+	}
+
+	// 8. Get worker client for the new host.
+	destWorker, err := o.workers.Get(destHost.WorkerGRPCAddr)
+	if err != nil {
+		return fmt.Errorf("compute: FailoverVM: get dest worker: %w", err)
+	}
+
+	// 9. Build CreateVMRequest.
+	vmName := vmNameFromID(vmID)
+	var vcpus int32
+	var ramMB int64
+	if flv != nil {
+		vcpus = int32(flv.VCPUs)
+		ramMB = int64(flv.RAMMB)
+	}
+	// TODO(S024-2): original cloud-init user-data is not persisted; failover
+	// restarts the VM with a minimal cloud-config. Add vm.user_data column if replay is required.
+	req := buildCreateVMRequest(vmID, vmName, vcpus, ramMB, diskSpecs, port)
+
+	// 10. Create VM on the new worker.
+	if _, err := destWorker.CreateVM(ctx, req); err != nil {
+		return fmt.Errorf("compute: FailoverVM: worker CreateVM: %w", err)
+	}
+
+	// 11. Update port host_id → new host (rebind port so network state converges).
+	if port != nil {
+		if err := o.networkSvc.UpdatePortHost(ctx, port.ID, newHostID); err != nil {
+			// Non-fatal: network reconciler will catch the drift.
+			o.logger.Warn("compute: FailoverVM: update port host failed (non-fatal)", "vm_id", vmID, "port_id", port.ID, "error", err)
+		}
+	}
+
+	// 12. Update DB: host_id → new host, status → running.
+	if err := o.setVMHost(ctx, vmID, newHostID); err != nil {
+		return fmt.Errorf("compute: FailoverVM: set vm host: %w", err)
+	}
+	if err := o.setVMStatus(ctx, vmID, VMStatusRunning, ""); err != nil {
+		return fmt.Errorf("compute: FailoverVM: set vm status running: %w", err)
+	}
+
+	o.logger.Info("FailoverVM: VM failed over successfully",
+		"vm_id", vmID, "old_host_id", vm.HostID, "new_host_id", newHostID)
+	return nil
+}
+
 // RepairVM transitions a VM from error to stopped (admin use only).
 func (o *Orchestrator) RepairVM(ctx context.Context, vmID uuid.UUID) error {
 	vm, err := o.getVMByID(ctx, vmID)
@@ -544,7 +671,38 @@ func (o *Orchestrator) resolveWorker(ctx context.Context, vm *VM) (*controller.W
 	if err != nil {
 		return nil, "", fmt.Errorf("compute: get worker client: %w", err)
 	}
-	return workerClient, fmt.Sprintf("vm-%s", vm.ID.String()[:8]), nil
+	return workerClient, vmNameFromID(vm.ID), nil
+}
+
+// vmNameFromID returns the stable VM name derived from its UUID.
+func vmNameFromID(id uuid.UUID) string {
+	return fmt.Sprintf("vm-%s", id.String()[:8])
+}
+
+// buildCreateVMRequest assembles a CreateVMRequest from common fields.
+// The CloudInit hostname is derived from vmName. port may be nil.
+func buildCreateVMRequest(vmID uuid.UUID, vmName string, vcpus int32, ramMB int64, disks []*pb.DiskSpec, port *network.Port) *pb.CreateVMRequest {
+	req := &pb.CreateVMRequest{
+		VmId:  vmID.String(),
+		Name:  vmName,
+		Vcpus: vcpus,
+		RamMb: ramMB,
+		Disks: disks,
+		CloudInit: &pb.CloudInitSpec{
+			Hostname: vmName,
+			UserData: "#cloud-config\n",
+		},
+	}
+	if port != nil {
+		req.Ports = []*pb.PortSpec{
+			{
+				PortId:     port.ID.String(),
+				MacAddress: port.MACAddress,
+				BridgeName: "br-int",
+			},
+		}
+	}
+	return req
 }
 
 // buildVM orchestrates the full VM creation pipeline.
@@ -583,7 +741,7 @@ func (o *Orchestrator) buildVM(ctx context.Context, vmID uuid.UUID, spec CreateV
 		}
 	}
 
-	vmName := fmt.Sprintf("vm-%s", vmID.String()[:8])
+	vmName := vmNameFromID(vmID)
 
 	// 3. Create network port (idempotent: check if already exists)
 	var port *network.Port
@@ -659,29 +817,9 @@ func (o *Orchestrator) buildVM(ctx context.Context, vmID uuid.UUID, spec CreateV
 		return fmt.Errorf("get worker client: %w", err)
 	}
 
-	req := &pb.CreateVMRequest{
-		VmId:  vmID.String(),
-		Name:  vmName,
-		Vcpus: int32(flv.VCPUs),
-		RamMb: flv.RAMMB,
-		Disks: []*pb.DiskSpec{
-			{TargetDev: "vda", Protocol: exportInfo.Protocol, Params: exportInfo.Params},
-		},
-		CloudInit: &pb.CloudInitSpec{
-			Hostname: vmName,
-			UserData: "#cloud-config\n",
-		},
-	}
-
-	if port != nil {
-		req.Ports = []*pb.PortSpec{
-			{
-				PortId:     port.ID.String(),
-				MacAddress: port.MACAddress,
-				BridgeName: "br-int",
-			},
-		}
-	}
+	req := buildCreateVMRequest(vmID, vmName, int32(flv.VCPUs), int64(flv.RAMMB),
+		[]*pb.DiskSpec{{TargetDev: "vda", Protocol: exportInfo.Protocol, Params: exportInfo.Params}},
+		port)
 
 	resp, err := workerClient.CreateVM(ctx, req)
 	if err != nil {
@@ -698,7 +836,7 @@ func (o *Orchestrator) buildVM(ctx context.Context, vmID uuid.UUID, spec CreateV
 // All errors are collected and logged at the end; individual step failures do not
 // abort subsequent steps.
 func (o *Orchestrator) teardownVM(ctx context.Context, vm *VM) error {
-	vmName := fmt.Sprintf("vm-%s", vm.ID.String()[:8])
+	vmName := vmNameFromID(vm.ID)
 
 	var errs []error
 

@@ -56,6 +56,8 @@ func (m *mockComputeSvc) MigrateVM(_ context.Context, _, vmID uuid.UUID, targetH
 	return m.migrateErr
 }
 
+func (m *mockComputeSvc) FailoverVM(_ context.Context, _ uuid.UUID) error { return nil }
+
 // vmTestRouter builds a router wired with the given compute service.
 func vmTestRouter(svc compute.Service) http.Handler {
 	return api.NewRouter(nil, slog.Default(), &testAuthn{}, &testAuthz{}, nil, nil, nil, nil, nil, nil, nil, svc, nil, nil, false)

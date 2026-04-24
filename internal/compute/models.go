@@ -11,13 +11,14 @@ import (
 type VMStatus string
 
 const (
-	VMStatusPending   VMStatus = "pending"
-	VMStatusBuilding  VMStatus = "building"
-	VMStatusRunning   VMStatus = "running"
-	VMStatusStopped   VMStatus = "stopped"
-	VMStatusError     VMStatus = "error"
-	VMStatusDeleting  VMStatus = "deleting"
-	VMStatusMigrating VMStatus = "migrating"
+	VMStatusPending     VMStatus = "pending"
+	VMStatusBuilding    VMStatus = "building"
+	VMStatusRunning     VMStatus = "running"
+	VMStatusStopped     VMStatus = "stopped"
+	VMStatusError       VMStatus = "error"
+	VMStatusDeleting    VMStatus = "deleting"
+	VMStatusMigrating   VMStatus = "migrating"
+	VMStatusFailingOver VMStatus = "failing_over"
 )
 
 // VM represents a virtual machine managed by Cirrus.
@@ -37,10 +38,11 @@ type VM struct {
 
 // transitionalStatuses are states where no operations are allowed.
 var transitionalStatuses = map[VMStatus]bool{
-	VMStatusBuilding:  true,
-	VMStatusDeleting:  true,
-	VMStatusPending:   true,
-	VMStatusMigrating: true,
+	VMStatusBuilding:    true,
+	VMStatusDeleting:    true,
+	VMStatusPending:     true,
+	VMStatusMigrating:   true,
+	VMStatusFailingOver: true,
 }
 
 // ErrConflict is returned when an operation is not allowed in the current state.

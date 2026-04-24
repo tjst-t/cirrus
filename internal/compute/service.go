@@ -59,4 +59,9 @@ type Service interface {
 	// MigrateVM live-migrates a running VM to a new host.
 	// If targetHostID is nil, the scheduler selects the destination.
 	MigrateVM(ctx context.Context, tenantID, vmID uuid.UUID, targetHostID *uuid.UUID) error
+
+	// FailoverVM cold-restarts an error-state VM on a new host after the original
+	// host has been fenced. The VM must be in 'error' status.
+	// Flow: Reschedule → ExportVolume → UpdatePortHost → Worker.CreateVM → update host_id → status=running
+	FailoverVM(ctx context.Context, vmID uuid.UUID) error
 }

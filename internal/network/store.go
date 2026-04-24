@@ -529,6 +529,21 @@ func (s *Store) DeletePort(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+// UpdatePortHost rebinds a port to a new host and sets its status to active.
+// Called during failover after the VM has been relaunched on the new host.
+func (s *Store) UpdatePortHost(ctx context.Context, portID, hostID uuid.UUID) error {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE ports SET host_id = $1, status = 'active', updated_at = now() WHERE id = $2`,
+		hostID, portID)
+	if err != nil {
+		return fmt.Errorf("network: update port host: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("network: update port host: %w", ErrNotFound)
+	}
+	return nil
+}
+
 // --- Gateway Nodes ---
 
 func (s *Store) CreateGatewayNode(ctx context.Context, spec GatewayNodeSpec) (*GatewayNode, error) {

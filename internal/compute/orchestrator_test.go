@@ -259,6 +259,166 @@ func TestMigrateVM_RescheduleSuccess(t *testing.T) {
 	}
 }
 
+// --- FailoverVM state machine simulation ---
+
+// failoverStateMachine reproduces the FailoverVM error-handling logic extracted
+// from orchestrator.go so it can be tested without a database connection.
+//
+// Flow:
+//  1. Validate VM is in 'error' state.
+//  2. Validate VM has a host_id.
+//  3. Set status to 'failing_over'.
+//  4. Reschedule (pick new host, excluding the dead one).
+//  5. On success: set status to 'running'.
+//  6. On any error (defer): set status back to 'error'.
+func runFailoverStateMachine(
+	vm *fakeVMState,
+	hasHostID bool,
+	rescheduleErr error,
+	workerCreateErr error,
+) error {
+	// Step 1: validate status
+	if vm.status != VMStatusError {
+		return errors.New("compute: FailoverVM: vm is not in error state (current: " + string(vm.status) + ")")
+	}
+	// Step 2: validate host
+	if !hasHostID {
+		return errors.New("compute: FailoverVM: vm has no assigned host")
+	}
+
+	// Step 3: mark failing_over
+	vm.setStatus(VMStatusFailingOver, "")
+
+	var retErr error
+	defer func() {
+		if retErr != nil {
+			vm.setStatus(VMStatusError, retErr.Error())
+		}
+	}()
+
+	// Step 4: reschedule
+	if rescheduleErr != nil {
+		retErr = errors.New("compute: FailoverVM: reschedule: " + rescheduleErr.Error())
+		return retErr
+	}
+
+	// Step 5: worker CreateVM
+	if workerCreateErr != nil {
+		retErr = errors.New("compute: FailoverVM: worker CreateVM: " + workerCreateErr.Error())
+		return retErr
+	}
+
+	// Step 6: success
+	vm.setStatus(VMStatusRunning, "")
+	return nil
+}
+
+// TestFailoverVM_NotInErrorState verifies that FailoverVM returns an error
+// immediately if the VM is not in 'error' state (no status transitions).
+func TestFailoverVM_NotInErrorState(t *testing.T) {
+	for _, status := range []VMStatus{VMStatusRunning, VMStatusStopped, VMStatusBuilding} {
+		vm := newFakeVMState(status)
+		err := runFailoverStateMachine(vm, true, nil, nil)
+		if err == nil {
+			t.Errorf("status=%s: expected error, got nil", status)
+		}
+		// Status must remain unchanged (no transition occurred).
+		if len(vm.history) != 1 {
+			t.Errorf("status=%s: status history = %v, want no transitions", status, vm.history)
+		}
+	}
+}
+
+// TestFailoverVM_NoHostID verifies that FailoverVM returns an error immediately
+// when the VM has no assigned host_id (no status transitions).
+func TestFailoverVM_NoHostID(t *testing.T) {
+	vm := newFakeVMState(VMStatusError)
+	err := runFailoverStateMachine(vm, false /* no host */, nil, nil)
+	if err == nil {
+		t.Fatal("expected error for VM with no host_id, got nil")
+	}
+	// No transitions: status stays at 'error'.
+	if len(vm.history) != 1 {
+		t.Errorf("status history = %v, want no transitions", vm.history)
+	}
+	if vm.status != VMStatusError {
+		t.Errorf("final status = %q, want %q", vm.status, VMStatusError)
+	}
+}
+
+// TestFailoverVM_RescheduleFailure verifies that when Reschedule fails, the VM
+// transitions: error → failing_over → error.
+func TestFailoverVM_RescheduleFailure(t *testing.T) {
+	vm := newFakeVMState(VMStatusError)
+	reschedErr := errors.New("no suitable host")
+
+	err := runFailoverStateMachine(vm, true, reschedErr, nil)
+	if err == nil {
+		t.Fatal("expected error when reschedule fails, got nil")
+	}
+
+	wantHistory := []VMStatus{VMStatusError, VMStatusFailingOver, VMStatusError}
+	if len(vm.history) != len(wantHistory) {
+		t.Fatalf("status history = %v, want %v", vm.history, wantHistory)
+	}
+	for i, want := range wantHistory {
+		if vm.history[i] != want {
+			t.Errorf("history[%d] = %q, want %q", i, vm.history[i], want)
+		}
+	}
+	if vm.status != VMStatusError {
+		t.Errorf("final status = %q, want %q", vm.status, VMStatusError)
+	}
+}
+
+// TestFailoverVM_WorkerCreateFails verifies that when the worker CreateVM call fails,
+// the VM transitions: error → failing_over → error.
+func TestFailoverVM_WorkerCreateFails(t *testing.T) {
+	vm := newFakeVMState(VMStatusError)
+	createErr := errors.New("rpc error: code = Internal desc = disk I/O error")
+
+	err := runFailoverStateMachine(vm, true, nil, createErr)
+	if err == nil {
+		t.Fatal("expected error when worker CreateVM fails, got nil")
+	}
+
+	wantHistory := []VMStatus{VMStatusError, VMStatusFailingOver, VMStatusError}
+	if len(vm.history) != len(wantHistory) {
+		t.Fatalf("status history = %v, want %v", vm.history, wantHistory)
+	}
+	for i, want := range wantHistory {
+		if vm.history[i] != want {
+			t.Errorf("history[%d] = %q, want %q", i, vm.history[i], want)
+		}
+	}
+	if vm.status != VMStatusError {
+		t.Errorf("final status = %q, want %q", vm.status, VMStatusError)
+	}
+}
+
+// TestFailoverVM_Success verifies the happy path: error → failing_over → running.
+func TestFailoverVM_Success(t *testing.T) {
+	vm := newFakeVMState(VMStatusError)
+
+	err := runFailoverStateMachine(vm, true, nil, nil)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	wantHistory := []VMStatus{VMStatusError, VMStatusFailingOver, VMStatusRunning}
+	if len(vm.history) != len(wantHistory) {
+		t.Fatalf("status history = %v, want %v", vm.history, wantHistory)
+	}
+	for i, want := range wantHistory {
+		if vm.history[i] != want {
+			t.Errorf("history[%d] = %q, want %q", i, vm.history[i], want)
+		}
+	}
+	if vm.status != VMStatusRunning {
+		t.Errorf("final status = %q, want %q", vm.status, VMStatusRunning)
+	}
+}
+
 // containsErrMessage reports whether err.Error() contains the substring sub.
 func containsErrMessage(err error, sub string) bool {
 	if err == nil {

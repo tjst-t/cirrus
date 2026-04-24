@@ -231,6 +231,7 @@ _start-controller:
 	    --db-dsn="$$DB_DSN" \
 	    --storage-endpoint="http://localhost:$$SIM_STORAGE_PORT" \
 	    --awx-endpoint="http://localhost:$$SIM_AWX_PORT" \
+	    --fencing-sim-url="http://localhost:$$SIM_LIBVIRT_PORT" \
 	    --auth-tokens="$(AUTH_TOKENS)" \
 	    --registration-token="$(REGISTRATION_TOKEN)" \
 	    --log-level=debug \

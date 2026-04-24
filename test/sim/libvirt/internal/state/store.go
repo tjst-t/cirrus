@@ -185,6 +185,19 @@ func (s *Store) RemoveHost(hostID string) error {
 	return nil
 }
 
+// UpdateHostState sets the state of a host.
+func (s *Store) UpdateHostState(hostID string, st HostState) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	h, ok := s.hosts[hostID]
+	if !ok {
+		return fmt.Errorf("update host state: host %s: %w", hostID, ErrHostNotFound)
+	}
+	h.State = st
+	return nil
+}
+
 // Reset clears all state.
 func (s *Store) Reset() {
 	s.mu.Lock()

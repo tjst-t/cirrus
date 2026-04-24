@@ -154,6 +154,8 @@ func (m *mockNetworkSvc) UpdateLBBackendHealth(_ context.Context, _, _ uuid.UUID
 	return nil
 }
 
+func (m *mockNetworkSvc) UpdatePortHost(_ context.Context, _, _ uuid.UUID) error { return nil }
+
 // networkTestRouter builds a router wired with the given network service.
 func networkTestRouter(svc network.Service) http.Handler {
 	return api.NewRouter(nil, slog.Default(), &testAuthn{}, &testAuthz{}, nil, nil, nil, svc, nil, nil, nil, nil, nil, nil, false)

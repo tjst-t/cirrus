@@ -186,24 +186,43 @@ func (o *Orchestrator) deleteVMRecord(ctx context.Context, vmID uuid.UUID) error
 	return err
 }
 
+// vmVolumeEntry holds the volume ID and device name for a VM attachment.
+type vmVolumeEntry struct {
+	volumeID uuid.UUID
+	device   string
+}
+
 // listVMVolumeIDs returns the volume UUIDs attached to a VM.
 func (o *Orchestrator) listVMVolumeIDs(ctx context.Context, vmID uuid.UUID) ([]uuid.UUID, error) {
+	entries, err := o.listVMVolumeEntries(ctx, vmID)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]uuid.UUID, len(entries))
+	for i, e := range entries {
+		ids[i] = e.volumeID
+	}
+	return ids, nil
+}
+
+// listVMVolumeEntries returns the volume IDs and device names for all volumes attached to a VM.
+func (o *Orchestrator) listVMVolumeEntries(ctx context.Context, vmID uuid.UUID) ([]vmVolumeEntry, error) {
 	rows, err := o.pool.Query(ctx,
-		`SELECT volume_id FROM vm_volumes WHERE vm_id = $1 ORDER BY device`, vmID)
+		`SELECT volume_id, device FROM vm_volumes WHERE vm_id = $1 ORDER BY device`, vmID)
 	if err != nil {
 		return nil, fmt.Errorf("compute: list vm volumes: %w", err)
 	}
 	defer rows.Close()
 
-	var ids []uuid.UUID
+	var entries []vmVolumeEntry
 	for rows.Next() {
-		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
+		var e vmVolumeEntry
+		if err := rows.Scan(&e.volumeID, &e.device); err != nil {
 			return nil, fmt.Errorf("compute: list vm volumes scan: %w", err)
 		}
-		ids = append(ids, id)
+		entries = append(entries, e)
 	}
-	return ids, rows.Err()
+	return entries, rows.Err()
 }
 
 // insertFallbackRoute creates a migration_fallback_routes record and returns its ID.

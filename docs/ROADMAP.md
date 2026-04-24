@@ -4,14 +4,14 @@
 
 ## Progress
 
-- Total: 51 Sprints | Done: 34 | In Progress: 0 | Remaining: 17
-- [██████████████░░░░░░] 67%
-- Next: S024 (HA Failover)
+- Total: 51 Sprints | Done: 35 | In Progress: 0 | Remaining: 16
+- [██████████████░░░░░░] 69%
+- Next: S025 (DRS)
 
 ## Execution Order
 
 S001 → S002 → S003 → S004 → S005 → S006 → S007 → S008 → S009 → S010 → S011 → S012 → S013 → S014 → S015 → S016 → S017 → S018 → S019 → S020 → S021 → S045 → S042 → S043 → S044 → S022 → S046 → S047 → S048 → S049 → S050 → S051 → S023 → S024 → S025 → S026 → S027 → S028 → S029 → S030 → S031 → S032 → S033 → S034 → S035 → S036 → S037 → S038 → S039 → S040 → S041
-                                                                                                                                                                                                                           ↑ next
+                                                                                                                                                                                                                                    ↑ next
 
 ---
 
@@ -979,27 +979,27 @@ Phase 1 WebUI 全体の結合 E2E テストが通り、`make serve` 環境で安
 
 ---
 
-## Sprint S024: HA Failover [ ]
+## Sprint S024: HA Failover [DONE]
 
 ホスト障害検出時にフェンシングを行い、影響 VM を別ホストで自動再起動する。設計: docs/reconciliation.md 参照。
 
-### Story S024-1: FencingAgent [ ]
+### Story S024-1: インフラ管理者として、障害ホストを自動的に電源断（IPMI 経由）したい。なぜなら、障害ホスト上の VM を安全に別ホストへ退避するには、まずそのホストが完全に停止していることを保証する必要があるから。 [x]
 
-- [ ] **Task S024-1-1**: `internal/controller/fencing/agent.go` FencingAgent インターフェース
-- [ ] **Task S024-1-2**: hook 経由（AWX）で IPMI power-off 実行 + 電源 OFF 確認のポーリング
-- [ ] **Task S024-1-3**: フェンシングタイムアウト + 失敗時 Alert(critical)
+- [x] **Task S024-1-1**: `internal/controller/fencing/agent.go` FencingAgent インターフェース
+- [x] **Task S024-1-2**: cirrus-sim に `/hosts/{id}/power-off` IPMI スタブ追加、FencingAgent 実装（power-off 実行 + 電源 OFF 確認ポーリング）
+- [x] **Task S024-1-3**: フェンシングタイムアウト + 失敗時 Alert(critical) → failover 中止（VM は error 状態で手動対応待ち）
 
-### Story S024-2: FailoverTrigger + VM 再起動フロー [ ]
+### Story S024-2: インフラ管理者として、障害ホスト上の VM が自動的に別ホストで再起動されてほしい。なぜなら、ホスト障害時の影響を最小化し、テナントの VM サービスを無人で自動復旧させたいから。 [x]
 
-- [ ] **Task S024-2-1**: `internal/controller/reconcile/failover.go` FailoverTrigger 実装
-- [ ] **Task S024-2-2**: faulty 遷移 → FencingAgent → 成功 → Reschedule → VM 再起動
-- [ ] **Task S024-2-3**: error 状態 VM の Reschedule → Storage.ReexportVolume → Agent.CreateVM → Network.RebindPort
+- [x] **Task S024-2-1**: `internal/controller/reconcile/failover.go` FailoverTrigger 実装
+- [x] **Task S024-2-2**: faulty 遷移 → FencingAgent → 成功 → Reschedule → VM 再起動
+- [x] **Task S024-2-3**: error 状態 VM の Reschedule → Storage.ReexportVolume → Agent.CreateVM → Network.RebindPort
 
-### Story S024-3: テスト [ ]
+### Story S024-3: インフラ管理者として、HA Failover の全シナリオ（正常・失敗・複数 VM 同時）をシミュレーション環境で検証したい。なぜなら、本番投入前に障害シナリオを安全に確認できる必要があるから。 [x]
 
-- [ ] **Task S024-3-1**: worker 停止 → faulty → フェンシング → failover → 別ホストで VM 再起動
-- [ ] **Task S024-3-2**: フェンシング失敗シナリオ: failover 中止 + Alert 発火
-- [ ] **Task S024-3-3**: 複数 VM 同時 failover: 全 VM が順次別ホストに再配置
+- [x] **Task S024-3-1**: worker 停止 → faulty → フェンシング → failover → 別ホストで VM 再起動
+- [x] **Task S024-3-2**: フェンシング失敗シナリオ: failover 中止 + Alert 発火
+- [x] **Task S024-3-3**: 複数 VM 同時 failover: 全 VM が順次別ホストに再配置
 
 ---
 
@@ -1383,6 +1383,10 @@ Controller 再起動後も非同期ジョブが安全にリカバリできる。
 
 - [ ] **WebUI ロール別 Admin ナビ分離**: `GET /api/v1/me`（ログインユーザー情報・ロール取得）API を追加し、フロントエンドの Admin ナビを infra_admin 向け（ホスト・ストレージ・Flavor・Quota・DriftEvent）と org_admin 向け（組織・テナント・ロール割り当て）に分離。現状は UI レベルのアクセス制御なし（API の RBAC に委ねている）。
 - [ ] **S008 フォローアップ**: `make serve` での storage-domain → AZ の自動シード改善
+- [ ] **S024 フォローアップ: MigrateVM/FailoverVM 共通ロジック抽出**: `internal/compute/orchestrator.go` の `MigrateVM` と `FailoverVM` が共通する「ボリューム再エクスポート → CreateVMRequest 構築 → worker.CreateVM」処理を `launchVMOnHost(ctx, vm, hostID)` ヘルパーに切り出してデュプリケーション削減。
+- [ ] **S024 フォローアップ: FailoverVM の冪等性ドキュメント化**: 失敗後の再試行時に同一ボリュームへの重複 `ExportVolume` 呼び出しがストレージドライバーの冪等性に依存している点をコメントまたは docs/storage.md に明記。
+- [ ] **S024 フォローアップ: FailoverTrigger 並行性ユニットテスト**: 同一ホストへの二重 `Handle()` 呼び出しが `inFlight` map で正しく防がれることを `internal/controller/reconcile/failover_test.go` に追加。
+- [ ] **cirrus-sim: `handleUpdateHostConfig` データレース修正**: `test/sim/libvirt/internal/handler/management.go` の `handleUpdateHostConfig` が `host.CPUOvercommitRatio`/`MemOvercommitRatio` を無ロックで直接書き換えている。`UpdateHostConfig(hostID, cpu, mem)` を `state.Store` に追加してアトミックな更新に統一する（`handleUpdateHostState` と同じパターン）。
 - [ ] **OVS クライアント移行**: S012 で実装した ExecOVSClient（os/exec）を antrea-io/ofnet に移行（OVSClient interface は不変）
 - [ ] **Port API 公開**: POST /api/v1/ports（現在は Compute 統合まで内部ヘルパーのみ）→ S015 で実装
 - [ ] **DriftEvent 対応判定テーブル**: reconciliation.md に基づく Alert/Auto-heal 振り分けルールの実装（S018 で対応）

@@ -65,6 +65,10 @@ type Service interface {
 	UpdateIngressConfig(ctx context.Context, ingressID uuid.UUID, config IngressConfig) (*Ingress, error)
 	DeleteIngress(ctx context.Context, id uuid.UUID) error
 
+	// UpdatePortHost updates the host_id of a port and sets its status to active.
+	// Used during failover to rebind a port to the new host after VM relocation.
+	UpdatePortHost(ctx context.Context, portID, hostID uuid.UUID) error
+
 	// UpdateBackendHealth updates the healthy state of a backend VM in an l4_lb ingress.
 	UpdateBackendHealth(ctx context.Context, ingressID uuid.UUID, vmID uuid.UUID, healthy bool) error
 

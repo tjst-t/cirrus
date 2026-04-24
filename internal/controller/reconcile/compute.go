@@ -166,7 +166,7 @@ func (r *HeartbeatReconciler) listStableVMs(ctx context.Context, hostID uuid.UUI
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, status FROM vms
 		 WHERE host_id = $1
-		   AND status NOT IN ('pending', 'building', 'deleting')`,
+		   AND status NOT IN ('pending', 'building', 'deleting', 'migrating', 'failing_over')`,
 		hostID,
 	)
 	if err != nil {
@@ -201,6 +201,9 @@ func statusesMatch(dbStatus, hbStatus string) bool {
 		return hbStatus == "shutoff"
 	case "error":
 		return hbStatus == "crashed" || hbStatus == "shutoff"
+	case "failing_over", "migrating":
+		// VM is mid-transition; any heartbeat status is expected.
+		return true
 	}
 	return false
 }

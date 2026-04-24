@@ -24,6 +24,7 @@ import (
 	"github.com/tjst-t/cirrus/internal/compute"
 	"github.com/tjst-t/cirrus/internal/config"
 	"github.com/tjst-t/cirrus/internal/controller"
+	"github.com/tjst-t/cirrus/internal/controller/fencing"
 	"github.com/tjst-t/cirrus/internal/controller/reconcile"
 	"github.com/tjst-t/cirrus/internal/jobqueue"
 	"github.com/tjst-t/cirrus/internal/scheduler"
@@ -68,6 +69,7 @@ func newControllerCmd() *cobra.Command {
 	f.IntVar(&cfg.GRPCPort, "grpc-port", 0, "gRPC listen port (required)")
 	f.StringVar(&cfg.DBDSN, "db-dsn", "", "PostgreSQL connection string")
 	f.StringVar(&cfg.StorageEndpoint, "storage-endpoint", "", "Storage sim/backend endpoint")
+	f.StringVar(&cfg.FencingSimURL, "fencing-sim-url", "", "SimFencingAgent HTTP base URL (e.g. http://localhost:8100); leave empty to disable failover fencing")
 	f.StringVar(&cfg.AWXEndpoint, "awx-endpoint", "", "AWX endpoint")
 	f.StringVar(&cfg.NetBoxEndpoint, "netbox-endpoint", "", "NetBox endpoint")
 	f.StringVar(&cfg.AuthTokens, "auth-tokens", "", "Static auth tokens (token1=externalid1,token2=externalid2)")
@@ -319,8 +321,16 @@ func runController(cfg *config.ControllerConfig) error {
 		})
 	}
 
-	// Heartbeat monitor
-	faultyHandler := controller.NewHostFaultyHandler(pool, logger)
+	// Heartbeat monitor — wire FailoverTrigger if a fencing sim URL is configured.
+	cascadeHandler := controller.NewHostFaultyHandler(pool, logger)
+	var faultyHandler controller.FaultyHandler = cascadeHandler
+	if cfg.FencingSimURL != "" {
+		fencingAgent := fencing.NewSimFencingAgent(cfg.FencingSimURL, 60*time.Second)
+		faultyHandler = reconcile.NewFailoverTrigger(cascadeHandler, fencingAgent, computeSvc, driftHandler, pool, logger)
+		logger.Info("failover trigger enabled", "fencing_sim_url", cfg.FencingSimURL)
+	} else {
+		logger.Info("failover trigger disabled (no --fencing-sim-url configured)")
+	}
 	heartbeatMonitor := controller.NewHeartbeatMonitor(pool, hostSvc, faultyHandler, logger, 30*time.Second)
 	g.Go(func() error {
 		return heartbeatMonitor.Run(gCtx)

@@ -17,6 +17,8 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
   - `StorageReconciler` — Storage 状態との乖離検出・修復（5 分間隔）
   - `HeartbeatMonitor` — Worker heartbeat 監視、3 回連続タイムアウトで `active`/`draining` → `faulty` 自動遷移、`draining` + VM 数 0 → `maintenance` 自動遷移（30 秒間隔）
   - `HostFaultyHandler` — faulty 遷移時に同ホスト上の全 VM を `error`、関連ポートを `down` にカスケード更新
+  - `FailoverTrigger` — `HostFaultyHandler` をラップする `FaultyHandler` 実装。faulty 遷移時に: ① カスケード実行 → ② `FencingAgent.Fence`（IPMI 電源断）→ ③ フェンシング成功時のみ `compute.Orchestrator.FailoverVM` を最大 4 並列で実行。フェンシング失敗時は `DriftEvent(critical)` を発火して failover を中止（safe-mode）。ホスト単位の `inFlight` map で重複 failover を防止（非ブロッキング）
+  - `FencingAgent` — IPMI 電源断の抽象インターフェース（`internal/controller/fencing/`）。本番: IPMI ドライバ（未実装）; 開発・テスト: `SimFencingAgent`（cirrus-sim の `POST /sim/hosts/{id}/power-off` を呼び出し）
 
 ### Worker
 
@@ -60,8 +62,9 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 
 - VM ライフサイクル管理（作成・起動・停止・強制停止・再起動・削除）
 - `Orchestrator`: 非同期 VM 作成パイプライン（Network.CreatePort → Storage.CreateVolume → Scheduler.Schedule → Storage.ExportVolume → WorkerService.CreateVM）
-- `Service` インターフェース: CreateVM/GetVM/ListVMs/DeleteVM/StartVM/StopVM/ForceStopVM/RebootVM/RepairVM/MigrateVM
-- VM ステータス状態機械: `pending` → `building` → `running` ↔ `stopped`; `running` → `migrating` → `running`（ライブマイグレーション）; いずれも `error` へ; `stopped`/`error` → `deleting`
+- `Service` インターフェース: CreateVM/GetVM/ListVMs/DeleteVM/StartVM/StopVM/ForceStopVM/RebootVM/RepairVM/MigrateVM/FailoverVM
+- VM ステータス状態機械: `pending` → `building` → `running` ↔ `stopped`; `running` → `migrating` → `running`（ライブマイグレーション）; `error` → `failing_over` → `running`（HA Failover）; いずれも `error` へ; `stopped`/`error` → `deleting`
+- **FailoverVM**: `error` 状態の VM を別ホストでコールドスタート。フロー: status→`failing_over`（重複防止）→ Reschedule（障害ホスト除外）→ Storage.ExportVolume（全ボリューム）→ Worker.CreateVM（新ホスト）→ Network.UpdatePortHost → status→`running`。失敗時は status→`error` に戻す（defer）。`failing_over`/`migrating` 中の VM は HeartbeatReconciler の stable 状態チェック対象外
 - 操作ガード: 遷移中状態 (`building`/`deleting`/`pending`/`migrating`) での全操作は 409; `running` 中の delete は 409
 - 管理者修復 API: `error` → `stopped` 強制遷移（`RepairVM`）
 - **ライブマイグレーション** (`MigrateVM`): `running` VM を別ホストへ無停止移行。フロー: status→migrating → Reschedule（または explicit target） → PrepareMigration（dest worker）→ FallbackRoute 挿入→ 3 秒待機 → StartMigration（src worker）→ AcceptMigratedVM（dest worker、HostInstance sim モードで dest に domain 登録）→ DB host_id 更新 → status→running → FallbackRoute 削除（defer）。エラー時は status→error かつ FallbackRoute を defer で削除
@@ -242,6 +245,26 @@ Controller StateController
       → OVS flows + groups の差分適用
 ```
 
+### HA Failover フロー
+
+```
+HeartbeatMonitor: ホストの heartbeat 途絶検出
+  → HostFaultyHandler.Handle (VMs → error, ports → down)  ← FailoverTrigger がラップ
+  → FailoverTrigger.Handle (非ブロッキング goroutine)
+      1. HostFaultyHandler.Handle (カスケード)
+      2. FencingAgent.Fence → POST /sim/hosts/{id}/power-off
+         失敗時: DriftEvent(critical, host, fencing_failed) → 中止
+      3. listErrorVMsOnHost → error 状態 VM 一覧
+      4. FailoverVM × N (最大 4 並列, best-effort)
+           → status → failing_over (重複防止)
+           → Scheduler.Reschedule (障害ホスト除外)
+           → Storage.ExportVolume (全ボリューム → 新ホスト)
+           → WorkerService.CreateVM gRPC (新ホスト)
+           → Network.UpdatePortHost (port の host_id 更新)
+           → status → running
+           失敗時: status → error (defer)
+```
+
 ### VM 作成フロー (Compute Orchestrator)
 
 ```
@@ -313,7 +336,8 @@ cirrus/
 │   ├── hypervisor/   # libvirt (DefineVM/StartVM 等)
 │   ├── netcontroller/# OVS OpenFlow
 │   ├── controller/   # Controller gRPC サーバ + WorkerClientPool
-│   ├── controller/reconcile/ # DriftHandler + HeartbeatReconciler + Network/StorageReconciler
+│   ├── controller/fencing/   # FencingAgent インターフェース + SimFencingAgent
+│   ├── controller/reconcile/ # DriftHandler + HeartbeatReconciler + FailoverTrigger + Network/StorageReconciler
 │   ├── client/       # cirrusctl API クライアント
 │   └── state/        # DB・マイグレーション
 ├── docs/             # 設計ドキュメント

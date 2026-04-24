@@ -11,6 +11,7 @@ type ControllerConfig struct {
 	GRPCPort          int    `yaml:"grpc_port"`
 	DBDSN             string `yaml:"db_dsn"`
 	StorageEndpoint   string `yaml:"storage_endpoint"`
+	FencingSimURL     string `yaml:"fencing_sim_url"`     // HTTP URL for SimFencingAgent (e.g. http://localhost:8100)
 	AWXEndpoint       string `yaml:"awx_endpoint"`
 	NetBoxEndpoint    string `yaml:"netbox_endpoint"`
 	AuthTokens        string `yaml:"auth_tokens"`        // comma-separated token=external_id pairs

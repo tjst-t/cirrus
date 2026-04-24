@@ -315,6 +315,97 @@ func TestUpdateMigrationConfigInvalidBody(t *testing.T) {
 	}
 }
 
+func TestPowerOff(t *testing.T) {
+	t.Run("host not found returns 404", func(t *testing.T) {
+		mux, _ := setupTestServer(t)
+
+		req := httptest.NewRequest(http.MethodPost, "/sim/hosts/nonexistent/power-off", nil)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want 404, body: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("host found with running domains returns 200 and domains are shutoff", func(t *testing.T) {
+		mux, store := setupTestServer(t)
+
+		host := &state.Host{
+			HostID:             "host-001",
+			LibvirtPort:        16509,
+			CPUSockets:         2,
+			CoresPerSocket:     4,
+			ThreadsPerCore:     2,
+			MemoryMB:           32768,
+			CPUOvercommitRatio: 4.0,
+			MemOvercommitRatio: 1.5,
+		}
+		if err := store.AddHost(host); err != nil {
+			t.Fatal(err)
+		}
+
+		// Define and start a domain
+		domUUID := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+		d := &state.Domain{
+			Name:      "test-vm",
+			UUID:      domUUID,
+			VCPUs:     2,
+			MemoryKiB: 1024 * 1024, // 1 GiB
+			State:     state.DomainStateShutoff,
+		}
+		if err := store.DefineDomain("host-001", d); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.StartDomain("host-001", d.UUIDString()); err != nil {
+			t.Fatal(err)
+		}
+
+		// Confirm domain is running before power-off
+		dom, err := store.GetDomain("host-001", d.UUIDString())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if dom.State != state.DomainStateRunning {
+			t.Fatalf("domain state = %d, want running before power-off", dom.State)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/sim/hosts/host-001/power-off", nil)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200, body: %s", rec.Code, rec.Body.String())
+		}
+
+		var resp map[string]string
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatal(err)
+		}
+		if resp["status"] != "off" {
+			t.Errorf("status = %q, want \"off\"", resp["status"])
+		}
+
+		// Domain should now be shutoff
+		dom, err = store.GetDomain("host-001", d.UUIDString())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if dom.State != state.DomainStateShutoff {
+			t.Errorf("domain state after power-off = %d, want shutoff (%d)", dom.State, state.DomainStateShutoff)
+		}
+
+		// Host should now be offline
+		h, err := store.GetHost("host-001")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if h.State != state.HostStateOffline {
+			t.Errorf("host state after power-off = %q, want offline", h.State)
+		}
+	})
+}
+
 func TestUpdateHostConfig(t *testing.T) {
 	mux, store := setupTestServer(t)
 
