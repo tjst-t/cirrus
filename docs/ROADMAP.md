@@ -1005,14 +1005,20 @@ Phase 1 WebUI 全体の結合 E2E テストが通り、`make serve` 環境で安
 
 ## Sprint S025: DRS [ ]
 
-コンピュートプール内のリソース偏りを検出し、自動で再配分する。
+コンピュートプール内のリソース偏りを検出し、自動で再配分する。S031 で leader-only 実行に wrap 予定。
 
-### Story S025-1: DRS エンジン + 実行 [ ]
+### Story S025-1: インフラ管理者として、コンピュートプール内のホスト間でリソース利用率の偏りを自動的に解消したい。なぜなら、特定ホストへの集中によるパフォーマンスばらつきと障害時の影響拡大を防ぎたいから。 [ ]
 
-- [ ] **Task S025-1-1**: DRS ポリシー定義（CPU/メモリ使用率の標準偏差閾値、実行間隔、最大同時マイグレーション数）
-- [ ] **Task S025-1-2**: `internal/scheduler/drs.go` リソース偏りの検出 + マイグレーション計画生成
-- [ ] **Task S025-1-3**: 定期実行（configurable interval）、同時マイグレーション数制限
-- [ ] **Task S025-1-4**: テスト: ホスト間のリソース偏り→DRS 実行→分布改善確認
+- [ ] **Task S025-1-1**: `internal/config` に DRS ポリシー追加（`enabled`, `stddev_threshold`（既定 0.15）, `interval`（既定 5min）, `max_concurrent_migrations`（既定 2））
+- [ ] **Task S025-1-2**: `internal/scheduler/drs.go` Engine — AZ 単位で空きリソース割合（`free_vCPU/total`, `free_RAM/total`）の標準偏差を計算し、過負荷→低負荷へ greedy にマイグレーション計画生成（既存 `Reschedule` を再利用、計画件数は `max_concurrent_migrations` まで）
+- [ ] **Task S025-1-3**: `internal/controller` に DRS 周期実行ループ追加（ticker、同時実行ガード、`compute.MigrateVM` 呼び出し）。マイグレーション失敗は warn ログのみで次サイクル再試行。S031 leader gating 導入箇所を TODO コメントで明示
+- [ ] **Task S025-1-4**: 単体テスト（偏り計算、計画生成、greedy 選択ロジック）+ 結合テスト（ホスト間偏り → DRS 1 サイクル実行 → σ が閾値以下に改善）
+
+### Story S025-2: インフラ管理者として、CLI から DRS を手動実行・状態確認したい。なぜなら、運用上の偏り解消対応や障害調査時に即時に DRS を起動・観察したいから。 [ ]
+
+- [ ] **Task S025-2-1**: `POST /api/v1/admin/drs/run` 即時実行エンドポイント（実行中なら 409 Conflict）
+- [ ] **Task S025-2-2**: `GET /api/v1/admin/drs/status` 最終実行結果（開始/終了時刻、検出した σ、計画した移行件数、成功/失敗内訳）
+- [ ] **Task S025-2-3**: `cirrusctl admin drs run` / `cirrusctl admin drs status` コマンド
 
 ---
 
