@@ -1014,11 +1014,11 @@ Phase 1 WebUI 全体の結合 E2E テストが通り、`make serve` 環境で安
 - [x] **Task S025-1-3**: `internal/controller` に DRS 周期実行ループ追加（ticker、同時実行ガード、`compute.MigrateVM` 呼び出し）。マイグレーション失敗は warn ログのみで次サイクル再試行。S031 leader gating 導入箇所を TODO コメントで明示
 - [x] **Task S025-1-4**: 単体テスト（偏り計算、計画生成、greedy 選択ロジック）+ 結合テスト（ホスト間偏り → DRS 1 サイクル実行 → σ が閾値以下に改善）
 
-### Story S025-2: インフラ管理者として、CLI から DRS を手動実行・状態確認したい。なぜなら、運用上の偏り解消対応や障害調査時に即時に DRS を起動・観察したいから。 [ ]
+### Story S025-2: インフラ管理者として、CLI から DRS を手動実行・状態確認したい。なぜなら、運用上の偏り解消対応や障害調査時に即時に DRS を起動・観察したいから。 [x]
 
-- [ ] **Task S025-2-1**: `POST /api/v1/admin/drs/run` 即時実行エンドポイント（実行中なら 409 Conflict）
-- [ ] **Task S025-2-2**: `GET /api/v1/admin/drs/status` 最終実行結果（開始/終了時刻、検出した σ、計画した移行件数、成功/失敗内訳）
-- [ ] **Task S025-2-3**: `cirrusctl admin drs run` / `cirrusctl admin drs status` コマンド
+- [x] **Task S025-2-1**: `POST /api/v1/admin/drs/run` 即時実行エンドポイント（実行中なら 409 Conflict）
+- [x] **Task S025-2-2**: `GET /api/v1/admin/drs/status` 最終実行結果（開始/終了時刻、検出した σ、計画した移行件数、成功/失敗内訳）
+- [x] **Task S025-2-3**: `cirrusctl admin drs run` / `cirrusctl admin drs status` コマンド
 
 ---
 

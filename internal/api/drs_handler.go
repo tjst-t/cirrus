@@ -28,8 +28,6 @@ import (
 // Defined here (not in drs package) to avoid coupling the handler tightly to
 // the concrete runner, and to keep the handler testable with a simple fake.
 type DRSRunner interface {
-	// IsRunning reports whether a RunOnce execution is currently in flight.
-	IsRunning() bool
 	// TryAcquire atomically sets the in-flight flag; returns false if already set.
 	TryAcquire() bool
 	// Release clears the in-flight flag set by TryAcquire.

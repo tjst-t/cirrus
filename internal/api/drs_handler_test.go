@@ -30,7 +30,6 @@ type fakeDRSRunner struct {
 	runReport  *controllerdrs.RunReport
 }
 
-func (f *fakeDRSRunner) IsRunning() bool         { return f.inFlight.Load() == 1 }
 func (f *fakeDRSRunner) TryAcquire() bool        { return f.inFlight.CompareAndSwap(0, 1) }
 func (f *fakeDRSRunner) Release()                { f.inFlight.Store(0) }
 func (f *fakeDRSRunner) LastReport() *controllerdrs.RunReport { return f.lastReport }

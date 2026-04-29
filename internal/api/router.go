@@ -60,12 +60,6 @@ func staticDistHandler() http.Handler {
 }
 
 
-// DRSRunnerProvider is the minimal interface the router needs from a DRS runner.
-// It matches the DRSRunner interface declared in drs_handler.go but is kept
-// here so router.go does not need to know the drs_handler types at the
-// package level.
-type DRSRunnerProvider = DRSRunner
-
 // NewRouterOptions holds optional/advanced parameters for NewRouter.
 type NewRouterOptions struct {
 	// DRSRunner is the DRS Runner instance shared between the periodic ticker

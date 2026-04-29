@@ -242,9 +242,9 @@ func runController(cfg *config.ControllerConfig) error {
 	// router) so the same instance is shared between the periodic ticker and the
 	// admin API handler.  gated on DRSEnabled; drsRunner stays nil if disabled.
 	var drsRunner *controllerdrs.Runner
-	drsRouterOpts := api.NewRouterOptions{DRSEnabled: cfg.DRSEnabled, DRSIntervalSecs: cfg.DRSInterval}
+	drsConfig := cfg.DRSConfig()
+	drsRouterOpts := api.NewRouterOptions{DRSEnabled: cfg.DRSEnabled, DRSIntervalSecs: drsConfig.Interval}
 	if cfg.DRSEnabled {
-		drsConfig := cfg.DRSConfig()
 		drsPolicy := scheduler.DRSPolicy{
 			StddevThreshold: drsConfig.StddevThreshold,
 			MaxConcurrent:   drsConfig.MaxConcurrent,
@@ -255,7 +255,6 @@ func runController(cfg *config.ControllerConfig) error {
 		drsEngine := scheduler.NewEngine(hostSvc, computeVMAdapter, azSvc, flavorSvc, sched)
 		drsRunner = controllerdrs.NewRunner(drsEngine, computeSvc, drsPolicy, drsInterval, logger)
 		drsRouterOpts.DRSRunner = drsRunner
-		drsRouterOpts.DRSIntervalSecs = drsConfig.Interval
 	}
 
 	// HTTP API
@@ -367,7 +366,6 @@ func runController(cfg *config.ControllerConfig) error {
 		// TODO(S031): wrap with leader-only execution once controller HA is implemented.
 		// See docs/controller-ha.md — DRS must run on the leader instance only.
 		drsRunner.Start(gCtx)
-		drsConfig := cfg.DRSConfig()
 		logger.Info("DRS runner started",
 			"interval_s", drsConfig.Interval,
 			"stddev_threshold", drsConfig.StddevThreshold,
