@@ -148,16 +148,31 @@ func (e *drsEngine) Plan(ctx context.Context, policy DRSPolicy) ([]DRSResult, er
 func (e *drsEngine) planAZ(ctx context.Context, zone az.AvailabilityZone, policy DRSPolicy, budget int) (DRSResult, error) {
 	result := DRSResult{AZID: zone.ID}
 
-	// List active hosts in this AZ.
-	allHosts, err := e.hostSvc.ListHosts(ctx)
+	// List active hosts in this AZ via the scheduler's AZ-scoped candidate list.
+	// This ensures DRS never proposes cross-AZ migrations.
+	// When the scheduler returns an empty list (no storage topology configured),
+	// fall back to all registered hosts — mirroring Schedule/Reschedule behaviour.
+	candidateIDs, err := e.scheduler.CandidateHostsForAZ(ctx, zone.ID)
 	if err != nil {
-		return result, fmt.Errorf("list hosts: %w", err)
+		return result, fmt.Errorf("candidate hosts for AZ: %w", err)
+	}
+	if len(candidateIDs) == 0 {
+		allHosts, err := e.hostSvc.ListHosts(ctx)
+		if err != nil {
+			return result, fmt.Errorf("fallback list hosts: %w", err)
+		}
+		for _, h := range allHosts {
+			candidateIDs = append(candidateIDs, h.ID)
+		}
 	}
 
 	// Build per-host state: only active hosts whose physical resources are known.
 	states := make(map[uuid.UUID]*drsHostState)
-	for i := range allHosts {
-		h := &allHosts[i]
+	for _, hID := range candidateIDs {
+		h, err := e.hostSvc.GetHost(ctx, hID)
+		if err != nil {
+			continue
+		}
 		if h.OperationalState != host.StateActive {
 			continue
 		}
@@ -203,6 +218,9 @@ func (e *drsEngine) planAZ(ctx context.Context, zone az.AvailabilityZone, policy
 	}
 
 	// Greedy rebalancing loop.
+	// plannedVMIDs tracks VMs already in the plan so the same VM is never
+	// selected twice (Bug 1 fix).
+	plannedVMIDs := make(map[uuid.UUID]struct{})
 	for len(result.PlannedMoves) < budget {
 		// Pick the most-loaded (lowest free-frac) and least-loaded hosts.
 		mostLoaded, leastLoaded := findExtremes(states)
@@ -219,11 +237,14 @@ func (e *drsEngine) planAZ(ctx context.Context, zone az.AvailabilityZone, policy
 		// Resolve flavors.
 		resolvedVMs := e.resolveVMFlavors(ctx, vms)
 
-		// Pick the VM whose move would most reduce stddev.
-		bestVM, destHostID, err := e.pickBestMove(ctx, resolvedVMs, mostLoaded, leastLoaded, states, zone.ID)
+		// Pick the VM whose move would most reduce stddev, skipping already-planned VMs.
+		bestVM, destHostID, err := e.pickBestMove(ctx, resolvedVMs, mostLoaded, states, zone.ID, plannedVMIDs)
 		if err != nil || bestVM == nil {
 			break
 		}
+
+		// Mark this VM as planned so it is not selected again.
+		plannedVMIDs[bestVM.ID] = struct{}{}
 
 		plan := MigrationPlan{
 			VMID:       bestVM.ID,
@@ -251,14 +272,15 @@ func (e *drsEngine) planAZ(ctx context.Context, zone az.AvailabilityZone, policy
 
 // pickBestMove finds the running VM on srcHost whose relocation to any valid
 // destination most reduces load imbalance.  Returns the chosen VM and the
-// destination host ID.
+// destination host ID.  plannedVMIDs contains VMs already in the current plan
+// that must be skipped to avoid duplicate entries.
 func (e *drsEngine) pickBestMove(
 	ctx context.Context,
 	vms []DRSVM,
 	srcHost *drsHostState,
-	_ *drsHostState, // leastLoaded (used via Reschedule)
 	states map[uuid.UUID]*drsHostState,
 	azID uuid.UUID,
+	plannedVMIDs map[uuid.UUID]struct{},
 ) (*DRSVM, uuid.UUID, error) {
 	var bestVM *DRSVM
 	var bestDest uuid.UUID
@@ -266,6 +288,9 @@ func (e *drsEngine) pickBestMove(
 
 	for i := range vms {
 		vm := &vms[i]
+		if _, alreadyPlanned := plannedVMIDs[vm.ID]; alreadyPlanned {
+			continue
+		}
 		if vm.Status != "running" {
 			continue
 		}

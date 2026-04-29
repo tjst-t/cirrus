@@ -59,11 +59,14 @@ func (f *fakeDRSFlavorSvc) Get(_ context.Context, id uuid.UUID) (*flavor.Flavor,
 	return nil, flavor.ErrNotFound
 }
 
-// fakeDRSScheduler implements Scheduler.Reschedule.
-// It always returns the pre-configured destHostID.
+// fakeDRSScheduler implements Scheduler.Reschedule and CandidateHostsForAZ.
+// It always returns the pre-configured destHostID for Reschedule.
+// CandidateHostsForAZ returns candidateIDs when set, or nil (triggers fallback
+// to all hosts in the engine).
 type fakeDRSScheduler struct {
-	destHostID uuid.UUID
-	err        error
+	destHostID   uuid.UUID
+	err          error
+	candidateIDs map[uuid.UUID][]uuid.UUID // azID → host IDs; nil means "use all"
 }
 
 func (f *fakeDRSScheduler) Schedule(_ context.Context, _ scheduler.ScheduleSpec) (*scheduler.ScheduleResult, error) {
@@ -75,6 +78,13 @@ func (f *fakeDRSScheduler) Reschedule(_ context.Context, _ scheduler.RescheduleS
 		return nil, f.err
 	}
 	return &scheduler.ScheduleResult{HostID: f.destHostID}, nil
+}
+
+func (f *fakeDRSScheduler) CandidateHostsForAZ(_ context.Context, azID uuid.UUID) ([]uuid.UUID, error) {
+	if f.candidateIDs == nil {
+		return nil, nil // triggers fallback to all hosts
+	}
+	return f.candidateIDs[azID], nil
 }
 
 // --- helper: build a host.Host with ResourcePhysical set ---
@@ -395,6 +405,177 @@ func TestDRS_NoMoveForNonRunningVMs(t *testing.T) {
 	for _, r := range results {
 		if len(r.PlannedMoves) != 0 {
 			t.Errorf("expected no moves for stopped VMs, got %d", len(r.PlannedMoves))
+		}
+	}
+}
+
+// TestDRS_GreedyDoesNotPickSameVMTwice ensures the greedy loop never adds the
+// same VM to the plan more than once, even when MaxConcurrent > available VMs.
+func TestDRS_GreedyDoesNotPickSameVMTwice(t *testing.T) {
+	azID := uuid.New()
+	host1ID := uuid.New() // very loaded
+	host2ID := uuid.New() // empty
+
+	flavorID := uuid.New()
+	flv := &flavor.Flavor{ID: flavorID, VCPUs: 2, RAMMB: 2048}
+	tenantID := uuid.New()
+	vmID := uuid.New() // only ONE VM available
+
+	hostSvc := &fakeHostSvc{
+		hosts: map[uuid.UUID]*host.Host{
+			host1ID: makeHost(host1ID, host.StateActive, 16, 32768),
+			host2ID: makeHost(host2ID, host.StateActive, 16, 32768),
+		},
+		allocatable: map[uuid.UUID]*host.AllocatableResources{
+			host1ID: {Vcpus: 1, MemoryMB: 1024, PhysicalKnown: true},  // very loaded
+			host2ID: {Vcpus: 15, MemoryMB: 31744, PhysicalKnown: true}, // mostly free
+		},
+	}
+	azSvc := &fakeDRSAZSvc{
+		zones: []az.AvailabilityZone{{ID: azID, Name: "az1", Enabled: true}},
+	}
+	computeSvc := &fakeDRSComputeSvc{
+		vmsByHost: map[uuid.UUID][]scheduler.DRSVM{
+			host1ID: {
+				{
+					ID:       vmID,
+					TenantID: tenantID,
+					HostID:   &host1ID,
+					FlavorID: &flavorID,
+					Status:   "running",
+				},
+			},
+		},
+	}
+	flavorSvc := &fakeDRSFlavorSvc{
+		flavors: map[uuid.UUID]*flavor.Flavor{flavorID: flv},
+	}
+	sched := &fakeDRSScheduler{destHostID: host2ID}
+
+	eng := scheduler.NewEngine(hostSvc, computeSvc, azSvc, flavorSvc, sched)
+	results, err := eng.Plan(context.Background(), scheduler.DRSPolicy{
+		StddevThreshold: 0.01, // very tight: ensures greedy would loop if not capped
+		MaxConcurrent:   2,    // budget allows 2 moves, but only 1 VM exists
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 AZ result, got %d", len(results))
+	}
+	moves := results[0].PlannedMoves
+	if len(moves) != 1 {
+		t.Errorf("expected exactly 1 planned move (only 1 VM available), got %d", len(moves))
+	}
+	if len(moves) > 0 && moves[0].VMID != vmID {
+		t.Errorf("expected VM %s to be moved, got %s", vmID, moves[0].VMID)
+	}
+}
+
+// TestDRS_TwoAZsDoNotCrosspollinate verifies that VMs in AZ-A are never
+// proposed to be migrated to hosts in AZ-B, and vice-versa.
+func TestDRS_TwoAZsDoNotCrosspollinate(t *testing.T) {
+	azAID := uuid.New()
+	azBID := uuid.New()
+	hostAID := uuid.New() // AZ-A, heavily loaded
+	hostBID := uuid.New() // AZ-A, empty
+	hostCID := uuid.New() // AZ-B, heavily loaded
+	hostDID := uuid.New() // AZ-B, empty
+
+	flavorID := uuid.New()
+	flv := &flavor.Flavor{ID: flavorID, VCPUs: 2, RAMMB: 2048}
+	tenantID := uuid.New()
+	vmAID := uuid.New() // VM on hostA (AZ-A)
+	vmCID := uuid.New() // VM on hostC (AZ-B)
+
+	hostSvc := &fakeHostSvc{
+		hosts: map[uuid.UUID]*host.Host{
+			hostAID: makeHost(hostAID, host.StateActive, 16, 32768),
+			hostBID: makeHost(hostBID, host.StateActive, 16, 32768),
+			hostCID: makeHost(hostCID, host.StateActive, 16, 32768),
+			hostDID: makeHost(hostDID, host.StateActive, 16, 32768),
+		},
+		allocatable: map[uuid.UUID]*host.AllocatableResources{
+			hostAID: {Vcpus: 2, MemoryMB: 4096, PhysicalKnown: true},  // loaded
+			hostBID: {Vcpus: 14, MemoryMB: 28672, PhysicalKnown: true}, // free
+			hostCID: {Vcpus: 2, MemoryMB: 4096, PhysicalKnown: true},  // loaded
+			hostDID: {Vcpus: 14, MemoryMB: 28672, PhysicalKnown: true}, // free
+		},
+	}
+	azSvc := &fakeDRSAZSvc{
+		zones: []az.AvailabilityZone{
+			{ID: azAID, Name: "az-a", Enabled: true},
+			{ID: azBID, Name: "az-b", Enabled: true},
+		},
+	}
+	computeSvc := &fakeDRSComputeSvc{
+		vmsByHost: map[uuid.UUID][]scheduler.DRSVM{
+			hostAID: {
+				{ID: vmAID, TenantID: tenantID, HostID: &hostAID, FlavorID: &flavorID, Status: "running"},
+			},
+			hostCID: {
+				{ID: vmCID, TenantID: tenantID, HostID: &hostCID, FlavorID: &flavorID, Status: "running"},
+			},
+		},
+	}
+	flavorSvc := &fakeDRSFlavorSvc{
+		flavors: map[uuid.UUID]*flavor.Flavor{flavorID: flv},
+	}
+
+	// The scheduler returns the per-AZ candidate lists explicitly.
+	// AZ-A contains only hostA and hostB; AZ-B contains only hostC and hostD.
+	// Reschedule always returns hostBID (for AZ-A calls) or hostDID (for AZ-B calls).
+	// We configure destHostID=hostBID; for AZ-B Reschedule calls the engine will
+	// check that the returned dest is in the AZ's states map.  We use two separate
+	// engine instances to keep the test simple, or configure candidateIDs properly.
+	schedA := &fakeDRSScheduler{
+		destHostID: hostBID,
+		candidateIDs: map[uuid.UUID][]uuid.UUID{
+			azAID: {hostAID, hostBID},
+			azBID: {hostCID, hostDID},
+		},
+	}
+
+	// Use a single scheduler for both AZs, but Reschedule will return hostBID for
+	// AZ-A moves and hostDID for AZ-B moves. Since fakeDRSScheduler returns a fixed
+	// destHostID, we split into two engine calls or verify via dest filtering.
+	// For simplicity: use destHostID=hostBID; for AZ-B the dest (hostBID) will not be
+	// in states (only hostCID/hostDID are), so pickBestMove will skip it.
+	// This correctly validates the AZ isolation via candidateHosts scoping.
+	eng := scheduler.NewEngine(hostSvc, computeSvc, azSvc, flavorSvc, schedA)
+
+	results, err := eng.Plan(context.Background(), scheduler.DRSPolicy{
+		StddevThreshold: 0.05,
+		MaxConcurrent:   4,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Gather all src/dest host IDs across both AZ plans.
+	azAHosts := map[uuid.UUID]bool{hostAID: true, hostBID: true}
+	azBHosts := map[uuid.UUID]bool{hostCID: true, hostDID: true}
+
+	for _, r := range results {
+		for _, m := range r.PlannedMoves {
+			if r.AZID == azAID {
+				// Moves in AZ-A must stay within AZ-A hosts.
+				if !azAHosts[m.SrcHostID] {
+					t.Errorf("AZ-A move: src %s is not an AZ-A host", m.SrcHostID)
+				}
+				if !azAHosts[m.DestHostID] {
+					t.Errorf("AZ-A move: dest %s is not an AZ-A host (cross-AZ leak!)", m.DestHostID)
+				}
+			}
+			if r.AZID == azBID {
+				// Moves in AZ-B must stay within AZ-B hosts.
+				if !azBHosts[m.SrcHostID] {
+					t.Errorf("AZ-B move: src %s is not an AZ-B host", m.SrcHostID)
+				}
+				if !azBHosts[m.DestHostID] {
+					t.Errorf("AZ-B move: dest %s is not an AZ-B host (cross-AZ leak!)", m.DestHostID)
+				}
+			}
 		}
 	}
 }

@@ -272,11 +272,12 @@ func (o *Orchestrator) getVMByID(ctx context.Context, vmID uuid.UUID) (*VM, erro
 	return &vm, nil
 }
 
-// ListVMsByHost returns all VMs currently assigned to the given host.
-// Implements Service.ListVMsByHost; used by DRS.
+// ListVMsByHost returns all running VMs currently assigned to the given host.
+// Implements Service.ListVMsByHost; used by DRS (which only cares about
+// running VMs when planning live migrations).
 func (o *Orchestrator) ListVMsByHost(ctx context.Context, hostID uuid.UUID) ([]VM, error) {
 	rows, err := o.pool.Query(ctx,
-		`SELECT `+vmCols+` FROM vms WHERE host_id = $1 ORDER BY created_at`,
+		`SELECT `+vmCols+` FROM vms WHERE host_id = $1 AND status = 'running' ORDER BY created_at`,
 		hostID,
 	)
 	if err != nil {
