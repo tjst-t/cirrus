@@ -31,6 +31,40 @@ type ControllerConfig struct {
 	AutoHealEnabled            bool `yaml:"auto_heal_enabled"`            // default true
 	UnexpectedPresentThreshold int  `yaml:"unexpected_present_threshold"` // default 3
 	DriftEventRetentionDays    int  `yaml:"drift_event_retention_days"`   // default 90
+
+	// DRS (Distributed Resource Scheduler) settings
+	DRSEnabled         bool    `yaml:"drs_enabled"`          // default false — off unless explicitly enabled
+	DRSStddevThreshold float64 `yaml:"drs_stddev_threshold"` // imbalance threshold; default 0.15
+	DRSInterval        int     `yaml:"drs_interval"`         // seconds between DRS cycles; default 300
+	DRSMaxConcurrent   int     `yaml:"drs_max_concurrent"`   // max migrations per cycle; default 2
+}
+
+// DRSConfig holds only the DRS-specific knobs, decoupled from ControllerConfig.
+type DRSConfig struct {
+	StddevThreshold float64
+	MaxConcurrent   int
+	Interval        int // seconds
+}
+
+// DRSConfig returns the DRS knobs with defaults applied.
+func (c *ControllerConfig) DRSConfig() DRSConfig {
+	threshold := c.DRSStddevThreshold
+	if threshold <= 0 {
+		threshold = 0.15
+	}
+	maxConcurrent := c.DRSMaxConcurrent
+	if maxConcurrent <= 0 {
+		maxConcurrent = 2
+	}
+	interval := c.DRSInterval
+	if interval <= 0 {
+		interval = 300
+	}
+	return DRSConfig{
+		StddevThreshold: threshold,
+		MaxConcurrent:   maxConcurrent,
+		Interval:        interval,
+	}
 }
 
 // WorkerConfig holds configuration for the worker process.

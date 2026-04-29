@@ -64,4 +64,8 @@ type Service interface {
 	// host has been fenced. The VM must be in 'error' status.
 	// Flow: Reschedule → ExportVolume → UpdatePortHost → Worker.CreateVM → update host_id → status=running
 	FailoverVM(ctx context.Context, vmID uuid.UUID) error
+
+	// ListVMsByHost returns all VMs currently assigned to the given host.
+	// Used by DRS to enumerate per-host workloads.
+	ListVMsByHost(ctx context.Context, hostID uuid.UUID) ([]VM, error)
 }

@@ -1,0 +1,67 @@
+?   	github.com/tjst-t/cirrus/cmd/cirrus	[no test files]
+?   	github.com/tjst-t/cirrus/cmd/cirrus-iscsi-server	[no test files]
+?   	github.com/tjst-t/cirrus/cmd/cirrus-rbd-server	[no test files]
+?   	github.com/tjst-t/cirrus/cmd/cirrus-sim	[no test files]
+?   	github.com/tjst-t/cirrus/cmd/cirrus-sim-ctl	[no test files]
+?   	github.com/tjst-t/cirrus/cmd/cirrusctl	[no test files]
+?   	github.com/tjst-t/cirrus/cmd/internal/createport	[no test files]
+?   	github.com/tjst-t/cirrus/cmd/internal/resetdb	[no test files]
+?   	github.com/tjst-t/cirrus/cmd/libvirtd-sim	[no test files]
+?   	github.com/tjst-t/cirrus/internal/agent	[no test files]
+ok  	github.com/tjst-t/cirrus/internal/api	0.017s
+?   	github.com/tjst-t/cirrus/internal/apierror	[no test files]
+?   	github.com/tjst-t/cirrus/internal/az	[no test files]
+?   	github.com/tjst-t/cirrus/internal/blockdev	[no test files]
+ok  	github.com/tjst-t/cirrus/internal/client	0.016s
+ok  	github.com/tjst-t/cirrus/internal/compute	0.012s
+ok  	github.com/tjst-t/cirrus/internal/config	0.006s
+ok  	github.com/tjst-t/cirrus/internal/controller	0.025s
+ok  	github.com/tjst-t/cirrus/internal/controller/drs	0.212s
+ok  	github.com/tjst-t/cirrus/internal/controller/fencing	0.056s
+ok  	github.com/tjst-t/cirrus/internal/controller/reconcile	0.240s
+?   	github.com/tjst-t/cirrus/internal/flavor	[no test files]
+?   	github.com/tjst-t/cirrus/internal/host	[no test files]
+?   	github.com/tjst-t/cirrus/internal/hypervisor	[no test files]
+ok  	github.com/tjst-t/cirrus/internal/identity	0.013s
+ok  	github.com/tjst-t/cirrus/internal/jobqueue	0.212s
+ok  	github.com/tjst-t/cirrus/internal/network	0.008s
+ok  	github.com/tjst-t/cirrus/internal/network/agent	0.014s
+ok  	github.com/tjst-t/cirrus/internal/quota	0.012s
+ok  	github.com/tjst-t/cirrus/internal/scheduler	0.007s
+?   	github.com/tjst-t/cirrus/internal/state	[no test files]
+ok  	github.com/tjst-t/cirrus/internal/storage	0.005s
+?   	github.com/tjst-t/cirrus/internal/storage/driver/iscsi	[no test files]
+?   	github.com/tjst-t/cirrus/internal/storage/driver/rbd	[no test files]
+?   	github.com/tjst-t/cirrus/internal/storage/driver/sim	[no test files]
+?   	github.com/tjst-t/cirrus/internal/topology	[no test files]
+ok  	github.com/tjst-t/cirrus/internal/validate	0.006s
+?   	github.com/tjst-t/cirrus/proto/agentpb	[no test files]
+?   	github.com/tjst-t/cirrus/proto/networkpb	[no test files]
+ok  	github.com/tjst-t/cirrus/test/mock/ovs	0.012s
+?   	github.com/tjst-t/cirrus/test/sim/aggregator	[no test files]
+?   	github.com/tjst-t/cirrus/test/sim/awx	[no test files]
+ok  	github.com/tjst-t/cirrus/test/sim/awx/internal/handler	0.010s
+ok  	github.com/tjst-t/cirrus/test/sim/awx/internal/state	0.051s
+?   	github.com/tjst-t/cirrus/test/sim/common	[no test files]
+ok  	github.com/tjst-t/cirrus/test/sim/common/internal/handler	0.011s
+ok  	github.com/tjst-t/cirrus/test/sim/common/pkg/datagen	0.008s
+ok  	github.com/tjst-t/cirrus/test/sim/common/pkg/eventlog	0.009s
+ok  	github.com/tjst-t/cirrus/test/sim/common/pkg/fault	0.014s
+ok  	github.com/tjst-t/cirrus/test/sim/common/pkg/snapshot	0.015s
+?   	github.com/tjst-t/cirrus/test/sim/libvirt	[no test files]
+ok  	github.com/tjst-t/cirrus/test/sim/libvirt/internal/handler	0.011s
+?   	github.com/tjst-t/cirrus/test/sim/libvirt/internal/netns	[no test files]
+ok  	github.com/tjst-t/cirrus/test/sim/libvirt/internal/rpc	0.060s
+ok  	github.com/tjst-t/cirrus/test/sim/libvirt/internal/state	0.014s
+ok  	github.com/tjst-t/cirrus/test/sim/libvirt/internal/xml	0.012s
+?   	github.com/tjst-t/cirrus/test/sim/postgres	[no test files]
+?   	github.com/tjst-t/cirrus/test/sim/storage	[no test files]
+ok  	github.com/tjst-t/cirrus/test/sim/storage/internal/handler	0.024s
+ok  	github.com/tjst-t/cirrus/test/sim/storage/internal/sim	0.007s
+ok  	github.com/tjst-t/cirrus/test/sim/storage/internal/state	0.019s
+=== go build ./... ===
+Build: OK
+
+=== go vet ./... ===
+test/sim/libvirt/internal/state/db.go:91:13: assignment copies lock value to stored: github.com/tjst-t/cirrus/test/sim/libvirt/internal/state.Host contains sync.RWMutex
+test/sim/libvirt/internal/state/db.go:186:12: assignment copies lock value to stored: github.com/tjst-t/cirrus/test/sim/libvirt/internal/state.Host contains sync.RWMutex

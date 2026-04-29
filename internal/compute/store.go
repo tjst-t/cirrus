@@ -272,6 +272,30 @@ func (o *Orchestrator) getVMByID(ctx context.Context, vmID uuid.UUID) (*VM, erro
 	return &vm, nil
 }
 
+// ListVMsByHost returns all VMs currently assigned to the given host.
+// Implements Service.ListVMsByHost; used by DRS.
+func (o *Orchestrator) ListVMsByHost(ctx context.Context, hostID uuid.UUID) ([]VM, error) {
+	rows, err := o.pool.Query(ctx,
+		`SELECT `+vmCols+` FROM vms WHERE host_id = $1 ORDER BY created_at`,
+		hostID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("compute: list vms by host: %w", err)
+	}
+	defer rows.Close()
+
+	var vms []VM
+	for rows.Next() {
+		var vm VM
+		if err := rows.Scan(&vm.ID, &vm.TenantID, &vm.Name, &vm.FlavorID, &vm.AZID, &vm.NetworkID, &vm.HostID,
+			&vm.Status, &vm.ErrorMessage, &vm.CreatedAt, &vm.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("compute: list vms by host scan: %w", err)
+		}
+		vms = append(vms, vm)
+	}
+	return vms, rows.Err()
+}
+
 // getHostByID looks up a host by its UUID.
 func (o *Orchestrator) getHostByID(ctx context.Context, hostID uuid.UUID) (*host.Host, error) {
 	var h host.Host
