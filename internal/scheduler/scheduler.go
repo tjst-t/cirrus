@@ -53,6 +53,10 @@ type Scheduler interface {
 	Schedule(ctx context.Context, spec ScheduleSpec) (*ScheduleResult, error)
 	// Reschedule selects a migration destination host, excluding the current host.
 	Reschedule(ctx context.Context, spec RescheduleSpec) (*ScheduleResult, error)
+	// CandidateHostsForAZ returns the set of host IDs eligible for placement in
+	// the given AZ, mirroring the logic used by Schedule/Reschedule.
+	// When no storage topology is configured the method falls back to all hosts.
+	CandidateHostsForAZ(ctx context.Context, azID uuid.UUID) ([]uuid.UUID, error)
 }
 
 // DefaultScheduler implements the Scheduler interface.
@@ -161,6 +165,33 @@ func (s *DefaultScheduler) Reschedule(ctx context.Context, spec RescheduleSpec) 
 		return nil, err
 	}
 	return &ScheduleResult{HostID: best}, nil
+}
+
+// CandidateHostsForAZ implements Scheduler. It returns the AZ-scoped host IDs
+// that Schedule/Reschedule would consider, falling back to all hosts when no
+// storage topology is configured.
+func (s *DefaultScheduler) CandidateHostsForAZ(ctx context.Context, azID uuid.UUID) ([]uuid.UUID, error) {
+	set, err := s.candidateHosts(ctx, azID)
+	if err != nil {
+		return nil, fmt.Errorf("scheduler: CandidateHostsForAZ: %w", err)
+	}
+	// Fallback: when no storage topology is configured, return all hosts.
+	if len(set) == 0 {
+		all, err := s.hostSvc.ListHosts(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("scheduler: CandidateHostsForAZ: fallback list hosts: %w", err)
+		}
+		ids := make([]uuid.UUID, 0, len(all))
+		for _, h := range all {
+			ids = append(ids, h.ID)
+		}
+		return ids, nil
+	}
+	ids := make([]uuid.UUID, 0, len(set))
+	for id := range set {
+		ids = append(ids, id)
+	}
+	return ids, nil
 }
 
 // candidateHosts returns the set of host IDs reachable via storage domains in the given AZ.

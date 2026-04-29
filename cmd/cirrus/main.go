@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -24,6 +25,7 @@ import (
 	"github.com/tjst-t/cirrus/internal/compute"
 	"github.com/tjst-t/cirrus/internal/config"
 	"github.com/tjst-t/cirrus/internal/controller"
+	controllerdrs "github.com/tjst-t/cirrus/internal/controller/drs"
 	"github.com/tjst-t/cirrus/internal/controller/fencing"
 	"github.com/tjst-t/cirrus/internal/controller/reconcile"
 	"github.com/tjst-t/cirrus/internal/jobqueue"
@@ -84,6 +86,10 @@ func newControllerCmd() *cobra.Command {
 	f.IntVar(&cfg.UnexpectedPresentThreshold, "unexpected-present-threshold", 3, "Consecutive detections before unexpected_present escalation")
 	f.IntVar(&cfg.DriftEventRetentionDays, "drift-event-retention-days", 90, "Days to retain drift_events records")
 	f.StringVar(&cfg.SecretsKey, "secrets-key", "", "Base64-encoded 32-byte AES-GCM key for encrypting VPN secrets (required for VPN egress)")
+	f.BoolVar(&cfg.DRSEnabled, "drs-enabled", false, "Enable Distributed Resource Scheduler (DRS) for automatic VM rebalancing")
+	f.Float64Var(&cfg.DRSStddevThreshold, "drs-stddev-threshold", 0.15, "Std-dev of free-fraction across hosts that triggers DRS rebalancing")
+	f.IntVar(&cfg.DRSInterval, "drs-interval", 300, "DRS evaluation interval in seconds")
+	f.IntVar(&cfg.DRSMaxConcurrent, "drs-max-concurrent", 2, "Maximum number of DRS-triggered migrations per cycle")
 	return cmd
 }
 
@@ -336,6 +342,28 @@ func runController(cfg *config.ControllerConfig) error {
 		return heartbeatMonitor.Run(gCtx)
 	})
 
+	// DRS (Distributed Resource Scheduler) runner — gates on DRSEnabled flag.
+	if cfg.DRSEnabled {
+		drsConfig := cfg.DRSConfig()
+		drsPolicy := scheduler.DRSPolicy{
+			StddevThreshold: drsConfig.StddevThreshold,
+			MaxConcurrent:   drsConfig.MaxConcurrent,
+		}
+		drsInterval := time.Duration(drsConfig.Interval) * time.Second
+		// computeVMAdapter bridges compute.Service → scheduler.DRSComputeService.
+		computeVMAdapter := &computeVMServiceAdapter{svc: computeSvc}
+		drsEngine := scheduler.NewEngine(hostSvc, computeVMAdapter, azSvc, flavorSvc, sched)
+		drsRunner := controllerdrs.NewRunner(drsEngine, computeSvc, drsPolicy, drsInterval, logger)
+		// TODO(S031): wrap with leader-only execution once controller HA is implemented.
+		// See docs/controller-ha.md — DRS must run on the leader instance only.
+		drsRunner.Start(gCtx)
+		logger.Info("DRS runner started",
+			"interval_s", drsConfig.Interval,
+			"stddev_threshold", drsConfig.StddevThreshold,
+			"max_concurrent", drsConfig.MaxConcurrent,
+		)
+	}
+
 	g.Go(func() error {
 		<-gCtx.Done()
 		logger.Info("shutting down...")
@@ -440,4 +468,30 @@ func runWorker(cfg *config.WorkerConfig) error {
 	}
 
 	return g.Wait()
+}
+
+// computeVMServiceAdapter adapts compute.Service.ListVMsByHost to the
+// scheduler.DRSComputeService interface, which returns []scheduler.DRSVM
+// instead of []compute.VM to avoid an import cycle between scheduler and compute.
+type computeVMServiceAdapter struct {
+	svc compute.Service
+}
+
+func (a *computeVMServiceAdapter) ListVMsByHost(ctx context.Context, hostID uuid.UUID) ([]scheduler.DRSVM, error) {
+	vms, err := a.svc.ListVMsByHost(ctx, hostID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]scheduler.DRSVM, 0, len(vms))
+	for _, vm := range vms {
+		dv := scheduler.DRSVM{
+			ID:       vm.ID,
+			TenantID: vm.TenantID,
+			HostID:   vm.HostID,
+			FlavorID: vm.FlavorID,
+			Status:   string(vm.Status),
+		}
+		out = append(out, dv)
+	}
+	return out, nil
 }
