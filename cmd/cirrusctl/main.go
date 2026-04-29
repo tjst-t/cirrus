@@ -861,6 +861,7 @@ func (app *cli) newAdminCmd() *cobra.Command {
 	cmd.AddCommand(app.newAdminVMCmd())
 	cmd.AddCommand(app.newAdminGatewayNodeCmd())
 	cmd.AddCommand(app.newAdminIPPoolCmd())
+	cmd.AddCommand(app.newAdminDRSCmd()) // defined in admin_drs.go
 	return cmd
 }
 

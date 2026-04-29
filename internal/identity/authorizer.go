@@ -140,6 +140,10 @@ const (
 	// Drift event actions (infra_admin)
 	ActionListDriftEvents   Action = "list_drift_events"
 	ActionResolveDriftEvent Action = "resolve_drift_event"
+
+	// DRS actions (infra_admin)
+	ActionDRSRun    Action = "drs_run"
+	ActionDRSStatus Action = "drs_status"
 )
 
 // Resource represents the target resource of an authorization check.

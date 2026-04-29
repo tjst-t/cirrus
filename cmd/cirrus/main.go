@@ -238,8 +238,28 @@ func runController(cfg *config.ControllerConfig) error {
 	computeSvc.RegisterHandlers(dispatcher)
 	storageSvc.RegisterHandlers(dispatcher)
 
+	// DRS (Distributed Resource Scheduler) runner — built here (before the HTTP
+	// router) so the same instance is shared between the periodic ticker and the
+	// admin API handler.  gated on DRSEnabled; drsRunner stays nil if disabled.
+	var drsRunner *controllerdrs.Runner
+	drsRouterOpts := api.NewRouterOptions{DRSEnabled: cfg.DRSEnabled, DRSIntervalSecs: cfg.DRSInterval}
+	if cfg.DRSEnabled {
+		drsConfig := cfg.DRSConfig()
+		drsPolicy := scheduler.DRSPolicy{
+			StddevThreshold: drsConfig.StddevThreshold,
+			MaxConcurrent:   drsConfig.MaxConcurrent,
+		}
+		drsInterval := time.Duration(drsConfig.Interval) * time.Second
+		// computeVMAdapter bridges compute.Service → scheduler.DRSComputeService.
+		computeVMAdapter := &computeVMServiceAdapter{svc: computeSvc}
+		drsEngine := scheduler.NewEngine(hostSvc, computeVMAdapter, azSvc, flavorSvc, sched)
+		drsRunner = controllerdrs.NewRunner(drsEngine, computeSvc, drsPolicy, drsInterval, logger)
+		drsRouterOpts.DRSRunner = drsRunner
+		drsRouterOpts.DRSIntervalSecs = drsConfig.Interval
+	}
+
 	// HTTP API
-	router := api.NewRouter(pool, logger, authn, authz, identitySvc, hostSvc, topologySvc, networkSvc, azSvc, storageSvc, flavorSvc, computeSvc, quotaSvc, jobQueue, cfg.Debug)
+	router := api.NewRouter(pool, logger, authn, authz, identitySvc, hostSvc, topologySvc, networkSvc, azSvc, storageSvc, flavorSvc, computeSvc, quotaSvc, jobQueue, cfg.Debug, drsRouterOpts)
 	httpSrv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.APIPort),
 		Handler: router,
@@ -342,21 +362,12 @@ func runController(cfg *config.ControllerConfig) error {
 		return heartbeatMonitor.Run(gCtx)
 	})
 
-	// DRS (Distributed Resource Scheduler) runner — gates on DRSEnabled flag.
-	if cfg.DRSEnabled {
-		drsConfig := cfg.DRSConfig()
-		drsPolicy := scheduler.DRSPolicy{
-			StddevThreshold: drsConfig.StddevThreshold,
-			MaxConcurrent:   drsConfig.MaxConcurrent,
-		}
-		drsInterval := time.Duration(drsConfig.Interval) * time.Second
-		// computeVMAdapter bridges compute.Service → scheduler.DRSComputeService.
-		computeVMAdapter := &computeVMServiceAdapter{svc: computeSvc}
-		drsEngine := scheduler.NewEngine(hostSvc, computeVMAdapter, azSvc, flavorSvc, sched)
-		drsRunner := controllerdrs.NewRunner(drsEngine, computeSvc, drsPolicy, drsInterval, logger)
+	// DRS periodic ticker — start the runner if it was constructed above.
+	if drsRunner != nil {
 		// TODO(S031): wrap with leader-only execution once controller HA is implemented.
 		// See docs/controller-ha.md — DRS must run on the leader instance only.
 		drsRunner.Start(gCtx)
+		drsConfig := cfg.DRSConfig()
 		logger.Info("DRS runner started",
 			"interval_s", drsConfig.Interval,
 			"stddev_threshold", drsConfig.StddevThreshold,

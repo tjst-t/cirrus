@@ -60,14 +60,35 @@ func staticDistHandler() http.Handler {
 }
 
 
+// DRSRunnerProvider is the minimal interface the router needs from a DRS runner.
+// It matches the DRSRunner interface declared in drs_handler.go but is kept
+// here so router.go does not need to know the drs_handler types at the
+// package level.
+type DRSRunnerProvider = DRSRunner
+
+// NewRouterOptions holds optional/advanced parameters for NewRouter.
+type NewRouterOptions struct {
+	// DRSRunner is the DRS Runner instance shared between the periodic ticker
+	// and the admin API handler.  May be nil if DRS is disabled.
+	DRSRunner       DRSRunner
+	DRSEnabled      bool
+	DRSIntervalSecs int
+}
+
 // NewRouter creates the HTTP router with all middleware and routes.
 // debug controls whether internal error details are included in 500 responses.
-func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authenticator, authz identity.Authorizer, identitySvc identity.Service, hostSvc host.Service, topologySvc topology.Service, networkSvc network.Service, azSvc az.Service, storageSvc storage.Service, flavorSvc flavor.Service, computeSvc compute.Service, quotaSvc quota.Service, jobQueue jobqueue.Queue, debug bool) http.Handler {
+func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authenticator, authz identity.Authorizer, identitySvc identity.Service, hostSvc host.Service, topologySvc topology.Service, networkSvc network.Service, azSvc az.Service, storageSvc storage.Service, flavorSvc flavor.Service, computeSvc compute.Service, quotaSvc quota.Service, jobQueue jobqueue.Queue, debug bool, opts ...NewRouterOptions) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(RequestID)
 	r.Use(Recovery(logger))
 	r.Use(Logger(logger))
+
+	// Merge variadic options (only first element used, variadic is for backwards compat).
+	var routerOpts NewRouterOptions
+	if len(opts) > 0 {
+		routerOpts = opts[0]
+	}
 
 	h := &handlers{pool: pool}
 	r.Get("/healthz", h.healthz)
@@ -254,6 +275,16 @@ func NewRouter(pool *pgxpool.Pool, logger *slog.Logger, authn identity.Authentic
 		dh := &driftHandlers{pool: pool, authz: authz}
 		r.Get("/admin/drift-events", dh.listDriftEvents)
 		r.Patch("/admin/drift-events/{id}", dh.resolveDriftEvent)
+
+		// DRS admin endpoints (infra_admin)
+		drsh := &drsHandlers{
+			runner:          routerOpts.DRSRunner,
+			authz:           authz,
+			drsEnabled:      routerOpts.DRSEnabled,
+			intervalSeconds: routerOpts.DRSIntervalSecs,
+		}
+		r.Post("/admin/drs/run", drsh.run)
+		r.Get("/admin/drs/status", drsh.status)
 	})
 
 	// SPA static files — serve web/dist if present.

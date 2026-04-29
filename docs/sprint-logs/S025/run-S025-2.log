@@ -1,0 +1,1642 @@
+?   	github.com/tjst-t/cirrus/cmd/cirrus	[no test files]
+?   	github.com/tjst-t/cirrus/cmd/cirrus-iscsi-server	[no test files]
+?   	github.com/tjst-t/cirrus/cmd/cirrus-rbd-server	[no test files]
+?   	github.com/tjst-t/cirrus/cmd/cirrus-sim	[no test files]
+?   	github.com/tjst-t/cirrus/cmd/cirrus-sim-ctl	[no test files]
+?   	github.com/tjst-t/cirrus/cmd/cirrusctl	[no test files]
+?   	github.com/tjst-t/cirrus/cmd/internal/createport	[no test files]
+?   	github.com/tjst-t/cirrus/cmd/internal/resetdb	[no test files]
+?   	github.com/tjst-t/cirrus/cmd/libvirtd-sim	[no test files]
+?   	github.com/tjst-t/cirrus/internal/agent	[no test files]
+=== RUN   TestAC_S025_2_DRSAdminEndpoints
+=== RUN   TestAC_S025_2_DRSAdminEndpoints/run_returns_200_with_report
+2026/04/29 14:21:02 INFO http method=POST path=/api/v1/admin/drs/run status=200 duration_ms=0 request_id=2d02eb77-553a-4dfa-9669-de598787c7b7
+=== RUN   TestAC_S025_2_DRSAdminEndpoints/status_returns_enabled_and_interval
+2026/04/29 14:21:02 INFO http method=GET path=/api/v1/admin/drs/status status=200 duration_ms=0 request_id=229582e1-c6c2-4d72-8d10-3ba1e43f8eb3
+=== RUN   TestAC_S025_2_DRSAdminEndpoints/status_returns_null_last_report_before_any_run
+2026/04/29 14:21:02 INFO http method=GET path=/api/v1/admin/drs/status status=200 duration_ms=0 request_id=83f91f06-21ba-4d85-b06d-1ec0c3ec21ad
+=== RUN   TestAC_S025_2_DRSAdminEndpoints/run_returns_409_when_already_in_progress
+2026/04/29 14:21:02 INFO http method=POST path=/api/v1/admin/drs/run status=409 duration_ms=0 request_id=42b1cca0-f079-4745-a89c-a70c54fdaf33
+--- PASS: TestAC_S025_2_DRSAdminEndpoints (0.01s)
+    --- PASS: TestAC_S025_2_DRSAdminEndpoints/run_returns_200_with_report (0.01s)
+    --- PASS: TestAC_S025_2_DRSAdminEndpoints/status_returns_enabled_and_interval (0.00s)
+    --- PASS: TestAC_S025_2_DRSAdminEndpoints/status_returns_null_last_report_before_any_run (0.00s)
+    --- PASS: TestAC_S025_2_DRSAdminEndpoints/run_returns_409_when_already_in_progress (0.00s)
+=== RUN   TestDRSRun_Returns200WithReport
+2026/04/29 14:21:02 INFO http method=POST path=/api/v1/admin/drs/run status=200 duration_ms=0 request_id=709912a6-62e3-4343-91de-5800ac1ae808
+--- PASS: TestDRSRun_Returns200WithReport (0.00s)
+=== RUN   TestDRSRun_Returns409WhenInProgress
+2026/04/29 14:21:02 INFO http method=POST path=/api/v1/admin/drs/run status=409 duration_ms=0 request_id=bf661fa3-6120-4712-a36f-ae681adb5852
+--- PASS: TestDRSRun_Returns409WhenInProgress (0.00s)
+=== RUN   TestDRSRun_Returns403ForNonAdmin
+2026/04/29 14:21:02 INFO http method=POST path=/api/v1/admin/drs/run status=403 duration_ms=1 request_id=0a22afa7-cf46-4e37-942d-41f22a28f2a4
+--- PASS: TestDRSRun_Returns403ForNonAdmin (0.00s)
+=== RUN   TestDRSRun_Returns401WhenNoToken
+2026/04/29 14:21:02 INFO http method=POST path=/api/v1/admin/drs/run status=401 duration_ms=0 request_id=c28ecfd2-07f9-4785-be9f-e477f61dbd90
+--- PASS: TestDRSRun_Returns401WhenNoToken (0.00s)
+=== RUN   TestDRSStatus_Returns200WithNullLastReport
+2026/04/29 14:21:02 INFO http method=GET path=/api/v1/admin/drs/status status=200 duration_ms=0 request_id=f0a3c53b-f27a-45d8-90ed-8d00e4e0959a
+--- PASS: TestDRSStatus_Returns200WithNullLastReport (0.00s)
+=== RUN   TestDRSStatus_Returns200WithLastReport
+2026/04/29 14:21:02 INFO http method=GET path=/api/v1/admin/drs/status status=200 duration_ms=0 request_id=1b004239-40e8-4025-a09c-a887ad24ad78
+--- PASS: TestDRSStatus_Returns200WithLastReport (0.00s)
+=== RUN   TestDRSStatus_Returns403ForNonAdmin
+2026/04/29 14:21:02 INFO http method=GET path=/api/v1/admin/drs/status status=403 duration_ms=0 request_id=7a54a483-af6c-491f-8489-ad014e092ba5
+--- PASS: TestDRSStatus_Returns403ForNonAdmin (0.00s)
+=== RUN   TestDRSStatus_Returns401WhenNoToken
+2026/04/29 14:21:02 INFO http method=GET path=/api/v1/admin/drs/status status=401 duration_ms=0 request_id=fc850176-61f5-40ab-bb07-e2e645688610
+--- PASS: TestDRSStatus_Returns401WhenNoToken (0.00s)
+=== RUN   TestDRSRunStatus_RoundTrip
+2026/04/29 14:21:02 INFO http method=POST path=/api/v1/admin/drs/run status=200 duration_ms=0 request_id=6596f24e-0686-4ff0-ab0e-d334c928b13e
+2026/04/29 14:21:02 INFO http method=GET path=/api/v1/admin/drs/status status=200 duration_ms=0 request_id=19ecf096-2054-4f96-be43-effe3932c394
+--- PASS: TestDRSRunStatus_RoundTrip (0.00s)
+=== RUN   TestHealthz_NoDB
+2026/04/29 14:21:02 INFO http method=GET path=/healthz status=503 duration_ms=0 request_id=27e7e38b-e4a0-4dde-9b96-c6c70b6d8f2e
+--- PASS: TestHealthz_NoDB (0.00s)
+=== RUN   TestGetJob_NotFound
+2026/04/29 14:21:02 INFO http method=GET path=/api/v1/jobs/93e4533a-5ea8-418b-923e-ed5e175961d4 status=404 duration_ms=0 request_id=fc211597-47ef-4d74-801d-93767dd3d76f
+--- PASS: TestGetJob_NotFound (0.00s)
+=== RUN   TestGetJob_InvalidID
+2026/04/29 14:21:02 INFO http method=GET path=/api/v1/jobs/not-a-uuid status=400 duration_ms=0 request_id=59e5af06-3e1b-4fa6-a9e4-5c0776c05dfa
+--- PASS: TestGetJob_InvalidID (0.00s)
+=== RUN   TestGetJob_Forbidden
+2026/04/29 14:21:02 INFO http method=GET path=/api/v1/jobs/c16247e1-4243-4bcf-a04b-c759f0659a73 status=403 duration_ms=0 request_id=77fef998-91ca-437a-8265-697be98cd78c
+--- PASS: TestGetJob_Forbidden (0.00s)
+=== RUN   TestGetJob_TenantMember_OwnJob
+2026/04/29 14:21:02 INFO http method=GET path=/api/v1/jobs/aa772af4-b6b8-499c-a50a-02d087aee042 status=403 duration_ms=0 request_id=a142ed53-364a-4eb5-b73a-97aec1dec353
+--- PASS: TestGetJob_TenantMember_OwnJob (0.00s)
+=== RUN   TestGetJob_InfraAdmin
+2026/04/29 14:21:02 INFO http method=GET path=/api/v1/jobs/6ecbde7a-9bd8-4e96-8b42-79a143fb2c62 status=200 duration_ms=2 request_id=d5ddfe36-d883-4880-b8cd-88b9575a46f9
+--- PASS: TestGetJob_InfraAdmin (0.00s)
+=== RUN   TestGetJob_NoTenantID_Forbidden
+2026/04/29 14:21:02 INFO http method=GET path=/api/v1/jobs/453ff9e2-3749-478e-98cd-fc4b6a210519 status=403 duration_ms=0 request_id=79aae2d0-d3e4-4a3b-9275-0a9f9a1bc3c4
+--- PASS: TestGetJob_NoTenantID_Forbidden (0.00s)
+=== RUN   TestNetwork_CreateNetwork_InvalidTenant
+2026/04/29 14:21:02 INFO http method=POST path=/api/v1/networks status=400 duration_ms=0 request_id=4f6f24d9-67e3-4907-86fb-603c86ed02f0
+--- PASS: TestNetwork_CreateNetwork_InvalidTenant (0.00s)
+=== RUN   TestNetwork_CreateNetwork_Success
+2026/04/29 14:21:02 INFO http method=POST path=/api/v1/networks status=201 duration_ms=0 request_id=5e91c022-e687-4cc1-9d9f-2e30f261881f
+--- PASS: TestNetwork_CreateNetwork_Success (0.00s)
+=== RUN   TestNetwork_CreateNetwork_NoTenant
+2026/04/29 14:21:02 INFO http method=POST path=/api/v1/networks status=400 duration_ms=0 request_id=33249641-5a87-4723-9886-14298b664b7a
+--- PASS: TestNetwork_CreateNetwork_NoTenant (0.00s)
+=== RUN   TestTopology_FullFlow
+2026/04/29 14:21:02 INFO http method=POST path=/api/v1/storage-domains status=201 duration_ms=0 request_id=13b86d90-6a0a-4b0f-8964-4db19ed803a7
+2026/04/29 14:21:02 INFO http method=POST path=/api/v1/locations status=201 duration_ms=0 request_id=3c17f400-f79a-4f6f-b4bf-991e868f13b6
+2026/04/29 14:21:02 INFO http method=POST path=/api/v1/locations status=201 duration_ms=0 request_id=934e25c7-fe22-47e4-8760-f92930ea0e13
+2026/04/29 14:21:02 INFO http method=POST path=/api/v1/hosts/ffe25545-0b6a-494e-b00e-e9ce6b815720/storage-domains status=204 duration_ms=0 request_id=67147473-120f-410c-b3bc-0a4ecc452ca4
+2026/04/29 14:21:02 INFO http method=PUT path=/api/v1/hosts/ffe25545-0b6a-494e-b00e-e9ce6b815720/location status=204 duration_ms=0 request_id=c586be34-8533-47a7-81af-aada5cf8a68c
+2026/04/29 14:21:02 INFO http method=GET path=/api/v1/compute-pools status=200 duration_ms=0 request_id=81b1a3ff-05da-49e4-8f95-06a10aeedf16
+2026/04/29 14:21:02 INFO http method=GET path=/api/v1/fault-domains status=200 duration_ms=0 request_id=617f3448-bb7f-4139-8219-a9f4a729423e
+2026/04/29 14:21:02 INFO http method=DELETE path=/api/v1/hosts/ffe25545-0b6a-494e-b00e-e9ce6b815720/storage-domains/deae171b-0cba-41e5-beb0-8868b5d33b0c status=204 duration_ms=0 request_id=2bb7cb04-87b6-4d3a-b7fb-2d20de23a401
+2026/04/29 14:21:02 INFO http method=GET path=/api/v1/compute-pools status=200 duration_ms=0 request_id=bde3ebd7-fd2a-4514-ac7f-b80b2dd89bbc
+2026/04/29 14:21:02 INFO http method=POST path=/api/v1/storage-domains status=409 duration_ms=0 request_id=e01ede6d-3cba-49d3-97c0-d58d8b10067f
+--- PASS: TestTopology_FullFlow (0.00s)
+=== RUN   TestVMAction_Migrate_NoTargetHost
+2026/04/29 14:21:02 INFO http method=POST path=/api/v1/vms/659bfe8a-ec04-4a91-a591-c6f28bf9bdfb/actions status=204 duration_ms=0 request_id=5af6ffcf-8c9d-4d9c-8a01-bb6a969c08ef
+--- PASS: TestVMAction_Migrate_NoTargetHost (0.00s)
+=== RUN   TestVMAction_Migrate_WithTargetHost
+2026/04/29 14:21:02 INFO http method=POST path=/api/v1/vms/74d32a7d-8dba-4b46-b2e2-4178653d7dd4/actions status=204 duration_ms=0 request_id=1507e3ed-ec25-436c-8a2d-4b68474660d1
+--- PASS: TestVMAction_Migrate_WithTargetHost (0.00s)
+=== RUN   TestVMAction_Migrate_InvalidTargetHostID
+2026/04/29 14:21:02 INFO http method=POST path=/api/v1/vms/e19a06d3-9929-4c02-9c6f-7bbf65d4eda1/actions status=400 duration_ms=0 request_id=0f90b658-257e-463f-8a11-801f9f090be7
+--- PASS: TestVMAction_Migrate_InvalidTargetHostID (0.01s)
+=== RUN   TestVMAction_Migrate_VMNotRunning
+2026/04/29 14:21:02 INFO http method=POST path=/api/v1/vms/723e9ec0-ca1e-4240-8f30-828972d53b4e/actions status=409 duration_ms=0 request_id=90ccc2b8-a502-49a7-a3ff-ad4dc1bb419b
+--- PASS: TestVMAction_Migrate_VMNotRunning (0.00s)
+=== RUN   TestVMAction_Migrate_NoTenant
+2026/04/29 14:21:02 INFO http method=POST path=/api/v1/vms/574e9af2-08f9-4f02-848d-a61e37cb2a3e/actions status=400 duration_ms=0 request_id=5d8241ad-c92b-47e6-aaa7-d74cf27ab593
+--- PASS: TestVMAction_Migrate_NoTenant (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/internal/api	0.067s
+?   	github.com/tjst-t/cirrus/internal/apierror	[no test files]
+?   	github.com/tjst-t/cirrus/internal/az	[no test files]
+?   	github.com/tjst-t/cirrus/internal/blockdev	[no test files]
+=== RUN   TestDRSRun_Success
+--- PASS: TestDRSRun_Success (0.01s)
+=== RUN   TestDRSRun_409Conflict
+--- PASS: TestDRSRun_409Conflict (0.00s)
+=== RUN   TestDRSStatus_NoLastReport
+--- PASS: TestDRSStatus_NoLastReport (0.00s)
+=== RUN   TestDRSStatus_WithLastReport
+--- PASS: TestDRSStatus_WithLastReport (0.00s)
+=== RUN   TestFormatAPIError
+=== RUN   TestFormatAPIError/ERR_NO_HOST
+=== RUN   TestFormatAPIError/ERR_QUOTA_VCPU_with_detail
+=== RUN   TestFormatAPIError/ERR_QUOTA_EXCEEDED_without_detail
+=== RUN   TestFormatAPIError/ERR_CONFLICT
+=== RUN   TestFormatAPIError/ERR_NOT_FOUND
+=== RUN   TestFormatAPIError/ERR_UNAUTHORIZED
+=== RUN   TestFormatAPIError/ERR_FORBIDDEN
+=== RUN   TestFormatAPIError/ERR_BAD_REQUEST_with_message
+=== RUN   TestFormatAPIError/ERR_BAD_REQUEST_without_message
+=== RUN   TestFormatAPIError/ERR_INSUFFICIENT_RESOURCES
+=== RUN   TestFormatAPIError/unknown_code_falls_back_to_message
+=== RUN   TestFormatAPIError/unknown_code_without_message_falls_back_to_code
+--- PASS: TestFormatAPIError (0.00s)
+    --- PASS: TestFormatAPIError/ERR_NO_HOST (0.00s)
+    --- PASS: TestFormatAPIError/ERR_QUOTA_VCPU_with_detail (0.00s)
+    --- PASS: TestFormatAPIError/ERR_QUOTA_EXCEEDED_without_detail (0.00s)
+    --- PASS: TestFormatAPIError/ERR_CONFLICT (0.00s)
+    --- PASS: TestFormatAPIError/ERR_NOT_FOUND (0.00s)
+    --- PASS: TestFormatAPIError/ERR_UNAUTHORIZED (0.00s)
+    --- PASS: TestFormatAPIError/ERR_FORBIDDEN (0.00s)
+    --- PASS: TestFormatAPIError/ERR_BAD_REQUEST_with_message (0.00s)
+    --- PASS: TestFormatAPIError/ERR_BAD_REQUEST_without_message (0.00s)
+    --- PASS: TestFormatAPIError/ERR_INSUFFICIENT_RESOURCES (0.00s)
+    --- PASS: TestFormatAPIError/unknown_code_falls_back_to_message (0.00s)
+    --- PASS: TestFormatAPIError/unknown_code_without_message_falls_back_to_code (0.00s)
+=== RUN   TestAPIError_Error
+--- PASS: TestAPIError_Error (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/internal/client	0.033s
+=== RUN   TestVMStateGuards
+=== RUN   TestVMStateGuards/pending
+=== RUN   TestVMStateGuards/building
+=== RUN   TestVMStateGuards/running
+=== RUN   TestVMStateGuards/stopped
+=== RUN   TestVMStateGuards/error
+=== RUN   TestVMStateGuards/deleting
+--- PASS: TestVMStateGuards (0.00s)
+    --- PASS: TestVMStateGuards/pending (0.00s)
+    --- PASS: TestVMStateGuards/building (0.00s)
+    --- PASS: TestVMStateGuards/running (0.00s)
+    --- PASS: TestVMStateGuards/stopped (0.00s)
+    --- PASS: TestVMStateGuards/error (0.00s)
+    --- PASS: TestVMStateGuards/deleting (0.00s)
+=== RUN   TestRunningVMCannotBeDeleted
+--- PASS: TestRunningVMCannotBeDeleted (0.00s)
+=== RUN   TestErrorVMCanOnlyBeDeletedOrRepaired
+--- PASS: TestErrorVMCanOnlyBeDeletedOrRepaired (0.00s)
+=== RUN   TestMigrateVM_StartMigrationFailure
+--- PASS: TestMigrateVM_StartMigrationFailure (0.00s)
+=== RUN   TestMigrateVM_RescheduleFailure
+--- PASS: TestMigrateVM_RescheduleFailure (0.00s)
+=== RUN   TestMigrateVM_Success
+--- PASS: TestMigrateVM_Success (0.00s)
+=== RUN   TestMigrateVM_RescheduleSuccess
+--- PASS: TestMigrateVM_RescheduleSuccess (0.00s)
+=== RUN   TestFailoverVM_NotInErrorState
+--- PASS: TestFailoverVM_NotInErrorState (0.00s)
+=== RUN   TestFailoverVM_NoHostID
+--- PASS: TestFailoverVM_NoHostID (0.00s)
+=== RUN   TestFailoverVM_RescheduleFailure
+--- PASS: TestFailoverVM_RescheduleFailure (0.00s)
+=== RUN   TestFailoverVM_WorkerCreateFails
+--- PASS: TestFailoverVM_WorkerCreateFails (0.00s)
+=== RUN   TestFailoverVM_Success
+--- PASS: TestFailoverVM_Success (0.00s)
+=== RUN   TestQuotaIntegrity_VMCreateSuccess
+--- PASS: TestQuotaIntegrity_VMCreateSuccess (0.00s)
+=== RUN   TestQuotaIntegrity_VMCreateFailure
+--- PASS: TestQuotaIntegrity_VMCreateFailure (0.00s)
+=== RUN   TestQuotaIntegrity_VMCreateHandlerFlow
+--- PASS: TestQuotaIntegrity_VMCreateHandlerFlow (0.00s)
+=== RUN   TestQuotaIntegrity_VMCreateHandlerSuccessFlow
+--- PASS: TestQuotaIntegrity_VMCreateHandlerSuccessFlow (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/internal/compute	0.025s
+=== RUN   TestParseAuthTokens
+--- PASS: TestParseAuthTokens (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/internal/config	0.008s
+=== RUN   TestRegisterHost_InvalidToken
+2026/04/29 14:21:02 WARN registration rejected: invalid token hostname=host-001
+--- PASS: TestRegisterHost_InvalidToken (0.01s)
+=== RUN   TestRegisterHost_EmptyToken
+2026/04/29 14:21:02 WARN registration rejected: invalid token hostname=host-001
+--- PASS: TestRegisterHost_EmptyToken (0.01s)
+=== RUN   TestRegisterHost_ValidToken_ThenHeartbeat
+2026/04/29 14:21:02 INFO host registered host_id=338969a3-6002-45fc-b9b7-e5d3a933106f hostname=host-001 address=tcp://localhost:16510 state=registering created=true
+--- PASS: TestRegisterHost_ValidToken_ThenHeartbeat (0.00s)
+=== RUN   TestHeartbeat_InvalidToken
+2026/04/29 14:21:02 WARN heartbeat rejected: invalid token host_id=ce5a8a05-53e8-445d-8be5-5437227b8408
+--- PASS: TestHeartbeat_InvalidToken (0.01s)
+=== RUN   TestRegisterHost_Idempotent
+2026/04/29 14:21:02 INFO host registered host_id=9eca09fb-6c3e-407b-a9f5-0338b740eae2 hostname=host-dup address=tcp://localhost:16510 state=registering created=true
+2026/04/29 14:21:02 INFO host registered host_id=9eca09fb-6c3e-407b-a9f5-0338b740eae2 hostname=host-dup address=tcp://localhost:16510 state=registering created=false
+--- PASS: TestRegisterHost_Idempotent (0.00s)
+=== RUN   TestHeartbeatMonitor_FaultyTransition
+2026/04/29 14:21:02 WARN heartbeat monitor: host transitioned to faulty host_id=aaa5ee7f-479b-4268-aa31-ea1867d90db2
+--- PASS: TestHeartbeatMonitor_FaultyTransition (0.00s)
+=== RUN   TestHeartbeatMonitor_FaultyTransition_ServiceError
+2026/04/29 14:21:02 ERROR heartbeat monitor: set faulty host_id=3f1c8393-ea7f-4b77-8424-7e51a8a3ba8d error="db error"
+--- PASS: TestHeartbeatMonitor_FaultyTransition_ServiceError (0.00s)
+=== RUN   TestHeartbeatMonitor_IncrementError_SkipsFaultyCheck
+2026/04/29 14:21:02 ERROR heartbeat monitor: update missed counts error="db error"
+--- PASS: TestHeartbeatMonitor_IncrementError_SkipsFaultyCheck (0.00s)
+=== RUN   TestHeartbeatMonitor_DrainingToMaintenance
+2026/04/29 14:21:02 INFO heartbeat monitor: draining host transitioned to maintenance host_id=1e5b0603-6ed2-487e-a76d-a31c6c3d0c10
+--- PASS: TestHeartbeatMonitor_DrainingToMaintenance (0.00s)
+=== RUN   TestHeartbeatMonitor_DrainingToMaintenance_ServiceError
+2026/04/29 14:21:02 ERROR heartbeat monitor: draining→maintenance host_id=24d455da-854c-4f07-8c72-ee44b3b3d0be error="forced error"
+2026/04/29 14:21:02 INFO heartbeat monitor: draining host transitioned to maintenance host_id=892ac051-289c-4fcc-aa57-16823a84b110
+--- PASS: TestHeartbeatMonitor_DrainingToMaintenance_ServiceError (0.00s)
+=== RUN   TestTransitionRules_AllowedTransitions
+--- PASS: TestTransitionRules_AllowedTransitions (0.00s)
+=== RUN   TestTransitionRules_DisallowedTransitions
+--- PASS: TestTransitionRules_DisallowedTransitions (0.00s)
+=== RUN   TestHeartbeatMonitor_FaultyHandler_Called
+2026/04/29 14:21:02 WARN heartbeat monitor: host transitioned to faulty host_id=33ba441d-66ec-4a57-bc79-377604bee59f
+--- PASS: TestHeartbeatMonitor_FaultyHandler_Called (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/internal/controller	0.042s
+=== RUN   TestRunOnce_CallsMigratorForEachPlan
+2026/04/29 14:21:02 INFO DRS migration succeeded vm_id=ffac49a6-dd4b-428b-9d94-6462ffcabd0d src_host=4d604d95-118a-49cd-8e1b-2f99aabc79cc dest_host=485752b1-c5b4-4ee3-9b32-a74fdaa29e23
+2026/04/29 14:21:02 INFO DRS migration succeeded vm_id=e29a91ed-9e76-4e78-b641-ff056e550161 src_host=4d604d95-118a-49cd-8e1b-2f99aabc79cc dest_host=485752b1-c5b4-4ee3-9b32-a74fdaa29e23
+--- PASS: TestRunOnce_CallsMigratorForEachPlan (0.00s)
+=== RUN   TestRunOnce_MigratorFailureLogged_CycleNotAborted
+2026/04/29 14:21:02 WARN DRS migration failed vm_id=58249dde-b145-49e3-91b4-7951a8663f98 src_host=f74be8df-34d2-4a77-bcff-7e9278c42e9a dest_host=61b75a3b-9ac6-4393-a84d-c0a0e815aa4e error="migration failed for vm1"
+2026/04/29 14:21:02 INFO DRS migration succeeded vm_id=531947e0-a44d-47cb-9421-65f99890aded src_host=f74be8df-34d2-4a77-bcff-7e9278c42e9a dest_host=61b75a3b-9ac6-4393-a84d-c0a0e815aa4e
+--- PASS: TestRunOnce_MigratorFailureLogged_CycleNotAborted (0.00s)
+=== RUN   TestStart_ConcurrentTicksDoNotOverlap
+2026/04/29 14:21:02 WARN DRS: skipping tick — previous run still in progress
+2026/04/29 14:21:02 WARN DRS: skipping tick — previous run still in progress
+2026/04/29 14:21:02 INFO DRS cycle complete successes=0 failures=0 az_results=0
+2026/04/29 14:21:02 WARN DRS: skipping tick — previous run still in progress
+2026/04/29 14:21:02 WARN DRS: skipping tick — previous run still in progress
+2026/04/29 14:21:02 INFO DRS cycle complete successes=0 failures=0 az_results=0
+2026/04/29 14:21:02 WARN DRS: skipping tick — previous run still in progress
+2026/04/29 14:21:02 WARN DRS: skipping tick — previous run still in progress
+2026/04/29 14:21:02 INFO DRS cycle complete successes=0 failures=0 az_results=0
+--- PASS: TestStart_ConcurrentTicksDoNotOverlap (0.20s)
+2026/04/29 14:21:02 INFO DRS cycle complete successes=0 failures=0 az_results=0
+=== RUN   TestLastReport_ReturnsNilBeforeFirstRun
+--- PASS: TestLastReport_ReturnsNilBeforeFirstRun (0.00s)
+=== RUN   TestLastReport_ReturnsMostRecentRun
+2026/04/29 14:21:02 INFO DRS migration succeeded vm_id=cf907a85-b6c0-4e6a-b927-341344a0b898 src_host=ef02091c-158a-4a23-817a-1a590146fd89 dest_host=d7b8991c-8911-412d-855f-b451b0c3964c
+--- PASS: TestLastReport_ReturnsMostRecentRun (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/internal/controller/drs	0.220s
+=== RUN   TestSimFencingAgent_Fence_Success
+--- PASS: TestSimFencingAgent_Fence_Success (0.01s)
+=== RUN   TestSimFencingAgent_Fence_ServerError
+--- PASS: TestSimFencingAgent_Fence_ServerError (0.00s)
+=== RUN   TestSimFencingAgent_Fence_Timeout
+--- PASS: TestSimFencingAgent_Fence_Timeout (0.06s)
+PASS
+ok  	github.com/tjst-t/cirrus/internal/controller/fencing	0.077s
+=== RUN   TestStatusesMatch
+--- PASS: TestStatusesMatch (0.00s)
+=== RUN   TestClassifyMismatch
+--- PASS: TestClassifyMismatch (0.00s)
+=== RUN   TestDriftHandler_Handle_LogsAndDeduplicates
+2026/04/29 14:21:04 WARN drift detected component=drift-handler id=d6982c45-c2cb-444e-89b1-8cfade4eb653 layer=compute type=expected_missing severity=critical resource=vm resource_id=8f27923c-9d84-43cf-9ece-277332d6d507 host_id=host-1 expected=running actual=absent detected_by=heartbeat_reconciler action=alert
+--- PASS: TestDriftHandler_Handle_LogsAndDeduplicates (0.00s)
+=== RUN   TestDriftHandler_DedupExpiry
+2026/04/29 14:21:04 WARN drift detected component=drift-handler id=0bdc6165-b2f5-42ef-9483-6e36b1466186 layer=compute type=expected_missing severity=critical resource=vm resource_id=d921f27f-2a64-492a-beee-08b530ee1728 host_id="" expected="" actual="" detected_by=test action=alert
+2026/04/29 14:21:04 WARN drift detected component=drift-handler id=eccc873b-a28e-493c-8c61-2c9ebd7d9892 layer=compute type=expected_missing severity=critical resource=vm resource_id=d921f27f-2a64-492a-beee-08b530ee1728 host_id="" expected="" actual="" detected_by=test action=alert
+--- PASS: TestDriftHandler_DedupExpiry (0.10s)
+=== RUN   TestDriftHandler_AutoHeal_VMHealer
+2026/04/29 14:21:04 WARN drift detected component=drift-handler id=f583a936-89b4-4b76-a84c-0b8ab101fdde layer=compute type=expected_missing severity=critical resource=vm resource_id=9b3d1123-bec7-4ecf-b304-7679deca3554 host_id=host-1 expected=running actual=absent detected_by=heartbeat_reconciler action=auto_heal
+--- PASS: TestDriftHandler_AutoHeal_VMHealer (0.00s)
+=== RUN   TestDriftHandler_AutoHeal_NetworkHealer
+2026/04/29 14:21:04 WARN drift detected component=drift-handler id=b39b9ae6-81c9-47e1-a1a8-9d0c2645cf47 layer=network type=state_mismatch severity=high resource=port resource_id=080e8943-a82f-4cbc-b7a0-8b281b7a225f host_id=d1d00e81-cc57-44eb-a8c4-bd25fa4ed5d6 expected="" actual="" detected_by=network_reconciler action=auto_heal
+--- PASS: TestDriftHandler_AutoHeal_NetworkHealer (0.00s)
+=== RUN   TestFailoverTrigger_FencingFails
+2026/04/29 14:21:04 ERROR failover: fencing failed, aborting failover (safe-mode) host_id=2c1bd476-9aad-4ed1-82fc-2659af1e6e55 error="fencing: IPMI timeout"
+--- PASS: TestFailoverTrigger_FencingFails (0.01s)
+=== RUN   TestFailoverTrigger_NoErrorVMs
+2026/04/29 14:21:04 INFO failover: no error VMs to recover host_id=83fc345a-df12-4351-9203-387bdf6b60b8
+--- PASS: TestFailoverTrigger_NoErrorVMs (0.01s)
+=== RUN   TestFailoverTrigger_BestEffort
+2026/04/29 14:21:04 ERROR failover: VM failover failed (continuing with next VM) host_id=6078d762-c927-4d0a-a2f3-9d0107afed39 vm_id=2c052731-47c0-44e8-ae87-72525b733e55 error="worker: CreateVM: disk unavailable"
+--- PASS: TestFailoverTrigger_BestEffort (0.01s)
+=== RUN   TestFailoverTrigger_DeduplicatesInFlight
+2026/04/29 14:21:04 INFO failover: already in progress for host, skipping host_id=07c220d3-1e61-408d-aa8b-15a140380eec
+--- PASS: TestFailoverTrigger_DeduplicatesInFlight (0.10s)
+=== RUN   TestCheckConsistency_NoWarnings
+--- PASS: TestCheckConsistency_NoWarnings (0.00s)
+=== RUN   TestCheckConsistency_PortMissingGroup
+2026/04/29 14:21:04 WARN drift detected component=drift-handler id=81e571eb-addb-43c5-893c-1c0a81315b07 layer=network type=state_mismatch severity=high resource=port resource_id=p1 host_id=host-id-1 expected="non-empty group_id" actual="empty group_id" detected_by=network_reconciler action=alert
+--- PASS: TestCheckConsistency_PortMissingGroup (0.00s)
+=== RUN   TestCheckConsistency_PolicyUnknownGroups
+2026/04/29 14:21:04 WARN drift detected component=drift-handler id=00a728dd-465d-4ddb-bd82-4a1345ce96db layer=network type=state_mismatch severity=high resource=policy_flow resource_id=pol1 host_id=host-id-1 expected="valid group references" actual="src=g-unknown dst=g-also-unknown both unknown" detected_by=network_reconciler action=alert
+--- PASS: TestCheckConsistency_PolicyUnknownGroups (0.00s)
+=== RUN   TestCheckConsistency_DNSUnknownNetwork
+2026/04/29 14:21:04 WARN drift detected component=drift-handler id=e466f462-6d3c-4e76-9e1e-17d436b79480 layer=network type=state_mismatch severity=medium resource=dns_record resource_id=n-unknown host_id=host-id-1 expected="network has local/remote ports" actual="DNS record for network with no ports on this host" detected_by=network_reconciler action=alert
+--- PASS: TestCheckConsistency_DNSUnknownNetwork (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/internal/controller/reconcile	0.231s
+?   	github.com/tjst-t/cirrus/internal/flavor	[no test files]
+?   	github.com/tjst-t/cirrus/internal/host	[no test files]
+?   	github.com/tjst-t/cirrus/internal/hypervisor	[no test files]
+=== RUN   TestRBACAuthorizer_InfraAdmin
+--- PASS: TestRBACAuthorizer_InfraAdmin (0.00s)
+=== RUN   TestRBACAuthorizer_OrgAdmin_CanCreateTenant
+--- PASS: TestRBACAuthorizer_OrgAdmin_CanCreateTenant (0.00s)
+=== RUN   TestRBACAuthorizer_OrgAdmin_DeniedOtherOrg
+--- PASS: TestRBACAuthorizer_OrgAdmin_DeniedOtherOrg (0.00s)
+=== RUN   TestRBACAuthorizer_TenantMember_DeniedAssignRole
+--- PASS: TestRBACAuthorizer_TenantMember_DeniedAssignRole (0.00s)
+=== RUN   TestRBACAuthorizer_NoRoles_Denied
+--- PASS: TestRBACAuthorizer_NoRoles_Denied (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/internal/identity	0.010s
+=== RUN   TestDispatcher_Register_and_Start_processes_job
+time=2026-04-29T14:21:04.280Z level=INFO msg="jobqueue worker: processing job" worker_id=0 job_id=6d9a9541-ba7a-43fe-8343-6b5b5c44bb62 job_type=test-job
+--- PASS: TestDispatcher_Register_and_Start_processes_job (0.06s)
+=== RUN   TestDispatcher_handler_error_marks_failed
+time=2026-04-29T14:21:04.335Z level=INFO msg="jobqueue worker: processing job" worker_id=0 job_id=66f4b634-8ff6-43a3-b779-ceb9e40647dd job_type=fail-job
+time=2026-04-29T14:21:04.335Z level=ERROR msg="jobqueue worker: handler error" worker_id=0 job_id=66f4b634-8ff6-43a3-b779-ceb9e40647dd error="handler failed"
+--- PASS: TestDispatcher_handler_error_marks_failed (0.05s)
+=== RUN   TestDispatcher_no_handler_marks_failed
+time=2026-04-29T14:21:04.388Z level=INFO msg="jobqueue worker: processing job" worker_id=0 job_id=29f825d5-844e-441c-9921-1a5aa3af6536 job_type=unknown-job
+time=2026-04-29T14:21:04.388Z level=ERROR msg="jobqueue worker: no handler registered for job type \"unknown-job\"" worker_id=0 job_id=29f825d5-844e-441c-9921-1a5aa3af6536
+--- PASS: TestDispatcher_no_handler_marks_failed (0.10s)
+=== RUN   TestDispatcher_graceful_shutdown
+time=2026-04-29T14:21:04.486Z level=DEBUG msg="jobqueue worker: shutting down" worker_id=1
+time=2026-04-29T14:21:04.487Z level=DEBUG msg="jobqueue worker: shutting down" worker_id=0
+--- PASS: TestDispatcher_graceful_shutdown (0.00s)
+=== RUN   TestRecoverAllRunningJobs_ResetsRunningToPending
+--- PASS: TestRecoverAllRunningJobs_ResetsRunningToPending (0.00s)
+=== RUN   TestRecoverAllRunningJobs_NoRunningJobs
+--- PASS: TestRecoverAllRunningJobs_NoRunningJobs (0.00s)
+=== RUN   TestRecoverAllRunningJobs_MultipleStuckJobs
+--- PASS: TestRecoverAllRunningJobs_MultipleStuckJobs (0.00s)
+=== RUN   TestDispatcher_RecoveryThenProcessing
+time=2026-04-29T14:21:04.488Z level=INFO msg="jobqueue worker: processing job" worker_id=0 job_id=bb6a9cb9-62c5-4458-8e0a-e64891ce18db job_type=vm_create
+--- PASS: TestDispatcher_RecoveryThenProcessing (0.00s)
+=== RUN   TestErrJobNotRunning_Sentinel
+--- PASS: TestErrJobNotRunning_Sentinel (0.00s)
+=== RUN   TestDequeue_EmptyQueue
+--- PASS: TestDequeue_EmptyQueue (0.00s)
+=== RUN   TestDequeue_TypeFilter
+--- PASS: TestDequeue_TypeFilter (0.00s)
+=== RUN   TestDispatcher_CompleteError_doesNotPanic
+time=2026-04-29T14:21:04.489Z level=INFO msg="jobqueue worker: processing job" worker_id=0 job_id=a84549ce-1e28-41f0-9418-ada76e4518c5 job_type=job
+time=2026-04-29T14:21:04.489Z level=ERROR msg="jobqueue worker: complete job" worker_id=0 job_id=a84549ce-1e28-41f0-9418-ada76e4518c5 error="jobqueue: job is not in running state"
+--- PASS: TestDispatcher_CompleteError_doesNotPanic (0.00s)
+=== RUN   TestDispatcher_FailError_doesNotPanic
+time=2026-04-29T14:21:04.489Z level=INFO msg="jobqueue worker: processing job" worker_id=0 job_id=db2ab46c-1f7b-4ece-8a7a-32de957093a7 job_type=job
+time=2026-04-29T14:21:04.489Z level=ERROR msg="jobqueue worker: handler error" worker_id=0 job_id=db2ab46c-1f7b-4ece-8a7a-32de957093a7 error="handler error"
+time=2026-04-29T14:21:04.489Z level=ERROR msg="jobqueue worker: fail job after handler error" worker_id=0 job_id=db2ab46c-1f7b-4ece-8a7a-32de957093a7 error="jobqueue: job is not in running state"
+--- PASS: TestDispatcher_FailError_doesNotPanic (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/internal/jobqueue	0.219s
+=== RUN   TestGatewayIPFromVM
+--- PASS: TestGatewayIPFromVM (0.00s)
+=== RUN   TestGenerateWireGuardKeypair
+--- PASS: TestGenerateWireGuardKeypair (0.00s)
+=== RUN   TestGenerateWireGuardKeypair_UniquePairs
+--- PASS: TestGenerateWireGuardKeypair_UniquePairs (0.00s)
+=== RUN   TestEncryptDecryptAESGCM
+--- PASS: TestEncryptDecryptAESGCM (0.00s)
+=== RUN   TestDecryptAESGCM_WrongKey
+--- PASS: TestDecryptAESGCM_WrongKey (0.00s)
+=== RUN   TestDecryptAESGCM_ShortCiphertext
+--- PASS: TestDecryptAESGCM_ShortCiphertext (0.00s)
+=== RUN   TestEncryptAESGCM_Nondeterministic
+--- PASS: TestEncryptAESGCM_Nondeterministic (0.00s)
+=== RUN   TestEgressSpec_TypeValidation
+--- PASS: TestEgressSpec_TypeValidation (0.00s)
+=== RUN   TestEgressConfig_Serialization
+--- PASS: TestEgressConfig_Serialization (0.00s)
+=== RUN   TestEgressModel
+--- PASS: TestEgressModel (0.00s)
+=== RUN   TestVPNIPsecConfig_Validation
+=== RUN   TestVPNIPsecConfig_Validation/valid_config
+=== RUN   TestVPNIPsecConfig_Validation/missing_VPNIPsec_config_block
+=== RUN   TestVPNIPsecConfig_Validation/empty_PeerIP
+=== RUN   TestVPNIPsecConfig_Validation/empty_PreSharedKey
+--- PASS: TestVPNIPsecConfig_Validation (0.00s)
+    --- PASS: TestVPNIPsecConfig_Validation/valid_config (0.00s)
+    --- PASS: TestVPNIPsecConfig_Validation/missing_VPNIPsec_config_block (0.00s)
+    --- PASS: TestVPNIPsecConfig_Validation/empty_PeerIP (0.00s)
+    --- PASS: TestVPNIPsecConfig_Validation/empty_PreSharedKey (0.00s)
+=== RUN   TestVPNWireGuardConfig_Validation
+=== RUN   TestVPNWireGuardConfig_Validation/valid_config
+=== RUN   TestVPNWireGuardConfig_Validation/missing_VPNWireGuard_config_block
+=== RUN   TestVPNWireGuardConfig_Validation/empty_PeerPublicKey
+=== RUN   TestVPNWireGuardConfig_Validation/empty_PeerEndpoint
+--- PASS: TestVPNWireGuardConfig_Validation (0.00s)
+    --- PASS: TestVPNWireGuardConfig_Validation/valid_config (0.00s)
+    --- PASS: TestVPNWireGuardConfig_Validation/missing_VPNWireGuard_config_block (0.00s)
+    --- PASS: TestVPNWireGuardConfig_Validation/empty_PeerPublicKey (0.00s)
+    --- PASS: TestVPNWireGuardConfig_Validation/empty_PeerEndpoint (0.00s)
+=== RUN   TestEgressConfig_VPNJSONRoundtrip
+--- PASS: TestEgressConfig_VPNJSONRoundtrip (0.00s)
+=== RUN   TestEgressTypeConstants
+--- PASS: TestEgressTypeConstants (0.00s)
+=== RUN   TestDirectConnectConfig_Validation
+=== RUN   TestDirectConnectConfig_Validation/valid_config_vlan_1
+=== RUN   TestDirectConnectConfig_Validation/valid_config_vlan_4094
+=== RUN   TestDirectConnectConfig_Validation/missing_DirectConnect_config_block
+=== RUN   TestDirectConnectConfig_Validation/invalid_vlan_id_0
+=== RUN   TestDirectConnectConfig_Validation/invalid_vlan_id_4095
+=== RUN   TestDirectConnectConfig_Validation/invalid_vlan_id_negative
+--- PASS: TestDirectConnectConfig_Validation (0.00s)
+    --- PASS: TestDirectConnectConfig_Validation/valid_config_vlan_1 (0.00s)
+    --- PASS: TestDirectConnectConfig_Validation/valid_config_vlan_4094 (0.00s)
+    --- PASS: TestDirectConnectConfig_Validation/missing_DirectConnect_config_block (0.00s)
+    --- PASS: TestDirectConnectConfig_Validation/invalid_vlan_id_0 (0.00s)
+    --- PASS: TestDirectConnectConfig_Validation/invalid_vlan_id_4095 (0.00s)
+    --- PASS: TestDirectConnectConfig_Validation/invalid_vlan_id_negative (0.00s)
+=== RUN   TestDirectConnectConfig_JSONRoundtrip
+--- PASS: TestDirectConnectConfig_JSONRoundtrip (0.00s)
+=== RUN   TestGetEgress_SanitizationCheck
+--- PASS: TestGetEgress_SanitizationCheck (0.00s)
+=== RUN   TestIPPoolModel
+--- PASS: TestIPPoolModel (0.00s)
+=== RUN   TestIPPoolSpec_Validation
+=== RUN   TestIPPoolSpec_Validation/valid_spec
+=== RUN   TestIPPoolSpec_Validation/missing_name
+=== RUN   TestIPPoolSpec_Validation/missing_cidr
+--- PASS: TestIPPoolSpec_Validation (0.00s)
+    --- PASS: TestIPPoolSpec_Validation/valid_spec (0.00s)
+    --- PASS: TestIPPoolSpec_Validation/missing_name (0.00s)
+    --- PASS: TestIPPoolSpec_Validation/missing_cidr (0.00s)
+=== RUN   TestIngressModel
+--- PASS: TestIngressModel (0.00s)
+=== RUN   TestIngressSpec_TypeValidation
+--- PASS: TestIngressSpec_TypeValidation (0.00s)
+=== RUN   TestIngressConfig_Serialization
+--- PASS: TestIngressConfig_Serialization (0.00s)
+=== RUN   TestIPInCIDR
+--- PASS: TestIPInCIDR (0.00s)
+=== RUN   TestCreateIngress_PublicIPOutsidePool
+--- PASS: TestCreateIngress_PublicIPOutsidePool (0.00s)
+=== RUN   TestCreateIngress_PublicIPInsidePool
+--- PASS: TestCreateIngress_PublicIPInsidePool (0.00s)
+=== RUN   TestComputeIngressRules_NonGWHost
+    ingress_test.go:190: TestComputeIngressRules_NonGWHost: non-GW host returns nil ingress rules (verified by integration tests)
+--- PASS: TestComputeIngressRules_NonGWHost (0.00s)
+=== RUN   TestComputeHostNetworkState_GW_Ingress
+    ingress_test.go:198: TestComputeHostNetworkState_GW_Ingress: requires real DB — covered by integration tests
+--- PASS: TestComputeHostNetworkState_GW_Ingress (0.00s)
+=== RUN   TestIPPoolIPv4CIDR
+--- PASS: TestIPPoolIPv4CIDR (0.00s)
+=== RUN   TestDeleteIPPool_NotFound
+--- PASS: TestDeleteIPPool_NotFound (0.00s)
+=== RUN   TestAllocateBlock_FirstBlock
+--- PASS: TestAllocateBlock_FirstBlock (0.00s)
+=== RUN   TestAllocateBlock_Sequential
+--- PASS: TestAllocateBlock_Sequential (0.00s)
+=== RUN   TestAllocateBlock_MultipleExisting
+--- PASS: TestAllocateBlock_MultipleExisting (0.00s)
+=== RUN   TestAllocateBlock_CIDRExhausted
+--- PASS: TestAllocateBlock_CIDRExhausted (0.00s)
+=== RUN   TestAllocateBlock_InvalidCIDR
+--- PASS: TestAllocateBlock_InvalidCIDR (0.00s)
+=== RUN   TestGenerateMAC_Format
+--- PASS: TestGenerateMAC_Format (0.00s)
+=== RUN   TestGenerateMAC_Unique
+--- PASS: TestGenerateMAC_Unique (0.00s)
+=== RUN   TestAssignCIDR_First
+--- PASS: TestAssignCIDR_First (0.00s)
+=== RUN   TestAssignCIDR_SkipsExisting
+--- PASS: TestAssignCIDR_SkipsExisting (0.00s)
+=== RUN   TestAssignCIDR_SkipsMultiple
+--- PASS: TestAssignCIDR_SkipsMultiple (0.00s)
+=== RUN   TestAssignCIDR_SkipsOverlappingSmallerBlock
+--- PASS: TestAssignCIDR_SkipsOverlappingSmallerBlock (0.00s)
+=== RUN   TestL4LBConstant
+--- PASS: TestL4LBConstant (0.00s)
+=== RUN   TestL4LBConfig_Serialization
+--- PASS: TestL4LBConfig_Serialization (0.00s)
+=== RUN   TestL4LBConfig_Wrapper_Serialization
+--- PASS: TestL4LBConfig_Wrapper_Serialization (0.00s)
+=== RUN   TestL4LBIngressSpec_Validation
+=== RUN   TestL4LBIngressSpec_Validation/valid_l4_lb_spec
+=== RUN   TestL4LBIngressSpec_Validation/invalid:_missing_l4lb_config
+=== RUN   TestL4LBIngressSpec_Validation/invalid:_empty_backends
+=== RUN   TestL4LBIngressSpec_Validation/invalid:_listener_port_0
+--- PASS: TestL4LBIngressSpec_Validation (0.00s)
+    --- PASS: TestL4LBIngressSpec_Validation/valid_l4_lb_spec (0.00s)
+    --- PASS: TestL4LBIngressSpec_Validation/invalid:_missing_l4lb_config (0.00s)
+    --- PASS: TestL4LBIngressSpec_Validation/invalid:_empty_backends (0.00s)
+    --- PASS: TestL4LBIngressSpec_Validation/invalid:_listener_port_0 (0.00s)
+=== RUN   TestL4LBIngress_Model
+--- PASS: TestL4LBIngress_Model (0.00s)
+=== RUN   TestComputeIngressRules_L4LB_ExcludesUnhealthyBackends
+--- PASS: TestComputeIngressRules_L4LB_ExcludesUnhealthyBackends (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/internal/network	0.010s
+=== RUN   TestBuildDHCPResponse_Discover
+--- PASS: TestBuildDHCPResponse_Discover (0.00s)
+=== RUN   TestBuildDHCPResponse_Request
+--- PASS: TestBuildDHCPResponse_Request (0.00s)
+=== RUN   TestDiffFlows_NoChange
+--- PASS: TestDiffFlows_NoChange (0.00s)
+=== RUN   TestDiffFlows_AddNew
+--- PASS: TestDiffFlows_AddNew (0.00s)
+=== RUN   TestDiffFlows_RemoveOld
+--- PASS: TestDiffFlows_RemoveOld (0.00s)
+=== RUN   TestDiffFlows_ModifyActions
+--- PASS: TestDiffFlows_ModifyActions (0.00s)
+=== RUN   TestDiffFlows_EmptyToFull
+--- PASS: TestDiffFlows_EmptyToFull (0.00s)
+=== RUN   TestDiffFlows_FullToEmpty
+--- PASS: TestDiffFlows_FullToEmpty (0.00s)
+=== RUN   TestDNS_ResolveA_ExactMatch
+--- PASS: TestDNS_ResolveA_ExactMatch (0.00s)
+=== RUN   TestDNS_ResolveA_GroupLevel
+--- PASS: TestDNS_ResolveA_GroupLevel (0.00s)
+=== RUN   TestDNS_NetworkIsolation
+--- PASS: TestDNS_NetworkIsolation (0.00s)
+=== RUN   TestDNS_ResolvePTR
+--- PASS: TestDNS_ResolvePTR (0.00s)
+=== RUN   TestPtrToIP
+--- PASS: TestPtrToIP (0.00s)
+=== RUN   TestGenerateFlows_ProducesAllTables
+--- PASS: TestGenerateFlows_ProducesAllTables (0.00s)
+=== RUN   TestGenerateFlows_PortSecurity
+--- PASS: TestGenerateFlows_PortSecurity (0.00s)
+=== RUN   TestGenerateFlows_DHCPRedirect
+--- PASS: TestGenerateFlows_DHCPRedirect (0.00s)
+=== RUN   TestGenerateFlows_DNSRedirect
+--- PASS: TestGenerateFlows_DNSRedirect (0.00s)
+=== RUN   TestGenerateFlows_MetadataRedirect
+--- PASS: TestGenerateFlows_MetadataRedirect (0.00s)
+=== RUN   TestGenerateFlows_ARPReply
+--- PASS: TestGenerateFlows_ARPReply (0.00s)
+=== RUN   TestGenerateFlows_Conntrack
+--- PASS: TestGenerateFlows_Conntrack (0.00s)
+=== RUN   TestGenerateFlows_PolicyAllow
+--- PASS: TestGenerateFlows_PolicyAllow (0.00s)
+=== RUN   TestGenerateFlows_DstHostLocal
+--- PASS: TestGenerateFlows_DstHostLocal (0.00s)
+=== RUN   TestGenerateFlows_DstHostRemote
+--- PASS: TestGenerateFlows_DstHostRemote (0.00s)
+=== RUN   TestGenerateFlows_TunnelInput
+--- PASS: TestGenerateFlows_TunnelInput (0.00s)
+=== RUN   TestGroupIDHash_Deterministic
+--- PASS: TestGroupIDHash_Deterministic (0.00s)
+=== RUN   TestMacToOFHex
+--- PASS: TestMacToOFHex (0.00s)
+=== RUN   TestIpToHex
+--- PASS: TestIpToHex (0.00s)
+=== RUN   TestMetadata_Root
+--- PASS: TestMetadata_Root (0.00s)
+=== RUN   TestMetadata_KnownVM
+--- PASS: TestMetadata_KnownVM (0.00s)
+=== RUN   TestMetadata_UnknownVM
+--- PASS: TestMetadata_UnknownVM (0.00s)
+=== RUN   TestParseFlowLine
+=== RUN   TestParseFlowLine/basic_flow_with_metadata
+=== RUN   TestParseFlowLine/drop_action
+=== RUN   TestParseFlowLine/complex_match
+=== RUN   TestParseFlowLine/load_and_resubmit_actions
+=== RUN   TestParseFlowLine/conntrack_action
+=== RUN   TestParseFlowLine/idle_age_field
+=== RUN   TestParseFlowLine/no_actions
+--- PASS: TestParseFlowLine (0.00s)
+    --- PASS: TestParseFlowLine/basic_flow_with_metadata (0.00s)
+    --- PASS: TestParseFlowLine/drop_action (0.00s)
+    --- PASS: TestParseFlowLine/complex_match (0.00s)
+    --- PASS: TestParseFlowLine/load_and_resubmit_actions (0.00s)
+    --- PASS: TestParseFlowLine/conntrack_action (0.00s)
+    --- PASS: TestParseFlowLine/idle_age_field (0.00s)
+    --- PASS: TestParseFlowLine/no_actions (0.00s)
+=== RUN   TestStateCache_ApplyFull
+--- PASS: TestStateCache_ApplyFull (0.00s)
+=== RUN   TestStateCache_ApplyDelta
+--- PASS: TestStateCache_ApplyDelta (0.00s)
+=== RUN   TestStateCache_DeltaRemovePort
+--- PASS: TestStateCache_DeltaRemovePort (0.00s)
+=== RUN   TestStateCache_Snapshot
+--- PASS: TestStateCache_Snapshot (0.00s)
+=== RUN   TestApplyDelta_RemovedEgressIngressIDs
+--- PASS: TestApplyDelta_RemovedEgressIngressIDs (0.00s)
+=== RUN   TestApplyDelta_AddEgressRule
+--- PASS: TestApplyDelta_AddEgressRule (0.00s)
+=== RUN   TestEgressTypeForID
+--- PASS: TestEgressTypeForID (0.00s)
+=== RUN   TestApplyDelta_DirectConnectRemoval
+--- PASS: TestApplyDelta_DirectConnectRemoval (0.00s)
+=== RUN   TestL4LB_DistributionGroupInstalled
+--- PASS: TestL4LB_DistributionGroupInstalled (0.00s)
+=== RUN   TestL4LB_SessionAffinitySourceIP
+--- PASS: TestL4LB_SessionAffinitySourceIP (0.00s)
+=== RUN   TestL4LB_SessionAffinityNone
+--- PASS: TestL4LB_SessionAffinityNone (0.00s)
+=== RUN   TestL4LB_BackendFailureExclusion
+--- PASS: TestL4LB_BackendFailureExclusion (0.00s)
+=== RUN   TestDirectIP_StaleFlowCleanup
+time=2026-04-29T14:21:05.155Z level=WARN msg="port not found in OVS, skipping" port_id=port-1-uuid-abcdef ovs_port=port-1-uuid-ab error="port port-1-uuid-ab not found"
+--- PASS: TestDirectIP_StaleFlowCleanup (0.00s)
+=== RUN   TestL4LB_BackwardCompatible_DirectIPStillWorks
+--- PASS: TestL4LB_BackwardCompatible_DirectIPStillWorks (0.00s)
+=== RUN   TestInternalLBDistribution
+--- PASS: TestInternalLBDistribution (0.00s)
+=== RUN   TestInternalLBSessionAffinity
+--- PASS: TestInternalLBSessionAffinity (0.00s)
+=== RUN   TestInternalLBNoGatewayRequired
+--- PASS: TestInternalLBNoGatewayRequired (0.00s)
+=== RUN   TestInternalLBStaleFlowCleanup
+time=2026-04-29T14:21:05.156Z level=WARN msg="port not found in OVS, skipping" port_id=port-1-uuid-abcdef ovs_port=port-1-uuid-ab error="port port-1-uuid-ab not found"
+--- PASS: TestInternalLBStaleFlowCleanup (0.00s)
+=== RUN   TestPipeline_Apply_SingleLocalPort
+--- PASS: TestPipeline_Apply_SingleLocalPort (0.00s)
+=== RUN   TestPipeline_Apply_WithRemotePort
+--- PASS: TestPipeline_Apply_WithRemotePort (0.00s)
+=== RUN   TestPipeline_Apply_Idempotent
+--- PASS: TestPipeline_Apply_Idempotent (0.00s)
+=== RUN   TestPipeline_Apply_EgressRules_GWHost
+--- PASS: TestPipeline_Apply_EgressRules_GWHost (0.00s)
+=== RUN   TestPipeline_Apply_NoEgressRules_NonGWHost
+--- PASS: TestPipeline_Apply_NoEgressRules_NonGWHost (0.00s)
+=== RUN   TestPipeline_Apply_IngressRules_GWHost
+--- PASS: TestPipeline_Apply_IngressRules_GWHost (0.00s)
+=== RUN   TestPipeline_Apply_NoIngressRules_NonGWHost
+--- PASS: TestPipeline_Apply_NoIngressRules_NonGWHost (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/internal/network/agent	0.013s
+=== RUN   TestCheckAgainst_Unlimited
+--- PASS: TestCheckAgainst_Unlimited (0.00s)
+=== RUN   TestCheckAgainst_AtLimit
+--- PASS: TestCheckAgainst_AtLimit (0.00s)
+=== RUN   TestCheckAgainst_Exceeded
+=== RUN   TestCheckAgainst_Exceeded/vcpus
+=== RUN   TestCheckAgainst_Exceeded/ram_mb
+=== RUN   TestCheckAgainst_Exceeded/volume_gb
+=== RUN   TestCheckAgainst_Exceeded/vms
+=== RUN   TestCheckAgainst_Exceeded/volumes
+=== RUN   TestCheckAgainst_Exceeded/snapshots
+=== RUN   TestCheckAgainst_Exceeded/networks
+=== RUN   TestCheckAgainst_Exceeded/egresses
+=== RUN   TestCheckAgainst_Exceeded/ingresses
+--- PASS: TestCheckAgainst_Exceeded (0.00s)
+    --- PASS: TestCheckAgainst_Exceeded/vcpus (0.00s)
+    --- PASS: TestCheckAgainst_Exceeded/ram_mb (0.00s)
+    --- PASS: TestCheckAgainst_Exceeded/volume_gb (0.00s)
+    --- PASS: TestCheckAgainst_Exceeded/vms (0.00s)
+    --- PASS: TestCheckAgainst_Exceeded/volumes (0.00s)
+    --- PASS: TestCheckAgainst_Exceeded/snapshots (0.00s)
+    --- PASS: TestCheckAgainst_Exceeded/networks (0.00s)
+    --- PASS: TestCheckAgainst_Exceeded/egresses (0.00s)
+    --- PASS: TestCheckAgainst_Exceeded/ingresses (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/internal/quota	0.013s
+=== RUN   TestAC_S025_1_DRS_RedistributesLoad
+2026/04/29 14:21:05 INFO DRS migration succeeded vm_id=515fe182-f8dc-48c5-b599-792b173bc087 src_host=4a5873e1-0b5c-46d5-81c5-5ad602255613 dest_host=586fab0b-0cbc-42b2-a7ff-5c0ceacde297
+2026/04/29 14:21:05 INFO DRS migration succeeded vm_id=d81b70ea-0828-4441-be8a-be301b3489c8 src_host=4a5873e1-0b5c-46d5-81c5-5ad602255613 dest_host=586fab0b-0cbc-42b2-a7ff-5c0ceacde297
+    drs_acceptance_test.go:151: after 2 moves: fracA=0.688, fracB=0.812, stddev=0.062
+--- PASS: TestAC_S025_1_DRS_RedistributesLoad (0.00s)
+=== RUN   TestDRS_StddevBelowThreshold_NoPlan
+--- PASS: TestDRS_StddevBelowThreshold_NoPlan (0.00s)
+=== RUN   TestDRS_GreedyPicksMostLoaded
+--- PASS: TestDRS_GreedyPicksMostLoaded (0.00s)
+=== RUN   TestDRS_RespectsMaxConcurrentCap
+--- PASS: TestDRS_RespectsMaxConcurrentCap (0.00s)
+=== RUN   TestDRS_SkipsHostsWithPhysicalUnknown
+--- PASS: TestDRS_SkipsHostsWithPhysicalUnknown (0.00s)
+=== RUN   TestDRS_StddevBefore_Populated
+--- PASS: TestDRS_StddevBefore_Populated (0.00s)
+=== RUN   TestDRS_NoMoveForNonRunningVMs
+--- PASS: TestDRS_NoMoveForNonRunningVMs (0.00s)
+=== RUN   TestDRS_GreedyDoesNotPickSameVMTwice
+--- PASS: TestDRS_GreedyDoesNotPickSameVMTwice (0.00s)
+=== RUN   TestDRS_TwoAZsDoNotCrosspollinate
+--- PASS: TestDRS_TwoAZsDoNotCrosspollinate (0.00s)
+=== RUN   TestSchedule_PicksBestHost
+--- PASS: TestSchedule_PicksBestHost (0.00s)
+=== RUN   TestSchedule_InsufficientResources
+--- PASS: TestSchedule_InsufficientResources (0.00s)
+=== RUN   TestSchedule_NilAZ_WithVolumeType_UsesAllStorageDomains
+--- PASS: TestSchedule_NilAZ_WithVolumeType_UsesAllStorageDomains (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/internal/scheduler	0.009s
+?   	github.com/tjst-t/cirrus/internal/state	[no test files]
+=== RUN   TestVolumeQuotaIntegrity_CreateSuccess
+2026/04/29 14:21:05 INFO volume created id=2c28966e-c93e-4fce-a89d-62cf9f232eef backend="" size_gb=20
+--- PASS: TestVolumeQuotaIntegrity_CreateSuccess (0.00s)
+=== RUN   TestVolumeQuotaIntegrity_CreateFailure
+--- PASS: TestVolumeQuotaIntegrity_CreateFailure (0.00s)
+=== RUN   TestVolumeQuotaIntegrity_DeleteDecommit
+2026/04/29 14:21:05 INFO volume deleted id=80cda1da-a869-4a1a-aeda-d63f3871e2be
+--- PASS: TestVolumeQuotaIntegrity_DeleteDecommit (0.00s)
+=== RUN   TestBackendMeetsCaps
+=== RUN   TestBackendMeetsCaps/no_requirements_always_matches
+=== RUN   TestBackendMeetsCaps/empty_requirements_always_matches
+=== RUN   TestBackendMeetsCaps/backend_meets_single_requirement
+=== RUN   TestBackendMeetsCaps/backend_meets_all_requirements
+=== RUN   TestBackendMeetsCaps/backend_missing_required_capability
+=== RUN   TestBackendMeetsCaps/backend_meets_some_but_not_all_requirements
+=== RUN   TestBackendMeetsCaps/empty_backend_cannot_meet_requirements
+--- PASS: TestBackendMeetsCaps (0.00s)
+    --- PASS: TestBackendMeetsCaps/no_requirements_always_matches (0.00s)
+    --- PASS: TestBackendMeetsCaps/empty_requirements_always_matches (0.00s)
+    --- PASS: TestBackendMeetsCaps/backend_meets_single_requirement (0.00s)
+    --- PASS: TestBackendMeetsCaps/backend_meets_all_requirements (0.00s)
+    --- PASS: TestBackendMeetsCaps/backend_missing_required_capability (0.00s)
+    --- PASS: TestBackendMeetsCaps/backend_meets_some_but_not_all_requirements (0.00s)
+    --- PASS: TestBackendMeetsCaps/empty_backend_cannot_meet_requirements (0.00s)
+=== RUN   TestCreateVolume_PicksFirstMatchingBackend
+2026/04/29 14:21:05 INFO volume created id=95313b27-9f93-4ebd-877a-da7b6c23b9db backend="" size_gb=10
+--- PASS: TestCreateVolume_PicksFirstMatchingBackend (0.00s)
+=== RUN   TestCreateVolume_SkipsDrainingBackend
+2026/04/29 14:21:05 INFO volume created id=f51f1e8e-6337-4a73-a3eb-d3db667d1bd3 backend="" size_gb=10
+--- PASS: TestCreateVolume_SkipsDrainingBackend (0.00s)
+=== RUN   TestCreateVolume_NoMatchingBackend
+--- PASS: TestCreateVolume_NoMatchingBackend (0.00s)
+=== RUN   TestCreateVolume_UsesAZFilter
+2026/04/29 14:21:05 INFO volume created id=ab6d86d6-7b6d-42bc-9bfb-5e390e3b4e27 backend="" size_gb=10
+--- PASS: TestCreateVolume_UsesAZFilter (0.00s)
+=== RUN   TestResizeVolume_Validation
+=== RUN   TestResizeVolume_Validation/shrink_is_rejected
+=== RUN   TestResizeVolume_Validation/same_size_is_rejected
+=== RUN   TestResizeVolume_Validation/larger_size_is_accepted
+2026/04/29 14:21:05 INFO volume resized id=7c85a261-65bc-4721-a459-7ec5a0f35f9f new_size_gb=100
+--- PASS: TestResizeVolume_Validation (0.00s)
+    --- PASS: TestResizeVolume_Validation/shrink_is_rejected (0.00s)
+    --- PASS: TestResizeVolume_Validation/same_size_is_rejected (0.00s)
+    --- PASS: TestResizeVolume_Validation/larger_size_is_accepted (0.00s)
+=== RUN   TestResizeVolume_InUseRejected
+--- PASS: TestResizeVolume_InUseRejected (0.00s)
+=== RUN   TestResizeVolume_TenantIsolation
+--- PASS: TestResizeVolume_TenantIsolation (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/internal/storage	0.011s
+?   	github.com/tjst-t/cirrus/internal/storage/driver/iscsi	[no test files]
+?   	github.com/tjst-t/cirrus/internal/storage/driver/rbd	[no test files]
+?   	github.com/tjst-t/cirrus/internal/storage/driver/sim	[no test files]
+?   	github.com/tjst-t/cirrus/internal/topology	[no test files]
+=== RUN   TestName
+--- PASS: TestName (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/internal/validate	0.007s
+?   	github.com/tjst-t/cirrus/proto/agentpb	[no test files]
+?   	github.com/tjst-t/cirrus/proto/networkpb	[no test files]
+=== RUN   TestAddAndGetFlows
+--- PASS: TestAddAndGetFlows (0.00s)
+=== RUN   TestDeleteFlow
+--- PASS: TestDeleteFlow (0.00s)
+=== RUN   TestAddAndDeletePort
+--- PASS: TestAddAndDeletePort (0.00s)
+=== RUN   TestSetInterfaceExternalIDs
+--- PASS: TestSetInterfaceExternalIDs (0.00s)
+=== RUN   TestRecordedCommands
+--- PASS: TestRecordedCommands (0.00s)
+=== RUN   TestReset
+--- PASS: TestReset (0.00s)
+=== RUN   TestInjectError
+--- PASS: TestInjectError (0.00s)
+=== RUN   TestInterfaceCompliance
+--- PASS: TestInterfaceCompliance (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/test/mock/ovs	0.008s
+?   	github.com/tjst-t/cirrus/test/sim/aggregator	[no test files]
+?   	github.com/tjst-t/cirrus/test/sim/awx	[no test files]
+=== RUN   TestCreateAndListTemplates
+--- PASS: TestCreateAndListTemplates (0.00s)
+=== RUN   TestGetTemplate
+--- PASS: TestGetTemplate (0.00s)
+=== RUN   TestLaunchAndGetJob
+--- PASS: TestLaunchAndGetJob (0.00s)
+=== RUN   TestCancelJob
+2026/04/29 14:21:06 WARN failed to cancel job error="cancel job: job 1 is in \"canceled\" state and cannot be canceled"
+--- PASS: TestCancelJob (0.00s)
+=== RUN   TestCallbackConfig
+--- PASS: TestCallbackConfig (0.00s)
+=== RUN   TestStatsAndReset
+--- PASS: TestStatsAndReset (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/test/sim/awx/internal/handler	0.009s
+=== RUN   TestCreateTemplate
+=== RUN   TestCreateTemplate/valid_template
+=== RUN   TestCreateTemplate/template_with_failure_rate
+=== RUN   TestCreateTemplate/empty_name
+--- PASS: TestCreateTemplate (0.00s)
+    --- PASS: TestCreateTemplate/valid_template (0.00s)
+    --- PASS: TestCreateTemplate/template_with_failure_rate (0.00s)
+    --- PASS: TestCreateTemplate/empty_name (0.00s)
+=== RUN   TestGetTemplate
+=== RUN   TestGetTemplate/existing
+=== RUN   TestGetTemplate/not_found
+--- PASS: TestGetTemplate (0.00s)
+    --- PASS: TestGetTemplate/existing (0.00s)
+    --- PASS: TestGetTemplate/not_found (0.00s)
+=== RUN   TestListTemplates
+--- PASS: TestListTemplates (0.00s)
+=== RUN   TestLaunchJobAndCompletion
+--- PASS: TestLaunchJobAndCompletion (0.01s)
+=== RUN   TestLaunchJobTemplateNotFound
+--- PASS: TestLaunchJobTemplateNotFound (0.00s)
+=== RUN   TestLaunchJobWithFailureRate
+--- PASS: TestLaunchJobWithFailureRate (0.02s)
+=== RUN   TestCancelJob
+=== RUN   TestCancelJob/cancel_running_job
+=== RUN   TestCancelJob/cancel_already_canceled
+=== RUN   TestCancelJob/cancel_not_found
+--- PASS: TestCancelJob (0.00s)
+    --- PASS: TestCancelJob/cancel_running_job (0.00s)
+    --- PASS: TestCancelJob/cancel_already_canceled (0.00s)
+    --- PASS: TestCancelJob/cancel_not_found (0.00s)
+=== RUN   TestCancelCompletedJob
+--- PASS: TestCancelCompletedJob (0.01s)
+=== RUN   TestCallbackConfig
+--- PASS: TestCallbackConfig (0.00s)
+=== RUN   TestStats
+--- PASS: TestStats (0.00s)
+=== RUN   TestReset
+--- PASS: TestReset (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/test/sim/awx/internal/state	0.042s
+?   	github.com/tjst-t/cirrus/test/sim/common	[no test files]
+=== RUN   TestGetEvents
+=== RUN   TestGetEvents/get_all_events
+=== RUN   TestGetEvents/filter_by_simulator
+=== RUN   TestGetEvents/filter_by_host_id
+=== RUN   TestGetEvents/filter_by_operation
+=== RUN   TestGetEvents/with_limit
+=== RUN   TestGetEvents/with_limit_and_offset
+=== RUN   TestGetEvents/offset_beyond_total
+--- PASS: TestGetEvents (0.00s)
+    --- PASS: TestGetEvents/get_all_events (0.00s)
+    --- PASS: TestGetEvents/filter_by_simulator (0.00s)
+    --- PASS: TestGetEvents/filter_by_host_id (0.00s)
+    --- PASS: TestGetEvents/filter_by_operation (0.00s)
+    --- PASS: TestGetEvents/with_limit (0.00s)
+    --- PASS: TestGetEvents/with_limit_and_offset (0.00s)
+    --- PASS: TestGetEvents/offset_beyond_total (0.00s)
+=== RUN   TestDeleteEvents
+2026/04/29 14:21:06 INFO event log cleared
+--- PASS: TestDeleteEvents (0.00s)
+=== RUN   TestInvalidLimitOffset
+=== RUN   TestInvalidLimitOffset/invalid_limit
+=== RUN   TestInvalidLimitOffset/invalid_offset
+=== RUN   TestInvalidLimitOffset/negative_limit
+=== RUN   TestInvalidLimitOffset/negative_offset
+--- PASS: TestInvalidLimitOffset (0.00s)
+    --- PASS: TestInvalidLimitOffset/invalid_limit (0.00s)
+    --- PASS: TestInvalidLimitOffset/invalid_offset (0.00s)
+    --- PASS: TestInvalidLimitOffset/negative_limit (0.00s)
+    --- PASS: TestInvalidLimitOffset/negative_offset (0.00s)
+=== RUN   TestMethodNotAllowed
+--- PASS: TestMethodNotAllowed (0.00s)
+=== RUN   TestAddAndGetFaultRules
+--- PASS: TestAddAndGetFaultRules (0.00s)
+=== RUN   TestDeleteFaultRule
+--- PASS: TestDeleteFaultRule (0.00s)
+=== RUN   TestClearFaultRules
+--- PASS: TestClearFaultRules (0.00s)
+=== RUN   TestDeleteNonexistentRule
+--- PASS: TestDeleteNonexistentRule (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/test/sim/common/internal/handler	0.015s
+=== RUN   TestGenerate
+--- PASS: TestGenerate (0.00s)
+=== RUN   TestGenerateStatus
+--- PASS: TestGenerateStatus (0.00s)
+=== RUN   TestGenerateInvalidYAML
+--- PASS: TestGenerateInvalidYAML (0.00s)
+=== RUN   TestReset
+--- PASS: TestReset (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/test/sim/common/pkg/datagen	0.006s
+=== RUN   TestNew
+--- PASS: TestNew (0.00s)
+=== RUN   TestRecord
+--- PASS: TestRecord (0.00s)
+=== RUN   TestQuery_Filters
+=== RUN   TestQuery_Filters/no_filter_returns_all
+=== RUN   TestQuery_Filters/filter_by_simulator
+=== RUN   TestQuery_Filters/filter_by_host_id
+=== RUN   TestQuery_Filters/filter_by_operation
+=== RUN   TestQuery_Filters/filter_by_simulator_and_host_id
+=== RUN   TestQuery_Filters/filter_with_no_matches
+=== RUN   TestQuery_Filters/filter_by_after_timestamp
+=== RUN   TestQuery_Filters/filter_by_future_after_timestamp
+--- PASS: TestQuery_Filters (0.00s)
+    --- PASS: TestQuery_Filters/no_filter_returns_all (0.00s)
+    --- PASS: TestQuery_Filters/filter_by_simulator (0.00s)
+    --- PASS: TestQuery_Filters/filter_by_host_id (0.00s)
+    --- PASS: TestQuery_Filters/filter_by_operation (0.00s)
+    --- PASS: TestQuery_Filters/filter_by_simulator_and_host_id (0.00s)
+    --- PASS: TestQuery_Filters/filter_with_no_matches (0.00s)
+    --- PASS: TestQuery_Filters/filter_by_after_timestamp (0.00s)
+    --- PASS: TestQuery_Filters/filter_by_future_after_timestamp (0.00s)
+=== RUN   TestQuery_Pagination
+=== RUN   TestQuery_Pagination/default_limit
+=== RUN   TestQuery_Pagination/limit_10
+=== RUN   TestQuery_Pagination/limit_10_offset_20
+=== RUN   TestQuery_Pagination/offset_beyond_total
+=== RUN   TestQuery_Pagination/offset_0_limit_5
+--- PASS: TestQuery_Pagination (0.00s)
+    --- PASS: TestQuery_Pagination/default_limit (0.00s)
+    --- PASS: TestQuery_Pagination/limit_10 (0.00s)
+    --- PASS: TestQuery_Pagination/limit_10_offset_20 (0.00s)
+    --- PASS: TestQuery_Pagination/offset_beyond_total (0.00s)
+    --- PASS: TestQuery_Pagination/offset_0_limit_5 (0.00s)
+=== RUN   TestQuery_PaginationOrder
+--- PASS: TestQuery_PaginationOrder (0.00s)
+=== RUN   TestClear
+2026/04/29 14:21:06 INFO event log cleared
+--- PASS: TestClear (0.00s)
+=== RUN   TestConcurrentAccess
+--- PASS: TestConcurrentAccess (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/test/sim/common/pkg/eventlog	0.009s
+=== RUN   TestAddAndGetRules
+--- PASS: TestAddAndGetRules (0.00s)
+=== RUN   TestDeleteRule
+--- PASS: TestDeleteRule (0.00s)
+=== RUN   TestClearRules
+--- PASS: TestClearRules (0.00s)
+=== RUN   TestCheckProbabilistic
+=== RUN   TestCheckProbabilistic/always
+=== RUN   TestCheckProbabilistic/never
+--- PASS: TestCheckProbabilistic (0.00s)
+    --- PASS: TestCheckProbabilistic/always (0.00s)
+    --- PASS: TestCheckProbabilistic/never (0.00s)
+=== RUN   TestCheckTargetMatching
+--- PASS: TestCheckTargetMatching (0.00s)
+=== RUN   TestCheckDelayFault
+--- PASS: TestCheckDelayFault (0.00s)
+=== RUN   TestCheckCountTrigger
+--- PASS: TestCheckCountTrigger (0.00s)
+=== RUN   TestCheckTimeTrigger
+--- PASS: TestCheckTimeTrigger (0.00s)
+=== RUN   TestHitCountTracking
+--- PASS: TestHitCountTracking (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/test/sim/common/pkg/fault	0.007s
+=== RUN   TestSnapshotAndRestore
+--- PASS: TestSnapshotAndRestore (0.00s)
+=== RUN   TestListAndDeleteSnapshots
+--- PASS: TestListAndDeleteSnapshots (0.00s)
+=== RUN   TestRestoreNonexistent
+--- PASS: TestRestoreNonexistent (0.00s)
+=== RUN   TestDeleteNonexistent
+--- PASS: TestDeleteNonexistent (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/test/sim/common/pkg/snapshot	0.005s
+?   	github.com/tjst-t/cirrus/test/sim/libvirt	[no test files]
+=== RUN   TestCreateHost
+=== RUN   TestCreateHost/valid_host
+time=2026-04-29T14:21:06.956Z level=INFO msg="started libvirt listener" host_id=host-001 port=37165
+time=2026-04-29T14:21:06.956Z level=INFO msg="host registered" host_id=host-001 port=37165
+=== RUN   TestCreateHost/missing_host_id
+=== RUN   TestCreateHost/missing_port
+--- PASS: TestCreateHost (0.00s)
+    --- PASS: TestCreateHost/valid_host (0.00s)
+    --- PASS: TestCreateHost/missing_host_id (0.00s)
+    --- PASS: TestCreateHost/missing_port (0.00s)
+=== RUN   TestListHosts
+--- PASS: TestListHosts (0.00s)
+=== RUN   TestGetHost
+=== RUN   TestGetHost/existing_host
+=== RUN   TestGetHost/non-existent_host
+--- PASS: TestGetHost (0.00s)
+    --- PASS: TestGetHost/existing_host (0.00s)
+    --- PASS: TestGetHost/non-existent_host (0.00s)
+=== RUN   TestUpdateHostState
+=== RUN   TestUpdateHostState/online
+time=2026-04-29T14:21:06.959Z level=INFO msg="host state updated" host_id=host-001 state=online
+=== RUN   TestUpdateHostState/offline
+time=2026-04-29T14:21:06.959Z level=INFO msg="host state updated" host_id=host-001 state=offline
+=== RUN   TestUpdateHostState/maintenance
+time=2026-04-29T14:21:06.959Z level=INFO msg="host state updated" host_id=host-001 state=maintenance
+=== RUN   TestUpdateHostState/invalid
+--- PASS: TestUpdateHostState (0.00s)
+    --- PASS: TestUpdateHostState/online (0.00s)
+    --- PASS: TestUpdateHostState/offline (0.00s)
+    --- PASS: TestUpdateHostState/maintenance (0.00s)
+    --- PASS: TestUpdateHostState/invalid (0.00s)
+=== RUN   TestGetStats
+--- PASS: TestGetStats (0.00s)
+=== RUN   TestReset
+time=2026-04-29T14:21:06.960Z level=INFO msg="all state reset"
+--- PASS: TestReset (0.00s)
+=== RUN   TestGetMigrationConfig
+--- PASS: TestGetMigrationConfig (0.00s)
+=== RUN   TestUpdateMigrationConfig
+time=2026-04-29T14:21:06.961Z level=INFO msg="migration config updated" prepare_ms=100 base_transfer_ms=500 per_gb_ms=200 finish_ms=50
+--- PASS: TestUpdateMigrationConfig (0.00s)
+=== RUN   TestUpdateMigrationConfigInvalidBody
+--- PASS: TestUpdateMigrationConfigInvalidBody (0.00s)
+=== RUN   TestPowerOff
+=== RUN   TestPowerOff/host_not_found_returns_404
+=== RUN   TestPowerOff/host_found_with_running_domains_returns_200_and_domains_are_shutoff
+time=2026-04-29T14:21:06.961Z level=INFO msg="host power-off (fencing)" host_id=host-001
+--- PASS: TestPowerOff (0.00s)
+    --- PASS: TestPowerOff/host_not_found_returns_404 (0.00s)
+    --- PASS: TestPowerOff/host_found_with_running_domains_returns_200_and_domains_are_shutoff (0.00s)
+=== RUN   TestUpdateHostConfig
+time=2026-04-29T14:21:06.961Z level=INFO msg="host config updated" host_id=host-001
+--- PASS: TestUpdateHostConfig (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/test/sim/libvirt/internal/handler	0.016s
+?   	github.com/tjst-t/cirrus/test/sim/libvirt/internal/netns	[no test files]
+=== RUN   TestEventRegistrationAndDeregistration
+time=2026-04-29T14:21:06.978Z level=DEBUG msg="handling RPC" procedure=167 serial=1
+time=2026-04-29T14:21:06.978Z level=INFO msg="domain event registered" event_id=0 callback_id=1
+time=2026-04-29T14:21:06.978Z level=DEBUG msg="handling RPC" procedure=168 serial=2
+time=2026-04-29T14:21:06.978Z level=INFO msg="domain event deregistered" event_id=0
+--- PASS: TestEventRegistrationAndDeregistration (0.00s)
+=== RUN   TestEventDeregisterInvalidCallback
+time=2026-04-29T14:21:06.978Z level=DEBUG msg="handling RPC" procedure=168 serial=1
+--- PASS: TestEventDeregisterInvalidCallback (0.00s)
+=== RUN   TestEventEmissionOnStateChange
+time=2026-04-29T14:21:06.978Z level=DEBUG msg="handling RPC" procedure=350 serial=1
+time=2026-04-29T14:21:06.978Z level=INFO msg="domain defined" name=test-vm uuid=12345678-1234-1234-1234-123456789abc
+--- PASS: TestEventEmissionOnStateChange (0.00s)
+=== RUN   TestClientEventsUnit
+--- PASS: TestClientEventsUnit (0.00s)
+=== RUN   TestEventBusMultipleClients
+--- PASS: TestEventBusMultipleClients (0.00s)
+=== RUN   TestMigrationPreparePerformFinishConfirm
+time=2026-04-29T14:21:06.978Z level=DEBUG msg="handling RPC" procedure=350 serial=1
+time=2026-04-29T14:21:06.978Z level=INFO msg="domain defined" name=test-vm uuid=12345678-1234-1234-1234-123456789abc
+time=2026-04-29T14:21:06.978Z level=DEBUG msg="handling RPC" procedure=196 serial=2
+time=2026-04-29T14:21:06.978Z level=DEBUG msg="noop: create VM namespace" uuid=12345678-1234-1234-1234-123456789abc interfaces=0
+time=2026-04-29T14:21:06.978Z level=INFO msg="domain started" name=test-vm uuid=12345678-1234-1234-1234-123456789abc
+time=2026-04-29T14:21:06.978Z level=DEBUG msg="handling RPC" procedure=303 serial=10
+time=2026-04-29T14:21:06.978Z level=INFO msg="migration prepared" domain=test-vm dest_host=dest-host
+time=2026-04-29T14:21:06.978Z level=DEBUG msg="handling RPC" procedure=305 serial=11
+time=2026-04-29T14:21:06.978Z level=DEBUG msg="noop: migrate out VM namespace" uuid=12345678-1234-1234-1234-123456789abc
+time=2026-04-29T14:21:06.978Z level=INFO msg="migration perform complete" domain_uuid=12345678-1234-1234-1234-123456789abc src_host=src-host
+time=2026-04-29T14:21:06.978Z level=DEBUG msg="handling RPC" procedure=306 serial=12
+time=2026-04-29T14:21:06.978Z level=DEBUG msg="noop: migrate in VM namespace" uuid=12345678-1234-1234-1234-123456789abc interfaces=0
+time=2026-04-29T14:21:06.978Z level=INFO msg="migration finished" domain=test-vm dest_host=dest-host
+time=2026-04-29T14:21:06.978Z level=DEBUG msg="handling RPC" procedure=307 serial=13
+time=2026-04-29T14:21:06.978Z level=INFO msg="migration confirmed" domain_uuid=12345678-1234-1234-1234-123456789abc src_host=src-host
+--- PASS: TestMigrationPreparePerformFinishConfirm (0.00s)
+=== RUN   TestMigrationPrepareInsufficientResources
+time=2026-04-29T14:21:06.979Z level=DEBUG msg="handling RPC" procedure=350 serial=1
+time=2026-04-29T14:21:06.979Z level=INFO msg="domain defined" name=test-vm uuid=12345678-1234-1234-1234-123456789abc
+time=2026-04-29T14:21:06.979Z level=DEBUG msg="handling RPC" procedure=196 serial=2
+time=2026-04-29T14:21:06.979Z level=DEBUG msg="noop: create VM namespace" uuid=12345678-1234-1234-1234-123456789abc interfaces=0
+time=2026-04-29T14:21:06.979Z level=INFO msg="domain started" name=test-vm uuid=12345678-1234-1234-1234-123456789abc
+time=2026-04-29T14:21:06.979Z level=DEBUG msg="handling RPC" procedure=303 serial=10
+--- PASS: TestMigrationPrepareInsufficientResources (0.00s)
+=== RUN   TestMigrationPerformNotRunning
+time=2026-04-29T14:21:06.979Z level=DEBUG msg="handling RPC" procedure=350 serial=1
+time=2026-04-29T14:21:06.979Z level=INFO msg="domain defined" name=test-vm uuid=12345678-1234-1234-1234-123456789abc
+time=2026-04-29T14:21:06.979Z level=DEBUG msg="handling RPC" procedure=305 serial=10
+--- PASS: TestMigrationPerformNotRunning (0.00s)
+=== RUN   TestMigrateGetSetMaxSpeed
+time=2026-04-29T14:21:06.979Z level=DEBUG msg="handling RPC" procedure=350 serial=1
+time=2026-04-29T14:21:06.979Z level=INFO msg="domain defined" name=test-vm uuid=12345678-1234-1234-1234-123456789abc
+time=2026-04-29T14:21:06.979Z level=DEBUG msg="handling RPC" procedure=196 serial=2
+time=2026-04-29T14:21:06.979Z level=DEBUG msg="noop: create VM namespace" uuid=12345678-1234-1234-1234-123456789abc interfaces=0
+time=2026-04-29T14:21:06.979Z level=INFO msg="domain started" name=test-vm uuid=12345678-1234-1234-1234-123456789abc
+time=2026-04-29T14:21:06.979Z level=DEBUG msg="handling RPC" procedure=242 serial=20
+time=2026-04-29T14:21:06.979Z level=DEBUG msg="handling RPC" procedure=207 serial=21
+time=2026-04-29T14:21:06.979Z level=INFO msg="migration max speed set" bandwidth=1000
+--- PASS: TestMigrateGetSetMaxSpeed (0.00s)
+=== RUN   TestHeaderEncodeDecode
+=== RUN   TestHeaderEncodeDecode/call
+=== RUN   TestHeaderEncodeDecode/reply
+--- PASS: TestHeaderEncodeDecode (0.00s)
+    --- PASS: TestHeaderEncodeDecode/call (0.00s)
+    --- PASS: TestHeaderEncodeDecode/reply (0.00s)
+=== RUN   TestMessageReadWrite
+--- PASS: TestMessageReadWrite (0.00s)
+=== RUN   TestNewReply
+--- PASS: TestNewReply (0.00s)
+=== RUN   TestServerConnectOpenClose
+time=2026-04-29T14:21:06.979Z level=DEBUG msg="handling RPC" procedure=1 serial=1
+time=2026-04-29T14:21:06.979Z level=DEBUG msg="handling RPC" procedure=2 serial=2
+--- PASS: TestServerConnectOpenClose (0.00s)
+=== RUN   TestServerDomainLifecycle
+time=2026-04-29T14:21:06.979Z level=DEBUG msg="handling RPC" procedure=350 serial=1
+time=2026-04-29T14:21:06.979Z level=INFO msg="domain defined" name=test-vm uuid=12345678-1234-1234-1234-123456789abc
+time=2026-04-29T14:21:06.979Z level=DEBUG msg="handling RPC" procedure=212 serial=2
+time=2026-04-29T14:21:06.979Z level=DEBUG msg="handling RPC" procedure=196 serial=3
+time=2026-04-29T14:21:06.979Z level=DEBUG msg="noop: create VM namespace" uuid=12345678-1234-1234-1234-123456789abc interfaces=0
+time=2026-04-29T14:21:06.979Z level=INFO msg="domain started" name=test-vm uuid=12345678-1234-1234-1234-123456789abc
+time=2026-04-29T14:21:06.979Z level=DEBUG msg="handling RPC" procedure=212 serial=4
+time=2026-04-29T14:21:06.979Z level=DEBUG msg="handling RPC" procedure=234 serial=5
+time=2026-04-29T14:21:06.979Z level=DEBUG msg="noop: destroy VM namespace" uuid=12345678-1234-1234-1234-123456789abc
+time=2026-04-29T14:21:06.979Z level=INFO msg="domain destroyed" name=test-vm uuid=12345678-1234-1234-1234-123456789abc
+--- PASS: TestServerDomainLifecycle (0.00s)
+=== RUN   TestServerIntegration
+time=2026-04-29T14:21:06.979Z level=INFO msg="started libvirt listener" host_id=int-test-host port=43881
+time=2026-04-29T14:21:07.031Z level=DEBUG msg="new connection" host_id=int-test-host remote=127.0.0.1:42458
+time=2026-04-29T14:21:07.031Z level=DEBUG msg="handling RPC" host_id=int-test-host remote=127.0.0.1:42458 procedure=1 serial=1
+time=2026-04-29T14:21:07.031Z level=DEBUG msg="handling RPC" host_id=int-test-host remote=127.0.0.1:42458 procedure=59 serial=2
+time=2026-04-29T14:21:07.031Z level=INFO msg="stopping listener" host_id=int-test-host
+time=2026-04-29T14:21:07.031Z level=DEBUG msg="listener closed" host_id=int-test-host
+--- PASS: TestServerIntegration (0.05s)
+=== RUN   TestXDRInt32RoundTrip
+=== RUN   TestXDRInt32RoundTrip/zero
+=== RUN   TestXDRInt32RoundTrip/positive
+=== RUN   TestXDRInt32RoundTrip/negative
+=== RUN   TestXDRInt32RoundTrip/max
+=== RUN   TestXDRInt32RoundTrip/min
+--- PASS: TestXDRInt32RoundTrip (0.00s)
+    --- PASS: TestXDRInt32RoundTrip/zero (0.00s)
+    --- PASS: TestXDRInt32RoundTrip/positive (0.00s)
+    --- PASS: TestXDRInt32RoundTrip/negative (0.00s)
+    --- PASS: TestXDRInt32RoundTrip/max (0.00s)
+    --- PASS: TestXDRInt32RoundTrip/min (0.00s)
+=== RUN   TestXDRUint64RoundTrip
+=== RUN   TestXDRUint64RoundTrip/zero
+=== RUN   TestXDRUint64RoundTrip/large
+=== RUN   TestXDRUint64RoundTrip/max
+--- PASS: TestXDRUint64RoundTrip (0.00s)
+    --- PASS: TestXDRUint64RoundTrip/zero (0.00s)
+    --- PASS: TestXDRUint64RoundTrip/large (0.00s)
+    --- PASS: TestXDRUint64RoundTrip/max (0.00s)
+=== RUN   TestXDRStringRoundTrip
+=== RUN   TestXDRStringRoundTrip/empty
+=== RUN   TestXDRStringRoundTrip/short
+=== RUN   TestXDRStringRoundTrip/aligned
+=== RUN   TestXDRStringRoundTrip/unaligned
+=== RUN   TestXDRStringRoundTrip/long
+--- PASS: TestXDRStringRoundTrip (0.00s)
+    --- PASS: TestXDRStringRoundTrip/empty (0.00s)
+    --- PASS: TestXDRStringRoundTrip/short (0.00s)
+    --- PASS: TestXDRStringRoundTrip/aligned (0.00s)
+    --- PASS: TestXDRStringRoundTrip/unaligned (0.00s)
+    --- PASS: TestXDRStringRoundTrip/long (0.00s)
+=== RUN   TestXDROptionalString
+=== RUN   TestXDROptionalString/nil
+=== RUN   TestXDROptionalString/present
+--- PASS: TestXDROptionalString (0.00s)
+    --- PASS: TestXDROptionalString/nil (0.00s)
+    --- PASS: TestXDROptionalString/present (0.00s)
+=== RUN   TestXDRUUID
+--- PASS: TestXDRUUID (0.00s)
+=== RUN   TestXDRMultipleValues
+--- PASS: TestXDRMultipleValues (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/test/sim/libvirt/internal/rpc	0.066s
+=== RUN   TestAddHost
+=== RUN   TestAddHost/add_single_host
+=== RUN   TestAddHost/duplicate_host_ID
+=== RUN   TestAddHost/duplicate_port
+--- PASS: TestAddHost (0.00s)
+    --- PASS: TestAddHost/add_single_host (0.00s)
+    --- PASS: TestAddHost/duplicate_host_ID (0.00s)
+    --- PASS: TestAddHost/duplicate_port (0.00s)
+=== RUN   TestDomainStateTransitions
+=== RUN   TestDomainStateTransitions/start_from_shutoff
+=== RUN   TestDomainStateTransitions/destroy_from_running
+=== RUN   TestDomainStateTransitions/suspend_from_running
+=== RUN   TestDomainStateTransitions/resume_from_paused
+=== RUN   TestDomainStateTransitions/shutdown_from_running
+=== RUN   TestDomainStateTransitions/suspend_from_shutoff_fails
+=== RUN   TestDomainStateTransitions/resume_from_shutoff_fails
+=== RUN   TestDomainStateTransitions/start_from_running_fails
+--- PASS: TestDomainStateTransitions (0.00s)
+    --- PASS: TestDomainStateTransitions/start_from_shutoff (0.00s)
+    --- PASS: TestDomainStateTransitions/destroy_from_running (0.00s)
+    --- PASS: TestDomainStateTransitions/suspend_from_running (0.00s)
+    --- PASS: TestDomainStateTransitions/resume_from_paused (0.00s)
+    --- PASS: TestDomainStateTransitions/shutdown_from_running (0.00s)
+    --- PASS: TestDomainStateTransitions/suspend_from_shutoff_fails (0.00s)
+    --- PASS: TestDomainStateTransitions/resume_from_shutoff_fails (0.00s)
+    --- PASS: TestDomainStateTransitions/start_from_running_fails (0.00s)
+=== RUN   TestResourceTracking
+--- PASS: TestResourceTracking (0.00s)
+=== RUN   TestUndefine
+--- PASS: TestUndefine (0.00s)
+=== RUN   TestMigratePrepare
+=== RUN   TestMigratePrepare/successful_prepare
+=== RUN   TestMigratePrepare/destination_host_offline
+=== RUN   TestMigratePrepare/destination_host_in_maintenance
+=== RUN   TestMigratePrepare/insufficient_resources_on_destination
+=== RUN   TestMigratePrepare/domain_already_exists_on_destination
+--- PASS: TestMigratePrepare (0.00s)
+    --- PASS: TestMigratePrepare/successful_prepare (0.00s)
+    --- PASS: TestMigratePrepare/destination_host_offline (0.00s)
+    --- PASS: TestMigratePrepare/destination_host_in_maintenance (0.00s)
+    --- PASS: TestMigratePrepare/insufficient_resources_on_destination (0.00s)
+    --- PASS: TestMigratePrepare/domain_already_exists_on_destination (0.00s)
+=== RUN   TestMigratePerform
+=== RUN   TestMigratePerform/successful_perform
+=== RUN   TestMigratePerform/domain_not_running
+=== RUN   TestMigratePerform/migration_already_in_progress
+--- PASS: TestMigratePerform (0.00s)
+    --- PASS: TestMigratePerform/successful_perform (0.00s)
+    --- PASS: TestMigratePerform/domain_not_running (0.00s)
+    --- PASS: TestMigratePerform/migration_already_in_progress (0.00s)
+=== RUN   TestFullMigrationFlow
+--- PASS: TestFullMigrationFlow (0.00s)
+=== RUN   TestMigrationConfig
+--- PASS: TestMigrationConfig (0.00s)
+=== RUN   TestGetStats
+--- PASS: TestGetStats (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/test/sim/libvirt/internal/state	0.009s
+=== RUN   TestParseDomainXML
+=== RUN   TestParseDomainXML/basic_domain
+=== RUN   TestParseDomainXML/memory_in_GiB
+=== RUN   TestParseDomainXML/invalid_XML
+--- PASS: TestParseDomainXML (0.00s)
+    --- PASS: TestParseDomainXML/basic_domain (0.00s)
+    --- PASS: TestParseDomainXML/memory_in_GiB (0.00s)
+    --- PASS: TestParseDomainXML/invalid_XML (0.00s)
+=== RUN   TestParseUUID
+=== RUN   TestParseUUID/valid_UUID_with_dashes
+=== RUN   TestParseUUID/invalid_hex
+=== RUN   TestParseUUID/too_short
+--- PASS: TestParseUUID (0.00s)
+    --- PASS: TestParseUUID/valid_UUID_with_dashes (0.00s)
+    --- PASS: TestParseUUID/invalid_hex (0.00s)
+    --- PASS: TestParseUUID/too_short (0.00s)
+=== RUN   TestDomainDevices
+--- PASS: TestDomainDevices (0.00s)
+=== RUN   TestInterfaceIDsMultiple
+--- PASS: TestInterfaceIDsMultiple (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/test/sim/libvirt/internal/xml	0.010s
+?   	github.com/tjst-t/cirrus/test/sim/postgres	[no test files]
+?   	github.com/tjst-t/cirrus/test/sim/storage	[no test files]
+=== RUN   TestHandleBackendInfo
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+=== RUN   TestHandleBackendInfo/success
+=== RUN   TestHandleBackendInfo/missing_header
+=== RUN   TestHandleBackendInfo/not_found
+--- PASS: TestHandleBackendInfo (0.00s)
+    --- PASS: TestHandleBackendInfo/success (0.00s)
+    --- PASS: TestHandleBackendInfo/missing_header (0.00s)
+    --- PASS: TestHandleBackendInfo/not_found (0.00s)
+=== RUN   TestHandleBackendHealth
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+--- PASS: TestHandleBackendHealth (0.00s)
+=== RUN   TestHandleCreateVolume
+=== RUN   TestHandleCreateVolume/success
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=vol-001 backend_id=b1
+=== RUN   TestHandleCreateVolume/missing_backend_header
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+=== RUN   TestHandleCreateVolume/backend_not_found
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+--- PASS: TestHandleCreateVolume (0.00s)
+    --- PASS: TestHandleCreateVolume/success (0.00s)
+    --- PASS: TestHandleCreateVolume/missing_backend_header (0.00s)
+    --- PASS: TestHandleCreateVolume/backend_not_found (0.00s)
+=== RUN   TestHandleGetVolume
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=vol-1 backend_id=b1
+=== RUN   TestHandleGetVolume/found
+=== RUN   TestHandleGetVolume/not_found
+--- PASS: TestHandleGetVolume (0.00s)
+    --- PASS: TestHandleGetVolume/found (0.00s)
+    --- PASS: TestHandleGetVolume/not_found (0.00s)
+=== RUN   TestHandleListVolumes
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v2 backend_id=b1
+2026/04/29 14:21:07 INFO volume exported volume_id=v1 host_id=host-1
+=== RUN   TestHandleListVolumes/all
+=== RUN   TestHandleListVolumes/in_use
+=== RUN   TestHandleListVolumes/available
+--- PASS: TestHandleListVolumes (0.00s)
+    --- PASS: TestHandleListVolumes/all (0.00s)
+    --- PASS: TestHandleListVolumes/in_use (0.00s)
+    --- PASS: TestHandleListVolumes/available (0.00s)
+=== RUN   TestHandleDeleteVolume
+=== RUN   TestHandleDeleteVolume/success
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO volume deleted volume_id=v1
+=== RUN   TestHandleDeleteVolume/in_use
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO volume exported volume_id=v1 host_id=host-1
+=== RUN   TestHandleDeleteVolume/not_found
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+--- PASS: TestHandleDeleteVolume (0.00s)
+    --- PASS: TestHandleDeleteVolume/success (0.00s)
+    --- PASS: TestHandleDeleteVolume/in_use (0.00s)
+    --- PASS: TestHandleDeleteVolume/not_found (0.00s)
+=== RUN   TestHandleDeleteVolumeWithSnapshots
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+--- PASS: TestHandleDeleteVolumeWithSnapshots (0.00s)
+=== RUN   TestHandleExtendVolume
+=== RUN   TestHandleExtendVolume/success
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO volume extended volume_id=v1 new_size_gb=200
+=== RUN   TestHandleExtendVolume/shrink
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+--- PASS: TestHandleExtendVolume (0.00s)
+    --- PASS: TestHandleExtendVolume/success (0.00s)
+    --- PASS: TestHandleExtendVolume/shrink (0.00s)
+=== RUN   TestHandleExportUnexport
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO volume exported volume_id=v1 host_id=host-1
+2026/04/29 14:21:07 INFO volume unexported volume_id=v1
+--- PASS: TestHandleExportUnexport (0.00s)
+=== RUN   TestHandleCreateSnapshot
+=== RUN   TestHandleCreateSnapshot/success
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=vol-1 backend_id=b1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-001 volume_id=vol-1
+=== RUN   TestHandleCreateSnapshot/volume_not_found
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=vol-1 backend_id=b1
+=== RUN   TestHandleCreateSnapshot/empty_snapshot_id
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=vol-1 backend_id=b1
+--- PASS: TestHandleCreateSnapshot (0.00s)
+    --- PASS: TestHandleCreateSnapshot/success (0.00s)
+    --- PASS: TestHandleCreateSnapshot/volume_not_found (0.00s)
+    --- PASS: TestHandleCreateSnapshot/empty_snapshot_id (0.00s)
+=== RUN   TestHandleListSnapshots
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=vol-1 backend_id=b1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-001 volume_id=vol-1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-002 volume_id=vol-1
+--- PASS: TestHandleListSnapshots (0.00s)
+=== RUN   TestHandleDeleteSnapshot
+=== RUN   TestHandleDeleteSnapshot/success
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=vol-1 backend_id=b1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-001 volume_id=vol-1
+2026/04/29 14:21:07 INFO snapshot deleted snapshot_id=snap-001
+=== RUN   TestHandleDeleteSnapshot/not_found
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=vol-1 backend_id=b1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-001 volume_id=vol-1
+=== RUN   TestHandleDeleteSnapshot/has_clones
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=vol-1 backend_id=b1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-001 volume_id=vol-1
+2026/04/29 14:21:07 INFO volume cloned from snapshot volume_id=clone-001 snapshot_id=snap-001
+--- PASS: TestHandleDeleteSnapshot (0.00s)
+    --- PASS: TestHandleDeleteSnapshot/success (0.00s)
+    --- PASS: TestHandleDeleteSnapshot/not_found (0.00s)
+    --- PASS: TestHandleDeleteSnapshot/has_clones (0.00s)
+=== RUN   TestHandleCloneFromSnapshot
+=== RUN   TestHandleCloneFromSnapshot/success
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=vol-1 backend_id=b1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-001 volume_id=vol-1
+2026/04/29 14:21:07 INFO volume cloned from snapshot volume_id=clone-001 snapshot_id=snap-001
+=== RUN   TestHandleCloneFromSnapshot/snapshot_not_found
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=vol-1 backend_id=b1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-001 volume_id=vol-1
+--- PASS: TestHandleCloneFromSnapshot (0.00s)
+    --- PASS: TestHandleCloneFromSnapshot/success (0.00s)
+    --- PASS: TestHandleCloneFromSnapshot/snapshot_not_found (0.00s)
+=== RUN   TestHandleFlatten
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=vol-1 backend_id=b1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-001 volume_id=vol-1
+2026/04/29 14:21:07 INFO volume cloned from snapshot volume_id=clone-001 snapshot_id=snap-001
+2026/04/29 14:21:07 INFO flatten started operation_id=op-001 volume_id=clone-001 duration_ms=10
+2026/04/29 14:21:07 INFO flatten completed operation_id=op-001 volume_id=clone-001
+--- PASS: TestHandleFlatten (0.02s)
+=== RUN   TestHandleFlattenNoParent
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=vol-1 backend_id=b1
+--- PASS: TestHandleFlattenNoParent (0.00s)
+=== RUN   TestHandleGetOperationNotFound
+--- PASS: TestHandleGetOperationNotFound (0.00s)
+=== RUN   TestHandleCapacityExceeded
+2026/04/29 14:21:07 INFO backend registered backend_id=small
+--- PASS: TestHandleCapacityExceeded (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/test/sim/storage/internal/handler	0.031s
+=== RUN   TestHandleAddBackend
+=== RUN   TestHandleAddBackend/success
+2026/04/29 14:21:07 INFO backend registered backend_id=ceph-pool-ssd
+=== RUN   TestHandleAddBackend/empty_id
+--- PASS: TestHandleAddBackend (0.00s)
+    --- PASS: TestHandleAddBackend/success (0.00s)
+    --- PASS: TestHandleAddBackend/empty_id (0.00s)
+=== RUN   TestHandleAddBackendDuplicate
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+--- PASS: TestHandleAddBackendDuplicate (0.00s)
+=== RUN   TestHandleListBackends
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO backend registered backend_id=b2
+--- PASS: TestHandleListBackends (0.00s)
+=== RUN   TestHandleSetBackendState
+=== RUN   TestHandleSetBackendState/draining
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO backend state changed backend_id=b1 state=draining
+=== RUN   TestHandleSetBackendState/not_found
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+--- PASS: TestHandleSetBackendState (0.00s)
+    --- PASS: TestHandleSetBackendState/draining (0.00s)
+    --- PASS: TestHandleSetBackendState/not_found (0.00s)
+=== RUN   TestHandleGetStats
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+--- PASS: TestHandleGetStats (0.00s)
+=== RUN   TestHandleReset
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO state reset
+--- PASS: TestHandleReset (0.00s)
+=== RUN   TestHandleSetConfig
+--- PASS: TestHandleSetConfig (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/test/sim/storage/internal/sim	0.013s
+=== RUN   TestAddBackend
+=== RUN   TestAddBackend/success
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+=== RUN   TestAddBackend/empty_id
+--- PASS: TestAddBackend (0.00s)
+    --- PASS: TestAddBackend/success (0.00s)
+    --- PASS: TestAddBackend/empty_id (0.00s)
+=== RUN   TestAddBackendDuplicate
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+--- PASS: TestAddBackendDuplicate (0.00s)
+=== RUN   TestListBackends
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO backend registered backend_id=b2
+--- PASS: TestListBackends (0.00s)
+=== RUN   TestSetBackendState
+=== RUN   TestSetBackendState/draining
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO backend state changed backend_id=b1 state=draining
+=== RUN   TestSetBackendState/read_only
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO backend state changed backend_id=b1 state=read_only
+=== RUN   TestSetBackendState/not_found
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+--- PASS: TestSetBackendState (0.00s)
+    --- PASS: TestSetBackendState/draining (0.00s)
+    --- PASS: TestSetBackendState/read_only (0.00s)
+    --- PASS: TestSetBackendState/not_found (0.00s)
+=== RUN   TestCreateVolume
+=== RUN   TestCreateVolume/thin_provisioned
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=vol-1 backend_id=b1
+=== RUN   TestCreateVolume/thick_provisioned
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=vol-2 backend_id=b1
+=== RUN   TestCreateVolume/empty_id
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+=== RUN   TestCreateVolume/backend_not_found
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+--- PASS: TestCreateVolume (0.00s)
+    --- PASS: TestCreateVolume/thin_provisioned (0.00s)
+    --- PASS: TestCreateVolume/thick_provisioned (0.00s)
+    --- PASS: TestCreateVolume/empty_id (0.00s)
+    --- PASS: TestCreateVolume/backend_not_found (0.00s)
+=== RUN   TestCreateVolumeDuplicate
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+--- PASS: TestCreateVolumeDuplicate (0.00s)
+=== RUN   TestCapacityTrackingThin
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+--- PASS: TestCapacityTrackingThin (0.00s)
+=== RUN   TestCapacityTrackingThick
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+--- PASS: TestCapacityTrackingThick (0.00s)
+=== RUN   TestCreateVolumeOnNonActiveBackend
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO backend state changed backend_id=b1 state=draining
+--- PASS: TestCreateVolumeOnNonActiveBackend (0.00s)
+=== RUN   TestDeleteVolume
+=== RUN   TestDeleteVolume/success
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO volume deleted volume_id=v1
+=== RUN   TestDeleteVolume/not_found
+--- PASS: TestDeleteVolume (0.00s)
+    --- PASS: TestDeleteVolume/success (0.00s)
+    --- PASS: TestDeleteVolume/not_found (0.00s)
+=== RUN   TestDeleteVolumeInUse
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO volume exported volume_id=v1 host_id=host-1
+--- PASS: TestDeleteVolumeInUse (0.00s)
+=== RUN   TestDeleteVolumeWithSnapshots
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+--- PASS: TestDeleteVolumeWithSnapshots (0.00s)
+=== RUN   TestDeleteVolumeCapacityReturn
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO volume deleted volume_id=v1
+--- PASS: TestDeleteVolumeCapacityReturn (0.00s)
+=== RUN   TestExtendVolume
+=== RUN   TestExtendVolume/success
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO volume extended volume_id=v1 new_size_gb=200
+=== RUN   TestExtendVolume/shrink
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+=== RUN   TestExtendVolume/same_size
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+--- PASS: TestExtendVolume (0.00s)
+    --- PASS: TestExtendVolume/success (0.00s)
+    --- PASS: TestExtendVolume/shrink (0.00s)
+    --- PASS: TestExtendVolume/same_size (0.00s)
+=== RUN   TestExportUnexport
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO volume exported volume_id=v1 host_id=host-1
+2026/04/29 14:21:07 INFO volume unexported volume_id=v1
+--- PASS: TestExportUnexport (0.00s)
+=== RUN   TestListVolumesFilter
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO backend registered backend_id=b2
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v2 backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v3 backend_id=b2
+2026/04/29 14:21:07 INFO volume exported volume_id=v1 host_id=host-1
+--- PASS: TestListVolumesFilter (0.00s)
+=== RUN   TestGetStats
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v2 backend_id=b1
+2026/04/29 14:21:07 INFO volume exported volume_id=v1 host_id=host-1
+--- PASS: TestGetStats (0.00s)
+=== RUN   TestReset
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO state reset
+--- PASS: TestReset (0.00s)
+=== RUN   TestCreateSnapshot
+=== RUN   TestCreateSnapshot/success
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-001 volume_id=v1
+=== RUN   TestCreateSnapshot/empty_snapshot_id
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+=== RUN   TestCreateSnapshot/volume_not_found
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+--- PASS: TestCreateSnapshot (0.00s)
+    --- PASS: TestCreateSnapshot/success (0.00s)
+    --- PASS: TestCreateSnapshot/empty_snapshot_id (0.00s)
+    --- PASS: TestCreateSnapshot/volume_not_found (0.00s)
+=== RUN   TestCreateSnapshotDuplicate
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-001 volume_id=v1
+--- PASS: TestCreateSnapshotDuplicate (0.00s)
+=== RUN   TestListSnapshots
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-001 volume_id=v1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-002 volume_id=v1
+--- PASS: TestListSnapshots (0.00s)
+=== RUN   TestDeleteSnapshot
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-001 volume_id=v1
+2026/04/29 14:21:07 INFO snapshot deleted snapshot_id=snap-001
+--- PASS: TestDeleteSnapshot (0.00s)
+=== RUN   TestDeleteSnapshotWithClones
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-001 volume_id=v1
+2026/04/29 14:21:07 INFO volume cloned from snapshot volume_id=clone-001 snapshot_id=snap-001
+--- PASS: TestDeleteSnapshotWithClones (0.00s)
+=== RUN   TestCloneFromSnapshot
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-001 volume_id=v1
+2026/04/29 14:21:07 INFO volume cloned from snapshot volume_id=clone-001 snapshot_id=snap-001
+--- PASS: TestCloneFromSnapshot (0.00s)
+=== RUN   TestCloneFromSnapshotErrors
+=== RUN   TestCloneFromSnapshotErrors/snapshot_not_found
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-001 volume_id=v1
+=== RUN   TestCloneFromSnapshotErrors/empty_volume_id
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-001 volume_id=v1
+=== RUN   TestCloneFromSnapshotErrors/volume_exists
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-001 volume_id=v1
+--- PASS: TestCloneFromSnapshotErrors (0.00s)
+    --- PASS: TestCloneFromSnapshotErrors/snapshot_not_found (0.00s)
+    --- PASS: TestCloneFromSnapshotErrors/empty_volume_id (0.00s)
+    --- PASS: TestCloneFromSnapshotErrors/volume_exists (0.00s)
+=== RUN   TestCloneCapacityExceeded
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-001 volume_id=v1
+--- PASS: TestCloneCapacityExceeded (0.00s)
+=== RUN   TestDeleteVolumeWithSnapshotsViaStore
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-001 volume_id=v1
+--- PASS: TestDeleteVolumeWithSnapshotsViaStore (0.00s)
+=== RUN   TestStartFlatten
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+2026/04/29 14:21:07 INFO snapshot created snapshot_id=snap-001 volume_id=v1
+2026/04/29 14:21:07 INFO volume cloned from snapshot volume_id=clone-001 snapshot_id=snap-001
+2026/04/29 14:21:07 INFO flatten started operation_id=op-001 volume_id=clone-001 duration_ms=10
+2026/04/29 14:21:07 INFO flatten completed operation_id=op-001 volume_id=clone-001
+--- PASS: TestStartFlatten (0.02s)
+=== RUN   TestStartFlattenErrors
+=== RUN   TestStartFlattenErrors/volume_not_found
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+=== RUN   TestStartFlattenErrors/no_parent_snapshot
+2026/04/29 14:21:07 INFO backend registered backend_id=b1
+2026/04/29 14:21:07 INFO volume created volume_id=v1 backend_id=b1
+--- PASS: TestStartFlattenErrors (0.00s)
+    --- PASS: TestStartFlattenErrors/volume_not_found (0.00s)
+    --- PASS: TestStartFlattenErrors/no_parent_snapshot (0.00s)
+=== RUN   TestGetOperationNotFound
+--- PASS: TestGetOperationNotFound (0.00s)
+PASS
+ok  	github.com/tjst-t/cirrus/test/sim/storage/internal/state	0.033s
+?   	github.com/tjst-t/cirrus/web/node_modules/flatted/golang/pkg/flatted	[no test files]

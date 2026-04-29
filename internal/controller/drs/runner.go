@@ -153,3 +153,23 @@ func (r *Runner) LastReport() *RunReport {
 	defer r.mu.Unlock()
 	return r.lastReport
 }
+
+// IsRunning reports whether a RunOnce execution is currently in progress.
+// Used by the admin API to return 409 Conflict when a run is already underway.
+func (r *Runner) IsRunning() bool {
+	return r.inFlight.Load() == 1
+}
+
+// TryAcquire attempts to atomically set the in-flight flag.
+// Returns true if the caller successfully acquired the run slot (no run was in
+// progress). The caller MUST call Release() when done.
+// This is the mechanism the admin /run endpoint uses to prevent concurrent
+// manual triggers without modifying the periodic Start() loop.
+func (r *Runner) TryAcquire() bool {
+	return r.inFlight.CompareAndSwap(0, 1)
+}
+
+// Release clears the in-flight flag set by TryAcquire.
+func (r *Runner) Release() {
+	r.inFlight.Store(0)
+}
