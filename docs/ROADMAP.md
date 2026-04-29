@@ -4,14 +4,14 @@
 
 ## Progress
 
-- Total: 51 Sprints | Done: 35 | In Progress: 0 | Remaining: 16
-- [██████████████░░░░░░] 69%
-- Next: S025 (DRS)
+- Total: 51 Sprints | Done: 36 | In Progress: 0 | Remaining: 15
+- [██████████████░░░░░░] 71%
+- Next: S026 (ホストプロファイル + Hook)
 
 ## Execution Order
 
 S001 → S002 → S003 → S004 → S005 → S006 → S007 → S008 → S009 → S010 → S011 → S012 → S013 → S014 → S015 → S016 → S017 → S018 → S019 → S020 → S021 → S045 → S042 → S043 → S044 → S022 → S046 → S047 → S048 → S049 → S050 → S051 → S023 → S024 → S025 → S026 → S027 → S028 → S029 → S030 → S031 → S032 → S033 → S034 → S035 → S036 → S037 → S038 → S039 → S040 → S041
-                                                                                                                                                                                                                                    ↑ next
+                                                                                                                                                                                                                                            ↑ next
 
 ---
 
@@ -1003,7 +1003,7 @@ Phase 1 WebUI 全体の結合 E2E テストが通り、`make serve` 環境で安
 
 ---
 
-## Sprint S025: DRS [ ]
+## Sprint S025: DRS [DONE]
 
 コンピュートプール内のリソース偏りを検出し、自動で再配分する。S031 で leader-only 実行に wrap 予定。
 

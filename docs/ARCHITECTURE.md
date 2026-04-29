@@ -83,8 +83,16 @@ Cirrus は Go で実装された IaaS プラットフォーム。単一バイナ
 
 - `Scheduler.Schedule(spec) → (host_id, backend_id)` でプレースメントを決定
 - `Scheduler.Reschedule(spec) → (host_id)` でライブマイグレーション先ホストを選定（現在ホストを除外）
+- `Scheduler.CandidateHostsForAZ(azID) → []host_id` で AZ スコープの候補ホストを取得（DRS 等が AZ 単位処理に利用）
 - 内部ヘルパー `candidateHosts`（AZ 経由のストレージドメイン到達可能ホスト集合取得）と `selectHost`（active 状態・Flavor 充足フィルタ + スコアリング）を `Schedule` / `Reschedule` が共用
 - AZ フィルタ → Flavor 充足フィルタ → リソース空き率スコアリング
+- `scheduler.Engine`（DRS）が AZ 単位で空きリソース割合の標準偏差を検出し、greedy にマイグレーション計画を生成
+
+### DRS Runner (`internal/controller/drs`)
+
+- DRS Engine の周期実行ループ。`atomic.Int32` で in-flight ガード（ticker と admin /run は同一フラグを共用）
+- `Migrator` 経由で `compute.MigrateVM` を呼び出し、失敗は warn ログで次サイクル再試行
+- S031（Controller HA）でリーダー専用実行に wrap 予定
 
 ### Flavor (`internal/flavor`)
 
@@ -338,6 +346,7 @@ cirrus/
 │   ├── controller/   # Controller gRPC サーバ + WorkerClientPool
 │   ├── controller/fencing/   # FencingAgent インターフェース + SimFencingAgent
 │   ├── controller/reconcile/ # DriftHandler + HeartbeatReconciler + FailoverTrigger + Network/StorageReconciler
+│   ├── controller/drs/       # DRS periodic runner（scheduler.Engine 駆動）
 │   ├── client/       # cirrusctl API クライアント
 │   └── state/        # DB・マイグレーション
 ├── docs/             # 設計ドキュメント
